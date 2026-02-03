@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-改进 Prompt 来修复并行任务场景
+Improve the Prompt to fix parallel task scenarios.
 """
 import dspy
 from schemas import BDIPlan
 from verifier import PlanVerifier
 import os
 
-# 配置 API
+# Configure API
 os.environ["OPENAI_API_KEY"] = "sk-CAMQPAfhTgcWPrFfxm_1Zg"
 os.environ["OPENAI_API_BASE"] = "https://ai-gateway.andrew.cmu.edu/v1"
 
@@ -15,7 +15,7 @@ lm = dspy.LM(model="openai/claude-opus-4-20250514-v1:0", max_tokens=4000,
              api_base="https://ai-gateway.andrew.cmu.edu/v1")
 dspy.configure(lm=lm)
 
-# 改进的 Signature
+# Improved Signature
 class ImprovedGeneratePlan(dspy.Signature):
     """
     You are a BDI (Belief-Desire-Intention) Planning Agent.
@@ -38,7 +38,7 @@ class ImprovedGeneratePlan(dspy.Signature):
         /     \\
     Task_A  Task_B
         \\     /
-         JOIN
+          JOIN
 
     DEPENDENCIES:
     - Must be logical (e.g., 'UnlockDoor' before 'OpenDoor')
@@ -75,10 +75,10 @@ class ImprovedBDIPlanner(dspy.Module):
 
         return pred
 
-# 测试并行任务场景
+# Test parallel task scenario
 def test_parallel_task():
     print("=" * 60)
-    print("测试改进后的 Prompt - 并行任务场景")
+    print("Testing Improved Prompt - Parallel Task Scenario")
     print("=" * 60)
 
     planner = ImprovedBDIPlanner()
@@ -106,26 +106,26 @@ def test_parallel_task():
     for edge in plan.edges:
         print(f"  - {edge.source} → {edge.target}")
 
-    # 验证
+    # Verification
     G = plan.to_networkx()
     is_valid, errors = PlanVerifier.verify(G)
 
     print(f"\n{'='*60}")
     if is_valid:
-        print("✅ 验证通过！")
+        print("✅ Validation Passed!")
         order = PlanVerifier.topological_sort(G)
-        print(f"\n执行顺序: {' → '.join(order)}")
+        print(f"\nExecution Order: {' → '.join(order)}")
 
-        # 检查连通性
+        # Check connectivity
         import networkx as nx
         num_components = nx.number_weakly_connected_components(G)
-        print(f"\n弱连通分量数: {num_components}")
+        print(f"\nNumber of weakly connected components: {num_components}")
         if num_components == 1:
-            print("✅ 图是连通的！")
+            print("✅ Graph is connected!")
         else:
-            print(f"❌ 图有 {num_components} 个独立的子图")
+            print(f"❌ Graph has {num_components} isolated subgraphs")
     else:
-        print("❌ 验证失败！")
+        print("❌ Validation Failed!")
         for error in errors:
             print(f"  - {error}")
 
@@ -134,4 +134,4 @@ def test_parallel_task():
 
 if __name__ == "__main__":
     success = test_parallel_task()
-    print(f"\n{'🎉 成功！' if success else '😞 仍然失败'}")
+    print(f"\n{'🎉 Success!' if success else '😞 Still Failed'}")
