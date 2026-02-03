@@ -1,123 +1,123 @@
-# 并行任务场景失败原因深度分析
+# Deep Analysis of Parallel Task Failures
 
-## 🔍 问题概述
+## 🔍 Problem Overview
 
-**失败场景**: "Print a document and send an email simultaneously, then turn off the printer."
+**Failure Scenario**: "Print a document and send an email simultaneously, then turn off the printer."
 
-**错误信息**: `Plan graph is disconnected. All actions should be related to the goal.`
+**Error Message**: `Plan graph is disconnected. All actions should be related to the goal.`
 
 ---
 
-## 📊 LLM 生成的结果分析
+## 📊 Analysis of LLM-generated Results
 
-### 实际生成的计划结构
+### Actual Plan Structure (Inferred)
 
 ```
-节点数: 4
-边数: 2
+Number of Nodes: 4
+Number of Edges: 2
 
-可能的结构（推测）:
-  子图 1:                子图 2:
+Possible Structure:
+  Subgraph 1:                Subgraph 2:
   Print Document         Turn On Computer
        ↓                       ↓
   Turn Off Printer       Send Email
 ```
 
-### 问题所在
+### The Issue
 
-LLM 生成了 **两个独立的子图**，它们之间 **没有任何连接**！
+The LLM generated **two independent subgraphs** with **no connection between them**!
 
 ---
 
-## 🧮 图论角度的解释
+## 🧮 Explaining from Graph Theory
 
-### 什么是"断开的图" (Disconnected Graph)?
+### What is a "Disconnected Graph"?
 
-在图论中，如果一个图可以分成 **两个或多个子图**，且子图之间 **没有边相连**，则称该图为"断开的图"。
+In graph theory, if a graph can be partitioned into **two or more subgraphs** such that **no edges exist between them**, the graph is called "disconnected."
 
-#### 数学定义
+#### Mathematical Definition
 
-对于有向图 G = (V, E)：
-- **弱连通**: 忽略边的方向后，任意两点之间存在路径
-- **强连通**: 考虑边的方向后，任意两点之间存在路径
+For a directed graph G = (V, E):
+- **Weakly Connected**: There is a path between any two vertices when edge directions are ignored.
+- **Strongly Connected**: There is a directed path between every pair of vertices.
 
-我们的验证器检查的是 **弱连通性**：
+Our verifier checks for **weak connectivity**:
 ```python
 if not nx.is_weakly_connected(graph):
     errors.append("Plan graph is disconnected.")
 ```
 
-#### 为什么需要连通性？
+#### Why is connectivity required?
 
-在 BDI 规划中，计划必须是连通的，原因：
+In BDI planning, the plan MUST be connected because:
 
-1. **拓扑排序要求**: DAG 的拓扑排序要求图是连通的，否则无法确定全局执行顺序
-2. **语义一致性**: 所有动作都应该为同一个目标服务，彼此之间应有逻辑关联
-3. **执行可行性**: 断开的图意味着有独立的任务流，无法统一调度
+1. **Topological Sort Requirement**: Topological sorting of a DAG generally expects connectivity to establish a complete global execution sequence.
+2. **Semantic Consistency**: All actions should serve the same high-level goal and have logical relationships.
+3. **Execution Feasibility**: A disconnected graph implies independent task flows that cannot be synchronized in a single execution pipeline.
 
 ---
 
-## 🤖 LLM 为什么会犯这个错误？
+## 🤖 Why did the LLM make this mistake?
 
-### 根本原因分析
+### Root Cause Analysis
 
-#### 1. **并行性的歧义理解**
+#### 1. **Ambiguous Understanding of Parallelism**
 
-**用户意图**:
+**User Intent**:
 ```
 "Print a document and send an email simultaneously,
  then turn off the printer."
 ```
 
-**LLM 可能的理解**:
-- "simultaneously" → 两个完全独立的任务
-- "then turn off the printer" → 只与打印任务相关
+**LLM's Likely Interpretation**:
+- "simultaneously" → Two completely independent tasks.
+- "then turn off the printer" → Only related to the printing task.
 
-**正确理解应该是**:
-- "simultaneously" → 两个并行任务，但共享同一个起点
-- "then" → 在 **两个任务都完成后** 才执行
+**Correct Interpretation Should Be**:
+- "simultaneously" → Two parallel tasks sharing a common start.
+- "then" → Execute **after BOTH tasks are completed**.
 
-#### 2. **缺少明确的同步指令**
+#### 2. **Lack of Explicit Synchronization Instructions**
 
-Prompt 中没有明确说明：
-- ❌ "并行任务需要有共同的起始节点"
-- ❌ "如果有多个并行分支，必须有汇聚点（join point）"
-- ❌ "图必须保持连通性"
+The prompt did not explicitly state:
+- ❌ "Parallel tasks require a common predecessor."
+- ❌ "If there are parallel branches, they must converge (join point)."
+- ❌ "The graph must maintain connectivity."
 
-#### 3. **自然语言的结构化映射难度**
+#### 3. **Difficulty in Mapping Natural Language to Graph Structures**
 
-自然语言 → 图结构的映射不是 trivial 的：
+Mapping natural language to graph structures is non-trivial:
 
-| 自然语言 | 图结构要求 |
+| Natural Language | Graph Requirement |
 |---------|-----------|
-| "A and B" | 需要共同前驱或后继 |
-| "simultaneously" | 需要 fork-join 模式 |
-| "then" (after parallel) | 需要同步节点 |
+| "A and B" | Needs a common predecessor or successor |
+| "simultaneously" | Needs a fork-join pattern |
+| "then" (after parallel) | Needs a synchronization node |
 
 ---
 
-## ✅ 正确的结构应该是什么？
+## ✅ What should the correct structure look like?
 
-### Fork-Join 模式（菱形结构）
+### Fork-Join Pattern (Diamond Structure)
 
 ```
-        START (虚拟节点)
+        START (Virtual Node)
        /              \
       /                \
   Print Doc         Send Email
-      \                /
-       \              /
-     Turn Off Printer (Join Point)
+       \               /
+        \             /
+      Turn Off Printer (Join Point)
 ```
 
-### 图论表示
+### Graph Theory Representation
 
 ```python
 nodes = [
-    "START",              # 虚拟起始节点
-    "print_document",     # 并行任务 1
-    "send_email",         # 并行任务 2
-    "turn_off_printer"    # 同步节点
+    "START",              # Virtual start node
+    "print_document",     # Parallel task 1
+    "send_email",         # Parallel task 2
+    "turn_off_printer"    # Join/Sync node
 ]
 
 edges = [
@@ -128,7 +128,7 @@ edges = [
 ]
 ```
 
-### 连通性验证
+### Verification
 
 ```python
 >>> G = nx.DiGraph(edges)
@@ -141,24 +141,24 @@ True  ✅
 
 ---
 
-## 🛠️ 如何修复这个问题？
+## 🛠️ How to fix this?
 
-### 方案 1: 改进 Prompt (推荐)
+### Option 1: Improve the Prompt (Recommended)
 
-在 DSPy Signature 中添加明确的约束：
+Add explicit constraints in the DSPy Signature:
 
 ```python
 class GeneratePlan(dspy.Signature):
     \"\"\"
-    ... (原有说明)
+    ... (existing instructions)
 
     IMPORTANT CONSTRAINTS:
-    1. The graph MUST be connected (weakly connected)
+    1. The graph MUST be connected (weakly connected).
     2. For parallel tasks, use a fork-join pattern:
-       - Create a START node that both tasks depend on
-       - Create a JOIN node that depends on both tasks
-    3. Every node must be reachable from at least one other node
-    4. Use virtual nodes (START/END) if needed to maintain connectivity
+       - Create a START node that both tasks depend on.
+       - Create a JOIN node that depends on both tasks.
+    3. Every node must be reachable from at least one other node.
+    4. Use virtual nodes (START/END) if needed to maintain connectivity.
 
     Example of CORRECT parallel structure:
     {
@@ -178,9 +178,9 @@ class GeneratePlan(dspy.Signature):
     \"\"\"
 ```
 
-### 方案 2: Few-Shot 示例
+### Option 2: Provide Few-Shot Examples
 
-在 DSPy 中添加并行任务的示例：
+Add a parallel task example in DSPy:
 
 ```python
 dspy.Example(
@@ -188,27 +188,27 @@ dspy.Example(
     desire="Do A and B in parallel, then C",
     plan=BDIPlan(
         goal_description="Parallel execution with sync",
-        nodes=[...],  # Fork-join 结构
+        nodes=[...],  # Fork-join structure
         edges=[...]
     )
 ).with_inputs("beliefs", "desire")
 ```
 
-### 方案 3: 后处理修复
+### Option 3: Post-processing Repair
 
-在验证器中添加自动修复逻辑：
+Add auto-fix logic in the verifier:
 
 ```python
 def auto_fix_disconnected(graph: nx.DiGraph) -> nx.DiGraph:
-    \"\"\"自动为断开的图添加虚拟节点\"\"\"
+    \"\"\"Automatically add virtual nodes for disconnected graphs\"\"\"
     if not nx.is_weakly_connected(graph):
         components = list(nx.weakly_connected_components(graph))
 
-        # 添加虚拟 START 节点
+        # Add virtual START node
         graph.add_node("__START__", action_type="Virtual",
                        description="Auto-added sync point")
 
-        # 连接所有子图的根节点到 START
+        # Connect roots of all subgraphs to START
         for comp in components:
             roots = [n for n in comp if graph.in_degree(n) == 0]
             for root in roots:
@@ -217,9 +217,9 @@ def auto_fix_disconnected(graph: nx.DiGraph) -> nx.DiGraph:
     return graph
 ```
 
-### 方案 4: 验证时给出具体建议
+### Option 4: Provide Specific Feedback During Verification
 
-改进错误消息，告诉 LLM 如何修复：
+Improve error messages to tell the LLM how to fix it:
 
 ```python
 if not nx.is_weakly_connected(graph):
@@ -234,71 +234,71 @@ if not nx.is_weakly_connected(graph):
 
 ---
 
-## 📈 性能影响分析
+## 📈 Impact Analysis
 
-### 当前结果
+### Current Results
 
-| 指标 | 值 | 说明 |
+| Metric | Value | Description |
 |-----|---|------|
-| 结构正确率 | 75% | 3/4 场景通过 |
-| 首次成功率 | 100% | 无 JSON 格式错误 |
-| 并行场景成功率 | **0%** | 1/1 失败 |
+| Structural Accuracy | 75% | 3/4 scenarios passed |
+| First-Try Success Rate | 100% | No JSON format errors |
+| Parallel Scenario Success Rate| **0%** | 1/1 failed |
 
-### 改进后的预期
+### Expected Improvement
 
-如果采用方案 1 (改进 Prompt)，预期：
-- 结构正确率: **75% → 90%+**
-- 并行场景成功率: **0% → 80%+**
+If Option 1 (Prompt Improvement) is adopted:
+- Structural Accuracy: **75% → 90%+**
+- Parallel Success Rate: **0% → 80%+**
 
 ---
 
-## 🔬 深层原因：LLM 的图结构理解局限
+## 🔬 Deeper Insight: LLM Limitations in Graph Structure
 
-### LLM 的优势
+### LLM Strengths
 
-- ✅ 理解自然语言的语义
-- ✅ 识别动作之间的因果关系（"unlock before open"）
-- ✅ 生成符合 Schema 的 JSON
+- ✅ Understanding natural language semantics.
+- ✅ Identifying causal relationships (e.g., "unlock before open").
+- ✅ Generating Schema-compliant JSON.
 
-### LLM 的局限
+### LLM Limitations
 
-- ❌ 不天然理解图论约束（连通性、拓扑性）
-- ❌ 对"并行"的理解偏向语义而非结构
-- ❌ 难以推理全局属性（如"整个图必须连通"）
+- ❌ Does not intuitively understand graph theory constraints (connectivity, cyclicity).
+- ❌ Interpretation of "parallel" is biased towards semantics rather than topology.
+- ❌ Difficulty in reasoning about global properties (e.g., "the entire graph must be connected").
 
-### 为什么需要形式化验证？
+### Why Formal Verification?
 
-这正是你项目的 **核心价值**！
+This is exactly the **core value** of your project!
 
 ```
-LLM (语义理解)  +  Verifier (结构约束)  =  可靠的规划
-   ↓                      ↓                    ↓
-"理解意图"           "检查正确性"         "保证质量"
+LLM (Semantic Understanding) + Verifier (Structural Constraint) = Reliable Planning
+       ↓                            ↓                             ↓
+"Understanding Intent"        "Check Correctness"            "Ensure Quality"
 ```
 
 ---
 
-## 💡 关键洞察
+## 💡 Key Takeaways
 
-1. **并行 ≠ 独立**: 并行任务仍需在图中保持连通性
-2. **LLM 需要显式指导**: 图论约束必须在 prompt 中明确说明
-3. **验证器的价值**: 捕获 LLM 难以理解的结构性错误
-
----
-
-## 🎯 结论
-
-这个失败案例 **不是 bug，而是 feature**！
-
-它完美展示了：
-1. LLM 的局限性（难以理解图结构约束）
-2. 形式化验证的必要性（及时发现错误）
-3. 改进方向（更好的 prompt 工程）
-
-**你的验证框架成功地阻止了一个结构性错误的计划被执行！** ✅
+1. **Parallel ≠ Independent**: Parallel tasks still need to maintain connectivity in the graph.
+2. **LLM Needs Explicit Guidance**: Graph constraints must be explicitly stated in the prompt.
+3. **Value of the Verifier**: Captures structural errors that LLMs struggle to grasp.
 
 ---
 
-**生成时间**: 2026-02-02
-**分析工具**: NetworkX + 图论
-**可视化**: matplotlib (parallel_task_failure_analysis.png, graph_connectivity_analysis.png)
+## 🎯 Conclusion
+
+This failure case **is not a bug, but a feature**!
+
+It perfectly demonstrates:
+1. LLM limitations in understanding complex graph constraints.
+2. The necessity of formal verification for safety-critical planning.
+3. A clear direction for refinement (better prompt engineering).
+
+**Your verification framework successfully prevented a structurally flawed plan from being executed!** ✅
+
+---
+
+**Generated At**: 2026-02-02
+**Analysis Tool**: NetworkX + Graph Theory
+**Visualization**: matplotlib (parallel_task_failure_analysis.png, graph_connectivity_analysis.png)

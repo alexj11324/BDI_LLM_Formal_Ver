@@ -30,29 +30,35 @@ class GeneratePlan(dspy.Signature):
 class BDIPlanner(dspy.Module):
     def __init__(self):
         super().__init__()
-        # Use Predict with signature (DSPy 3.x API)
-        self.generate_plan = dspy.Predict(GeneratePlan)
+        # TypedPredictor enforces the Pydantic schema
+        self.generate_plan = dspy.TypedPredictor(GeneratePlan)
 
     def forward(self, beliefs: str, desire: str) -> dspy.Prediction:
         # Generate the plan
         pred = self.generate_plan(beliefs=beliefs, desire=desire)
-
-        # Try to parse the plan - DSPy 3.x handles Pydantic parsing
+        
         try:
             plan_obj = pred.plan
-
             # Convert to NetworkX for verification
             G = plan_obj.to_networkx()
 
             # Verify the plan
             is_valid, errors = PlanVerifier.verify(G)
 
-            if not is_valid:
-                print(f"\n⚠️ Warning: Generated plan has validation errors: {'; '.join(errors)}")
-                # In DSPy 3.x, we would need to manually retry or use a different approach
-
+            # DSPy Assertion: If invalid, backtrack and retry with the error message
+            # This is the "Learning/Optimization" loop in inference time
+            dspy.Assert(
+                is_valid,
+                f"The generated plan is invalid. Errors: {'; '.join(errors)}. Please fix the dependencies to remove cycles or connect the graph.",
+                target_module=self.generate_plan
+            )
         except Exception as e:
-            print(f"\n⚠️ Warning: Could not parse plan: {e}")
+            # Handle potential pydantic validation errors or parsing issues
+            dspy.Assert(
+                False,
+                f"Failed to generate a valid plan object. Error: {str(e)}",
+                target_module=self.generate_plan
+            )
 
         return pred
 
@@ -102,7 +108,7 @@ def main():
             print("\nExecution Order:")
             print(" -> ".join(PlanVerifier.topological_sort(G)))
 
-    except Exception as e:
+    except dspy.DSPyAssertionError as e:
         print(f"\n❌ Planning Failed after retries: {e}")
 
 if __name__ == "__main__":
