@@ -10,8 +10,8 @@ from matplotlib.patches import Patch
 from typing import Dict, Optional, Tuple
 import os
 
-from schemas import BDIPlan
-from verifier import PlanVerifier
+from .schemas import BDIPlan
+from .verifier import PlanVerifier
 
 
 class PlanVisualizer:
@@ -233,7 +233,7 @@ class PlanVisualizer:
 
 def demo_visualization():
     """Demonstrate visualization capabilities."""
-    from schemas import ActionNode, DependencyEdge
+    from .schemas import ActionNode, DependencyEdge
 
     # Create a sample plan
     plan = BDIPlan(

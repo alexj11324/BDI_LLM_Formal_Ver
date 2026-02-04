@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(claude mcp --help:*)",
+      "Bash(claude mcp add:*)",
+      "Bash(claude mcp list)",
+      "WebSearch",
+      "mcp__alphaXiv__find_papers_feed",
+      "mcp__alphaXiv__answer_research_query",
+      "mcp__alphaXiv__answer_pdf_query",
+      "Bash(ls:*)",
+      "Bash(python:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}

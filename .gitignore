@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment
+.env
+.venv
+env/
+venv/
+.DS_Store
+
+# Logs
+*.log
+firebase-debug.log
+
+# Artifacts
+*.png
+benchmark_results.json

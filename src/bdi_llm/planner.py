@@ -1,15 +1,26 @@
 import dspy
 from typing import List
 import networkx as nx
-from schemas import BDIPlan
-from verifier import PlanVerifier
+from .schemas import BDIPlan
+from .verifier import PlanVerifier
 
 # 1. Configure DSPy (Using CMU AI Gateway with Claude)
 import os
-os.environ["OPENAI_API_KEY"] = "REDACTED_OPENAI_KEY"
-os.environ["OPENAI_API_BASE"] = "https://ai-gateway.andrew.cmu.edu/v1"
 
-lm = dspy.LM(model="openai/claude-opus-4-20250514-v1:0", max_tokens=4000, api_base="https://ai-gateway.andrew.cmu.edu/v1")
+# Load API key from environment variable (never hardcode secrets!)
+# Set via: export OPENAI_API_KEY=your-key-here
+# Or use a .env file with python-dotenv
+API_KEY = os.environ.get("OPENAI_API_KEY")
+API_BASE = os.environ.get("OPENAI_API_BASE", "https://ai-gateway.andrew.cmu.edu/v1")
+
+if not API_KEY:
+    raise ValueError(
+        "OPENAI_API_KEY environment variable is not set. "
+        "Please set it before running the planner:\n"
+        "  export OPENAI_API_KEY=your-api-key-here"
+    )
+
+lm = dspy.LM(model="openai/claude-opus-4-20250514-v1:0", max_tokens=4000, api_base=API_BASE)
 dspy.configure(lm=lm)
 
 # 2. Define the Signature
