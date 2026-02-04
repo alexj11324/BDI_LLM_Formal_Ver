@@ -22,11 +22,11 @@ import os
 import json
 from typing import Optional
 
-# Add parent to path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Add src to path
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src"))
 
-from schemas import BDIPlan, ActionNode, DependencyEdge
-from verifier import PlanVerifier
+from bdi_llm.schemas import BDIPlan, ActionNode, DependencyEdge
+from bdi_llm.verifier import PlanVerifier
 
 
 def run_unit_tests():
@@ -166,7 +166,7 @@ def run_llm_demo():
         return False
 
     try:
-        from planner import main as planner_main
+        from bdi_llm.planner import main as planner_main
         planner_main()
         return True
     except Exception as e:

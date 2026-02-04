@@ -4,10 +4,11 @@ These tests ensure our verification logic is sound BEFORE testing with LLMs.
 """
 import pytest
 import sys
-sys.path.append('..')
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '../src'))
 
-from schemas import ActionNode, DependencyEdge, BDIPlan
-from verifier import PlanVerifier
+from bdi_llm.schemas import ActionNode, DependencyEdge, BDIPlan
+from bdi_llm.verifier import PlanVerifier
 
 
 class TestVerifierBasics:

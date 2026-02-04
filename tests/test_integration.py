@@ -11,10 +11,10 @@ import sys
 import json
 from typing import List, Tuple
 
-sys.path.append('..')
+sys.path.append(os.path.join(os.path.dirname(__file__), '../src'))
 
-from schemas import BDIPlan
-from verifier import PlanVerifier
+from bdi_llm.schemas import BDIPlan
+from bdi_llm.verifier import PlanVerifier
 
 # Check if we can run LLM tests
 HAS_API_KEY = bool(os.environ.get("OPENAI_API_KEY") or os.environ.get("ANTHROPIC_API_KEY"))
@@ -111,7 +111,7 @@ class TestLLMIntegration:
     @pytest.fixture
     def planner(self):
         """Initialize the BDI Planner."""
-        from planner import BDIPlanner
+        from bdi_llm.planner import BDIPlanner
         return BDIPlanner()
 
     @pytest.mark.parametrize("scenario", TEST_SCENARIOS, ids=[s["name"] for s in TEST_SCENARIOS])

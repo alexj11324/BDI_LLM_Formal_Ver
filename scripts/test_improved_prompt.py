@@ -3,9 +3,14 @@
 Improve the Prompt to fix parallel task scenarios.
 """
 import dspy
-from schemas import BDIPlan
-from verifier import PlanVerifier
+import sys
 import os
+
+# Add src to path
+sys.path.append(os.path.join(os.path.dirname(__file__), '../src'))
+
+from bdi_llm.schemas import BDIPlan
+from bdi_llm.verifier import PlanVerifier
 
 # Configure API
 os.environ["OPENAI_API_KEY"] = "sk-CAMQPAfhTgcWPrFfxm_1Zg"
