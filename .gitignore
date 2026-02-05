@@ -17,3 +17,4 @@ firebase-debug.log
 # Artifacts
 *.png
 benchmark_results.json
+.env

@@ -1,0 +1,279 @@
+{
+  "timestamp": "2026-02-03T22:41:56.217514",
+  "n_scenarios": 10,
+  "bdi_results": [
+    {
+      "scenario_id": "seq_001",
+      "is_valid": true,
+      "time_seconds": 27.61958122253418,
+      "metrics": {
+        "auto_repaired": false,
+        "verification_errors": [],
+        "num_retries": 0
+      },
+      "quality": {
+        "num_nodes": 6,
+        "num_edges": 5,
+        "is_dag": true,
+        "is_connected": true,
+        "avg_degree": 1.6666666666666667,
+        "structure_match": true
+      }
+    },
+    {
+      "scenario_id": "seq_002",
+      "is_valid": true,
+      "time_seconds": 36.27238607406616,
+      "metrics": {
+        "auto_repaired": false,
+        "verification_errors": [],
+        "num_retries": 0
+      },
+      "quality": {
+        "num_nodes": 9,
+        "num_edges": 9,
+        "is_dag": true,
+        "is_connected": true,
+        "avg_degree": 2.0,
+        "structure_match": false
+      }
+    },
+    {
+      "scenario_id": "seq_003",
+      "is_valid": true,
+      "time_seconds": 41.8677818775177,
+      "metrics": {
+        "auto_repaired": false,
+        "verification_errors": [],
+        "num_retries": 0
+      },
+      "quality": {
+        "num_nodes": 4,
+        "num_edges": 4,
+        "is_dag": true,
+        "is_connected": true,
+        "avg_degree": 2.0,
+        "structure_match": false
+      }
+    },
+    {
+      "scenario_id": "par_001",
+      "is_valid": true,
+      "time_seconds": 21.650500059127808,
+      "metrics": {
+        "auto_repaired": false,
+        "verification_errors": [],
+        "num_retries": 0
+      },
+      "quality": {
+        "num_nodes": 4,
+        "num_edges": 3,
+        "is_dag": true,
+        "is_connected": true,
+        "avg_degree": 1.5,
+        "structure_match": false
+      }
+    },
+    {
+      "scenario_id": "par_002",
+      "is_valid": true,
+      "time_seconds": 12.425383806228638,
+      "metrics": {
+        "auto_repaired": false,
+        "verification_errors": [],
+        "num_retries": 0
+      },
+      "quality": {
+        "num_nodes": 2,
+        "num_edges": 1,
+        "is_dag": true,
+        "is_connected": true,
+        "avg_degree": 1.0,
+        "structure_match": false
+      }
+    },
+    {
+      "scenario_id": "par_003",
+      "is_valid": true,
+      "time_seconds": 17.526101112365723,
+      "metrics": {
+        "auto_repaired": false,
+        "verification_errors": [],
+        "num_retries": 0
+      },
+      "quality": {
+        "num_nodes": 3,
+        "num_edges": 2,
+        "is_dag": true,
+        "is_connected": true,
+        "avg_degree": 1.3333333333333333,
+        "structure_match": false
+      }
+    },
+    {
+      "scenario_id": "mix_001",
+      "is_valid": true,
+      "time_seconds": 16.855366706848145,
+      "metrics": {
+        "auto_repaired": false,
+        "verification_errors": [],
+        "num_retries": 0
+      },
+      "quality": {
+        "num_nodes": 3,
+        "num_edges": 2,
+        "is_dag": true,
+        "is_connected": true,
+        "avg_degree": 1.3333333333333333,
+        "structure_match": true
+      }
+    },
+    {
+      "scenario_id": "mix_002",
+      "is_valid": true,
+      "time_seconds": 23.418683290481567,
+      "metrics": {
+        "auto_repaired": false,
+        "verification_errors": [],
+        "num_retries": 0
+      },
+      "quality": {
+        "num_nodes": 5,
+        "num_edges": 4,
+        "is_dag": true,
+        "is_connected": true,
+        "avg_degree": 1.6,
+        "structure_match": true
+      }
+    },
+    {
+      "scenario_id": "complex_001",
+      "is_valid": true,
+      "time_seconds": 22.45215392112732,
+      "metrics": {
+        "auto_repaired": false,
+        "verification_errors": [],
+        "num_retries": 0
+      },
+      "quality": {
+        "num_nodes": 4,
+        "num_edges": 5,
+        "is_dag": true,
+        "is_connected": true,
+        "avg_degree": 2.5,
+        "structure_match": true
+      }
+    },
+    {
+      "scenario_id": "complex_002",
+      "is_valid": true,
+      "time_seconds": 20.41537594795227,
+      "metrics": {
+        "auto_repaired": false,
+        "verification_errors": [],
+        "num_retries": 0
+      },
+      "quality": {
+        "num_nodes": 4,
+        "num_edges": 4,
+        "is_dag": true,
+        "is_connected": true,
+        "avg_degree": 2.0,
+        "structure_match": true
+      }
+    }
+  ],
+  "vanilla_results": [
+    {
+      "scenario_id": "seq_001",
+      "completed": true,
+      "time_seconds": 8.096680879592896,
+      "plan_length": 8
+    },
+    {
+      "scenario_id": "seq_002",
+      "completed": true,
+      "time_seconds": 30.01013994216919,
+      "plan_length": 20
+    },
+    {
+      "scenario_id": "seq_003",
+      "completed": true,
+      "time_seconds": 14.833631038665771,
+      "plan_length": 9
+    },
+    {
+      "scenario_id": "par_001",
+      "completed": true,
+      "time_seconds": 23.891191005706787,
+      "plan_length": 37
+    },
+    {
+      "scenario_id": "par_002",
+      "completed": true,
+      "time_seconds": 21.676393032073975,
+      "plan_length": 33
+    },
+    {
+      "scenario_id": "par_003",
+      "completed": true,
+      "time_seconds": 17.843432188034058,
+      "plan_length": 31
+    },
+    {
+      "scenario_id": "mix_001",
+      "completed": true,
+      "time_seconds": 19.24500298500061,
+      "plan_length": 29
+    },
+    {
+      "scenario_id": "mix_002",
+      "completed": true,
+      "time_seconds": 10.393127918243408,
+      "plan_length": 10
+    },
+    {
+      "scenario_id": "complex_001",
+      "completed": true,
+      "time_seconds": 11.317661046981812,
+      "plan_length": 8
+    },
+    {
+      "scenario_id": "complex_002",
+      "completed": true,
+      "time_seconds": 13.420151233673096,
+      "plan_length": 24
+    }
+  ],
+  "summary": {
+    "bdi": {
+      "success_rate": 1.0,
+      "valid_count": 10,
+      "repaired_count": 0,
+      "avg_time_seconds": 24.050331401824952
+    },
+    "vanilla": {
+      "completion_rate": 1.0,
+      "completed_count": 10,
+      "avg_time_seconds": 17.07274112701416
+    },
+    "by_task_type": {
+      "seq": {
+        "bdi_valid": 3,
+        "total": 3
+      },
+      "par": {
+        "bdi_valid": 3,
+        "total": 3
+      },
+      "mix": {
+        "bdi_valid": 2,
+        "total": 2
+      },
+      "complex": {
+        "bdi_valid": 2,
+        "total": 2
+      }
+    }
+  }
+}

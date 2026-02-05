@@ -1,16 +1,32 @@
 {
   "permissions": {
     "allow": [
-      "Bash(claude mcp --help:*)",
-      "Bash(claude mcp add:*)",
-      "Bash(claude mcp list)",
+      "Bash(npx:*)",
       "WebSearch",
-      "mcp__alphaXiv__find_papers_feed",
-      "mcp__alphaXiv__answer_research_query",
-      "mcp__alphaXiv__answer_pdf_query",
-      "Bash(ls:*)",
+      "WebFetch(domain:github.com)",
+      "mcp__alphaxiv__find_papers_feed",
+      "mcp__alphaxiv__search_for_paper_by_title",
+      "mcp__alphaxiv__answer_pdf_query",
       "Bash(python:*)",
-      "Bash(git add:*)"
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nAdd SOTA training methods research and parallel task auto-repair\n\nResearch Discovery:\n- SDPO \\(Self-Distillation Policy Optimization\\): arXiv:2601.20802\n  * Converts binary verifier feedback → dense token supervision\n  * Perfect fit for our DAG verifier output\n- TTRL \\(Test-Time RL\\): arXiv:2504.16084\n  * 211% improvement via majority voting pseudo-rewards\n  * Self-evolution without ground-truth labels\n- AutoRocq \\(Agentic Verification\\): arXiv:2511.17330\n  * Success pattern library + dynamic retrieval\n\nImplementation \\(TESTED\\):\n- scripts/quick_fix_parallel_tasks.py\n  * Auto-repair disconnected graphs \\(100% fix rate\\)\n  * Fork-join few-shot examples\n  * Unit tests: 3/3 PASSED ✅\n\nDocumentation:\n- docs/SOTA_TRAINING_METHODS.md: Comprehensive research + code\n- docs/QUICK_START_IMPROVEMENTS.md: Integration guide\n- docs/RESEARCH_SUMMARY.md: Executive summary\n\nExpected Impact:\n- Parallel task benchmark: 0% → 100% success rate\n- Overall benchmark: 75% → 100% \\(4/4 tasks\\)\n- Integration time: 30 minutes\n\nNext Steps:\n1. Integrate auto-repair into planner.py \\(30 min\\)\n2. Re-run benchmark to validate 100% pass rate\n3. \\(Optional\\) Implement SDPO training \\(2-4 weeks\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git clone:*)",
+      "Bash(wc:*)",
+      "Bash(python3:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(export:*)",
+      "Skill(ralph-loop:ralph-loop)",
+      "Bash(*setup-ralph-loop.sh*)",
+      "Bash(./install.sh)",
+      "Bash(brew install:*)",
+      "Bash(ralph-enable-ci)",
+      "Bash(echo:*)",
+      "Bash(ralph:*)",
+      "Bash(/Users/alexjiang/.local/bin/ralph_loop.sh)",
+      "Bash(~/.ralph/ralph_loop.sh)",
+      "Bash(chmod:*)",
+      "Bash(./monitor_ralph.sh)"
     ]
-  }
+  },
+  "enableAllProjectMcpServers": true
 }
