@@ -1,0 +1,107 @@
+{
+  "mcpServers": {
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/"
+    },
+    "alphaxiv": {
+      "type": "http",
+      "url": "https://api.alphaxiv.org/mcp/v1"
+    },
+    "huggingface": {
+      "type": "http",
+      "url": "https://hf.co/mcp"
+    },
+    "supermemory": {
+      "type": "http",
+      "url": "https://api.supermemory.ai/mcp"
+    },
+    "claude-scientific-skills": {
+      "type": "http",
+      "url": "https://mcp.k-dense.ai/claude-scientific-skills/mcp"
+    },
+    "google-super": {
+      "type": "http",
+      "url": "https://server.smithery.ai/googlesuper"
+    },
+    "memory": {
+      "type": "stdio",
+      "command": "mcp-server-memory",
+      "args": []
+    },
+    "markitdown": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["markitdown-mcp==0.0.1a4"]
+    },
+    "firebase": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "firebase-tools@latest", "mcp"]
+    },
+    "chrome-devtools": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["chrome-devtools-mcp@latest"]
+    },
+    "zotero": {
+      "type": "stdio",
+      "command": "/Users/alexjiang/opt/anaconda3/bin/zotero-mcp",
+      "args": [],
+      "env": {
+        "ZOTERO_LOCAL": "true",
+        "ZOTERO_EMBEDDING_MODEL": "gemini",
+        "GEMINI_API_KEY": "AIzaSyBRq_IX6qvRDNBiSSQEYb-XqIxRzOCHkMYAIzaSyBRq_IX6qvRDNBiSSQEYb-XqIxRzOCHkMY",
+        "GEMINI_EMBEDDING_MODEL": "models/text-embedding-004"
+      }
+    },
+    "bilibili-search": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["bilibili-mcp-js"]
+    },
+    "context7": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp"]
+    },
+    "gcloud": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@google-cloud/gcloud-mcp"]
+    },
+    "observability": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@google-cloud/observability-mcp"]
+    },
+    "aws": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["mcp-proxy-for-aws@latest", "https://aws-mcp.us-east-1.api.aws/mcp", "--metadata", "AWS_REGION=us-west-2"],
+      "env": {
+        "AWS_PROFILE": "11711"
+      }
+    },
+    "aws-documentation": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["awslabs.aws-documentation-mcp-server@latest"],
+      "env": {
+        "FASTMCP_LOG_LEVEL": "ERROR",
+        "AWS_DOCUMENTATION_PARTITION": "aws",
+        "AWS_PROFILE": "11711"
+      }
+    },
+    "arize-ax": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["arize-tracing-assistant@latest"]
+    },
+    "driflyte": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@driflyte/mcp-server"]
+    }
+  }
+}

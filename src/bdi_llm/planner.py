@@ -41,8 +41,8 @@ class GeneratePlan(dspy.Signature):
 class BDIPlanner(dspy.Module):
     def __init__(self):
         super().__init__()
-        # TypedPredictor enforces the Pydantic schema
-        self.generate_plan = dspy.TypedPredictor(GeneratePlan)
+        # Predict enforces the Pydantic schema (DSPy 3.x)
+        self.generate_plan = dspy.Predict(GeneratePlan)
 
     def forward(self, beliefs: str, desire: str) -> dspy.Prediction:
         # Generate the plan
