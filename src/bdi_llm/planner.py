@@ -20,7 +20,7 @@ if not API_KEY:
         "  export OPENAI_API_KEY=your-api-key-here"
     )
 
-lm = dspy.LM(model="openai/claude-opus-4-20250514-v1:0", max_tokens=4000, api_base=API_BASE)
+lm = dspy.LM(model="openai/gpt-4o-2024-05-13", max_tokens=4000, api_base=API_BASE)
 dspy.configure(lm=lm)
 
 # 2. Define the Signature
@@ -30,24 +30,81 @@ class GeneratePlan(dspy.Signature):
     Given a set of Beliefs (current context) and a Desire (goal),
     generate a formal Intention (Plan) as a directed graph of actions.
 
-    The plan must be a VALID Directed Acyclic Graph (DAG).
-    Dependencies must be logical (e.g., you must 'OpenDoor' before 'WalkThrough').
+    CRITICAL GRAPH STRUCTURE REQUIREMENTS:
+
+    1. **CONNECTIVITY**: The plan graph MUST be weakly connected.
+       ALL action nodes must be reachable from each other via edges.
+       There should be NO disconnected "islands" or separate subgraphs.
+
+    2. **DAG (Directed Acyclic Graph)**: No cycles allowed.
+       If action A depends on B, and B depends on C, then C cannot depend on A.
+
+    3. **Single Goal**: All actions should ultimately contribute to the goal.
+       Every action should have a path connecting it to the goal state.
+
+    4. **Fork-Join Pattern for Parallel Actions**:
+       If multiple actions can happen in parallel, structure them as:
+       ```
+       START → [Action A, Action B, Action C] → SYNC_POINT → END
+       ```
+       NOT as disconnected islands:
+       ```
+       [Action A → Action A2]  [Action B → Action B2]  (WRONG: disconnected!)
+       ```
+
+    5. **Sequential Chain for Sequential Actions**:
+       For Blocksworld: To stack A on B, then B on C:
+       ```
+       pick_up_A → stack_A_on_B → pick_up_B → stack_B_on_C
+       ```
+       Each action depends on the previous one completing.
+
+    EXAMPLE CORRECT STRUCTURE (Blocksworld, stack 3 blocks):
+    Nodes: [pick_a, stack_a_b, pick_c, stack_c_a]
+    Edges: [(pick_a, stack_a_b), (stack_a_b, pick_c), (pick_c, stack_c_a)]
+    This forms a connected chain: pick_a → stack_a_b → pick_c → stack_c_a
+
+    EXAMPLE WRONG STRUCTURE:
+    Nodes: [pick_a, stack_a_b, pick_c, stack_c_d]
+    Edges: [(pick_a, stack_a_b), (pick_c, stack_c_d)]
+    This is WRONG because {pick_a, stack_a_b} and {pick_c, stack_c_d} are disconnected!
+
+    Always ensure your plan forms ONE connected graph, not multiple fragments.
+
+    ACTION TYPE CONSTRAINTS (Blocksworld domain):
+
+    Each action node's `action_type` MUST be one of:
+      pickup | putdown | stack | unstack
+      (aliases pick-up / put-down are also accepted)
+
+    Each action node's `params` dict MUST include:
+      - "block": the block being manipulated (required for ALL actions)
+      - "target": the destination block (required ONLY for stack and unstack)
+
+    Do NOT invent action types outside this set.
     """
     beliefs: str = dspy.InputField(desc="Current state of the world and available tools")
     desire: str = dspy.InputField(desc="The high-level goal to achieve")
-    plan: BDIPlan = dspy.OutputField(desc="Structured execution plan with nodes and edges")
+    plan: BDIPlan = dspy.OutputField(desc="Structured execution plan with nodes and edges forming a SINGLE CONNECTED DAG")
 
 # 3. Define the Module with Assertions
 class BDIPlanner(dspy.Module):
-    def __init__(self):
+    def __init__(self, auto_repair: bool = True):
+        """
+        Initialize BDI Planner
+
+        Args:
+            auto_repair: If True, automatically repair disconnected plans
+        """
         super().__init__()
         # Predict enforces the Pydantic schema (DSPy 3.x)
         self.generate_plan = dspy.Predict(GeneratePlan)
+        self.auto_repair = auto_repair
 
     def forward(self, beliefs: str, desire: str) -> dspy.Prediction:
         # Generate the plan
         pred = self.generate_plan(beliefs=beliefs, desire=desire)
-        
+
         try:
             plan_obj = pred.plan
             # Convert to NetworkX for verification
@@ -56,11 +113,25 @@ class BDIPlanner(dspy.Module):
             # Verify the plan
             is_valid, errors = PlanVerifier.verify(G)
 
-            # DSPy Assertion: If invalid, backtrack and retry with the error message
+            # Try auto-repair if enabled and plan is invalid
+            if not is_valid and self.auto_repair:
+                from .plan_repair import repair_and_verify
+                repaired_plan, repaired_valid, messages = repair_and_verify(plan_obj)
+
+                if repaired_valid:
+                    # Update prediction with repaired plan
+                    pred.plan = repaired_plan
+                    is_valid = True
+                    errors = []
+                else:
+                    # Auto-repair didn't fully fix, but include repair messages
+                    errors = errors + [f"Auto-repair attempted: {msg}" for msg in messages]
+
+            # DSPy Assertion: If still invalid, backtrack and retry with the error message
             # This is the "Learning/Optimization" loop in inference time
             dspy.Assert(
                 is_valid,
-                f"The generated plan is invalid. Errors: {'; '.join(errors)}. Please fix the dependencies to remove cycles or connect the graph.",
+                f"The generated plan is invalid. Errors: {'; '.join(errors)}. Please fix the dependencies to remove cycles or connect the graph. REMEMBER: All nodes must form ONE CONNECTED graph, not separate islands.",
                 target_module=self.generate_plan
             )
         except Exception as e:
