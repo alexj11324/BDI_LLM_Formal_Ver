@@ -112,34 +112,46 @@ def parse_pddl_problem(pddl_file: str) -> dict:
 
 
 def resolve_domain_file(domain_name: str, base_path: str = None) -> str:
-    """Resolve the correct PDDL domain file path based on domain name"""
+    """Resolve the correct PDDL domain file path based on domain name.
+
+    Prefers instances/<domain>/generated_domain.pddl when it exists, because
+    that file's action names (pick-up / put-down) match the instance files.
+    Falls back to pddlgenerators/ domain.pddl otherwise.
+    """
     if base_path is None:
         base_path = str(Path(__file__).resolve().parent / "planbench_data/plan-bench")
-    # Map of PDDL domain names to file paths
-    # Note: PlanBench has multiple variants (3ops, 4ops, standard)
 
-    # Blocksworld variants
+    # Map PDDL domain name -> instance directory name
+    dir_map = {
+        "blocksworld-4ops": "blocksworld",
+        "blocksworld": "blocksworld",
+        "logistics": "logistics",
+        "depots": "depots",
+    }
+    dir_name = dir_map.get(domain_name, domain_name.split("-")[0])
+
+    # Prefer generated_domain.pddl alongside the instance files
+    generated = Path(base_path) / "instances" / dir_name / "generated_domain.pddl"
+    if generated.is_file():
+        return str(generated)
+
+    # Fallback to pddlgenerators/ domain files
     if domain_name == "blocksworld-4ops":
         return f"{base_path}/pddlgenerators/blocksworld/4ops/domain.pddl"
     elif domain_name == "blocksworld":
         return f"{base_path}/pddlgenerators/blocksworld/domain.pddl"
-
-    # Logistics variants
     elif domain_name == "logistics":
         return f"{base_path}/pddlgenerators/logistics/domain.pddl"
-
-    # Depots variants
     elif domain_name == "depots":
         return f"{base_path}/pddlgenerators/depots/domain.pddl"
 
-    # Fallback search
-    print(f"⚠️ Warning: Unknown domain name '{domain_name}', trying generic search...")
+    # Generic fallback search
+    print(f"Warning: Unknown domain name '{domain_name}', trying generic search...")
     matches = list(Path(base_path).rglob("domain.pddl"))
     for match in matches:
         if domain_name in str(match):
             return str(match)
 
-    # Final fallback: Standard blocksworld
     return f"{base_path}/pddlgenerators/blocksworld/domain.pddl"
 
 
@@ -225,18 +237,49 @@ def pddl_to_nl_blocksworld(pddl_data: dict) -> Tuple[str, str]:
 
     beliefs = "\n".join(beliefs_parts)
 
-    # Build goal with clear tower description
-    goal_pairs = []
+    # Build goal with bottom-up tower ordering and explicit construction steps
+    goal_pairs = []  # (top, bottom) from "on top bottom"
     for pred in goal:
         parts = pred.split()
         if parts[0] == 'on' and len(parts) >= 3:
             goal_pairs.append((parts[1], parts[2]))
 
-    # Sort to build tower from bottom up
-    goal_desc = "Build the following tower structure:\n"
-    for top, bottom in goal_pairs:
-        goal_desc += f"  - {top} stacked on {bottom}\n"
+    # Build bottom-up ordering: find tower bases and walk upward
+    # on_map: bottom_block -> block_that_goes_on_top
+    on_map = {}
+    top_set = set()
+    bottom_set = set()
+    for top_blk, bot_blk in goal_pairs:
+        on_map[bot_blk] = top_blk
+        top_set.add(top_blk)
+        bottom_set.add(bot_blk)
 
+    # Base blocks: appear as a support but are never placed on something else
+    bases = sorted(b for b in bottom_set if b not in top_set)
+
+    # Walk each tower chain from base upward
+    towers = []
+    for base in bases:
+        tower = [base]
+        cur = base
+        while cur in on_map:
+            cur = on_map[cur]
+            tower.append(cur)
+        towers.append(tower)
+
+    goal_desc = "Build the following tower(s) from BOTTOM to TOP:\n"
+    step_num = 1
+    for tower in towers:
+        goal_desc += f"\n  Tower (base={tower[0]}): {' -> '.join(tower)}  (bottom to top)\n"
+        goal_desc += f"  Construction steps:\n"
+        for i in range(1, len(tower)):
+            blk = tower[i]
+            tgt = tower[i - 1]
+            goal_desc += f"    Step {step_num}: pick-up {blk}, then stack {blk} on {tgt}\n"
+            step_num += 1
+
+    goal_desc += "\nExample — to build tower C -> B -> A (C on table, B on C, A on B):\n"
+    goal_desc += "  1. pick-up B   2. stack B C   3. pick-up A   4. stack A B\n"
     goal_desc += "\nWork step-by-step, one action at a time. Each action depends on completing the previous action."
 
     desire = goal_desc
@@ -371,63 +414,39 @@ def bdi_to_pddl_actions(plan: BDIPlan, domain: str = "blocksworld") -> List[str]
     # Create node lookup
     node_lookup = {n.id: n for n in plan.nodes}
 
-    # Convert each action to PDDL format
+    # Normalise action_type string to a canonical key
+    def _normalise(atype: str) -> str:
+        t = atype.lower().replace("-", "").replace("_", "").strip()
+        if t == "pickup":
+            return "pick-up"
+        if t == "putdown":
+            return "put-down"
+        if t.startswith("unstack"):
+            return "unstack"
+        if t.startswith("stack"):
+            return "stack"
+        return t
+
+    # Convert each action to PDDL format using params deterministically
     for node_id in ordered_nodes:
         action_node = node_lookup.get(node_id)
         if not action_node:
             continue
 
-        action_type = action_node.action_type.lower()
+        canon = _normalise(action_node.action_type)
         params = action_node.params
-        desc = action_node.description.lower() if action_node.description else ""
+        block = params.get("block", "")
+        target = params.get("target", "")
 
         if domain == "blocksworld":
-            # Try to extract block names from params first, then from description
-            block = params.get('block', params.get('object', params.get('from', '')))
-            target = params.get('target', params.get('to', params.get('on', '')))
-
-            # If not in params, try to extract from description
-            import re
-            blocks = re.findall(r'\b([a-z])\b', desc + " " + str(params))
-
-            # Map BDI action types to PDDL actions (Normalized for VAL)
-            if "pick" in action_type:
-                if "up" in action_type or "table" in desc:
-                    if not block and blocks:
-                        block = blocks[0]
-                    if block:
-                        pddl_actions.append(f"(pickup {block})")
-            elif "put" in action_type and "down" in action_type:
-                if not block and blocks:
-                    block = blocks[0]
-                if block:
-                    pddl_actions.append(f"(putdown {block})")
-            elif "stack" in action_type and "unstack" not in action_type:
-                if not block and len(blocks) >= 1:
-                    block = blocks[0]
-                if not target and len(blocks) >= 2:
-                    target = blocks[1]
-                if block and target:
-                    pddl_actions.append(f"(stack {block} {target})")
-            elif "unstack" in action_type:
-                if not block and len(blocks) >= 1:
-                    block = blocks[0]
-                if not target and len(blocks) >= 2:
-                    target = blocks[1]
-                if block and target:
-                    pddl_actions.append(f"(unstack {block} {target})")
-            else:
-                # Generic action - try to parse from description
-                if "pick" in desc:
-                    if blocks:
-                        pddl_actions.append(f"(pickup {blocks[0]})")
-                elif "put" in desc and "down" in desc:
-                    if blocks:
-                        pddl_actions.append(f"(putdown {blocks[0]})")
-                elif "stack" in desc and len(blocks) >= 2:
-                    pddl_actions.append(f"(stack {blocks[0]} {blocks[1]})")
-                elif "unstack" in desc and len(blocks) >= 2:
-                    pddl_actions.append(f"(unstack {blocks[0]} {blocks[1]})")
+            if canon == "pick-up" and block:
+                pddl_actions.append(f"(pick-up {block})")
+            elif canon == "put-down" and block:
+                pddl_actions.append(f"(put-down {block})")
+            elif canon == "stack" and block and target:
+                pddl_actions.append(f"(stack {block} {target})")
+            elif canon == "unstack" and block and target:
+                pddl_actions.append(f"(unstack {block} {target})")
 
     return pddl_actions
 
