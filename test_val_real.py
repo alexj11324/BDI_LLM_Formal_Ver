@@ -10,9 +10,10 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from src.bdi_llm.symbolic_verifier import PDDLSymbolicVerifier
 
-# Files
-domain_file = "planbench_data/plan-bench/pddlgenerators/blocksworld/domain.pddl"
-problem_file = "planbench_data/plan-bench/instances/blocksworld/generated/instance-10.pddl"
+# Files (absolute paths so VAL can find them)
+base_dir = Path(__file__).resolve().parent
+domain_file = str(base_dir / "planbench_data/plan-bench/instances/blocksworld/generated_domain.pddl")
+problem_file = str(base_dir / "planbench_data/plan-bench/instances/blocksworld/generated/instance-10.pddl")
 
 verifier = PDDLSymbolicVerifier()
 
@@ -27,14 +28,14 @@ print(f"Problem: {problem_file}\n")
 # instance-10: 5 blocks (d, e, a, b, f), Goal: d on e on a on b on f
 print("Test 1: Correct Plan")
 correct_plan = [
-    "(pickup f)",
-    "(stack f b)",
-    "(pickup b)",
-    "(stack b a)",
-    "(pickup a)",
-    "(stack a e)",
-    "(pickup e)",
-    "(stack e d)"
+    "(pick-up b)",
+    "(stack b f)",
+    "(pick-up a)",
+    "(stack a b)",
+    "(pick-up e)",
+    "(stack e a)",
+    "(pick-up d)",
+    "(stack d e)"
 ]
 
 print(f"Actions: {len(correct_plan)}")
@@ -55,8 +56,7 @@ else:
 # Test 2: Incorrect plan (violates preconditions)
 print("Test 2: Incorrect Plan (violates preconditions)")
 incorrect_plan = [
-    "(pickup d)",  # ERROR: d might not be on table initially
-    "(stack d e)"
+    "(stack d e)"  # ERROR: cannot stack without holding d
 ]
 
 print(f"Actions: {len(incorrect_plan)}")
