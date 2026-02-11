@@ -71,17 +71,34 @@ class GeneratePlan(dspy.Signature):
 
     Always ensure your plan forms ONE connected graph, not multiple fragments.
 
-    ACTION TYPE CONSTRAINTS (Blocksworld domain):
+    DOMAIN-SPECIFIC ACTION TYPE CONSTRAINTS:
 
-    Each action node's `action_type` MUST be one of:
-      pickup | putdown | stack | unstack
-      (aliases pick-up / put-down are also accepted)
+    **BLOCKSWORLD** (blocksworld-4ops):
+      action_type must be one of: pick-up | put-down | stack | unstack
+      params:
+        pick-up / put-down : {"block": <block>}
+        stack / unstack    : {"block": <block>, "target": <block>}
 
-    Each action node's `params` dict MUST include:
-      - "block": the block being manipulated (required for ALL actions)
-      - "target": the destination block (required ONLY for stack and unstack)
+    **LOGISTICS** (logistics-strips):
+      action_type must be one of:
+        load-truck | unload-truck | load-airplane | unload-airplane |
+        drive-truck | fly-airplane
+      params:
+        load-truck / unload-truck       : {"obj": <obj>, "truck": <truck>, "location": <loc>}
+        load-airplane / unload-airplane : {"obj": <obj>, "airplane": <airplane>, "location": <loc>}
+        drive-truck                     : {"truck": <truck>, "from": <loc>, "to": <loc>, "city": <city>}
+        fly-airplane                    : {"airplane": <airplane>, "from": <airport>, "to": <airport>}
 
-    Do NOT invent action types outside this set.
+    **DEPOTS** (depots):
+      action_type must be one of: drive | lift | drop | load | unload
+      params:
+        drive  : {"truck": <truck>, "from": <place>, "to": <place>}
+        lift   : {"hoist": <hoist>, "crate": <crate>, "surface": <surface>, "place": <place>}
+        drop   : {"hoist": <hoist>, "crate": <crate>, "surface": <surface>, "place": <place>}
+        load   : {"hoist": <hoist>, "crate": <crate>, "truck": <truck>, "place": <place>}
+        unload : {"hoist": <hoist>, "crate": <crate>, "truck": <truck>, "place": <place>}
+
+    Do NOT invent action types outside the set for the relevant domain.
     """
     beliefs: str = dspy.InputField(desc="Current state of the world and available tools")
     desire: str = dspy.InputField(desc="The high-level goal to achieve")
