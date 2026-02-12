@@ -108,6 +108,12 @@ class PDDLSymbolicVerifier:
         except FileNotFoundError:
             return False, [f"VAL executable not found: {self.val_path}"]
 
+        except OSError as e:
+            # Handle "Exec format error" (e.g. Linux binary on Mac)
+            if e.errno == 8:
+                return False, [f"VAL executable incompatible with current OS (Exec format error): {self.val_path}"]
+            return False, [f"VAL execution error (OSError): {str(e)}"]
+
         except Exception as e:
             return False, [f"VAL execution error: {str(e)}"]
 
@@ -364,15 +370,43 @@ class BlocksworldPhysicsValidator:
 
     @staticmethod
     def _extract_block(action: str) -> str:
-        """Extract single block name from action"""
-        match = re.search(r'\b([a-z])\b', action.lower())
+        """
+        Extract single block name from action.
+        Handles both single-letter blocks (e.g. 'a') and multi-char blocks (e.g. 'block1').
+        """
+        # Clean action string: remove parens
+        clean_action = action.lower().replace('(', ' ').replace(')', ' ')
+        parts = clean_action.split()
+
+        # parts[0] should be the action name (pick-up, put-down), parts[1] the argument
+        if len(parts) > 1:
+            return parts[1]
+
+        # Fallback to regex if simple split fails (though split is safer for multi-char)
+        match = re.search(r'\b([a-z0-9_-]+)\b', action.lower())
         return match.group(1) if match else None
 
     @staticmethod
     def _extract_two_blocks(action: str) -> List[str]:
-        """Extract two block names from action"""
-        blocks = re.findall(r'\b([a-z])\b', action.lower())
-        return blocks[:2] if len(blocks) >= 2 else []
+        """
+        Extract two block names from action.
+        Handles both single-letter blocks and multi-char blocks.
+        """
+        # Clean action string: remove parens
+        clean_action = action.lower().replace('(', ' ').replace(')', ' ')
+        parts = clean_action.split()
+
+        # parts[0] action name, parts[1] arg1, parts[2] arg2
+        if len(parts) > 2:
+            return parts[1:3]
+
+        # Fallback to regex
+        blocks = re.findall(r'\b([a-z0-9_-]+)\b', action.lower())
+        # Filter out action keywords if caught by regex
+        keywords = {'stack', 'unstack', 'pick-up', 'pickup', 'put-down', 'putdown'}
+        filtered_blocks = [b for b in blocks if b not in keywords]
+
+        return filtered_blocks[:2] if len(filtered_blocks) >= 2 else []
 
 
 # ============================================================================
