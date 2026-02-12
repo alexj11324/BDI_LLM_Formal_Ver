@@ -1,0 +1,206 @@
+{
+  "domain": "blocksworld",
+  "timestamp": "2026-02-10T21:28:42.343135",
+  "total_instances": 5,
+  "results": [
+    {
+      "instance_file": "planbench_data/plan-bench/instances/blocksworld/generated/instance-1.pddl",
+      "instance_name": "instance-1",
+      "timestamp": "2026-02-10T21:28:42.359818",
+      "pddl_data": {
+        "problem_name": "BW-generalization-4",
+        "num_objects": 8,
+        "num_init": 17,
+        "num_goals": 7
+      },
+      "beliefs": "BLOCKSWORLD DOMAIN\n\n=== CURRENT STATE ===\nAvailable blocks (8): b, d, f, g, h, i, j, l\nBlocks on table: b, d, f, g, h, i, j, l\nClear blocks (can pick up): b, d, f, g, h, i, j, l\nHand: empty\n\n=== PHYSI...",
+      "desire": "Build the following tower structure:\n  - j stacked on f\n  - f stacked on i\n  - i stacked on g\n  - g stacked on d\n  - d stacked on b\n  - b stacked on h\n  - h stacked on l\n\nWork step-by-step, one action...",
+      "bdi_metrics": {
+        "generation_time": 12.57494306564331,
+        "verification_layers": {
+          "structural": {
+            "valid": false,
+            "errors": [
+              "litellm.InternalServerError: InternalServerError: OpenAIException - Connection error."
+            ]
+          },
+          "physics": {
+            "valid": false,
+            "errors": []
+          }
+        },
+        "auto_repair": {
+          "triggered": false,
+          "success": false,
+          "repairs_applied": []
+        },
+        "overall_valid": false,
+        "num_nodes": 0,
+        "num_edges": 0
+      },
+      "success": false
+    },
+    {
+      "instance_file": "planbench_data/plan-bench/instances/blocksworld/generated/instance-10.pddl",
+      "instance_name": "instance-10",
+      "timestamp": "2026-02-10T21:28:54.938426",
+      "pddl_data": {
+        "problem_name": "BW-generalization-4",
+        "num_objects": 5,
+        "num_init": 11,
+        "num_goals": 4
+      },
+      "beliefs": "BLOCKSWORLD DOMAIN\n\n=== CURRENT STATE ===\nAvailable blocks (5): a, b, d, e, f\nBlocks on table: a, b, d, e, f\nClear blocks (can pick up): a, b, d, e, f\nHand: empty\n\n=== PHYSICS CONSTRAINTS ===\n1. You c...",
+      "desire": "Build the following tower structure:\n  - d stacked on e\n  - e stacked on a\n  - a stacked on b\n  - b stacked on f\n\nWork step-by-step, one action at a time. Each action depends on completing the previou...",
+      "bdi_metrics": {
+        "generation_time": 12.318367004394531,
+        "verification_layers": {
+          "structural": {
+            "valid": false,
+            "errors": [
+              "litellm.InternalServerError: InternalServerError: OpenAIException - Connection error."
+            ]
+          },
+          "physics": {
+            "valid": false,
+            "errors": []
+          }
+        },
+        "auto_repair": {
+          "triggered": false,
+          "success": false,
+          "repairs_applied": []
+        },
+        "overall_valid": false,
+        "num_nodes": 0,
+        "num_edges": 0
+      },
+      "success": false
+    },
+    {
+      "instance_file": "planbench_data/plan-bench/instances/blocksworld/generated/instance-100.pddl",
+      "instance_name": "instance-100",
+      "timestamp": "2026-02-10T21:29:07.257890",
+      "pddl_data": {
+        "problem_name": "BW-generalization-4",
+        "num_objects": 4,
+        "num_init": 9,
+        "num_goals": 3
+      },
+      "beliefs": "BLOCKSWORLD DOMAIN\n\n=== CURRENT STATE ===\nAvailable blocks (4): b, i, j, l\nBlocks on table: b, i, j, l\nClear blocks (can pick up): b, i, j, l\nHand: empty\n\n=== PHYSICS CONSTRAINTS ===\n1. You can only h...",
+      "desire": "Build the following tower structure:\n  - b stacked on j\n  - j stacked on l\n  - l stacked on i\n\nWork step-by-step, one action at a time. Each action depends on completing the previous action....",
+      "bdi_metrics": {
+        "generation_time": 12.584120988845825,
+        "verification_layers": {
+          "structural": {
+            "valid": false,
+            "errors": [
+              "litellm.InternalServerError: InternalServerError: OpenAIException - Connection error."
+            ]
+          },
+          "physics": {
+            "valid": false,
+            "errors": []
+          }
+        },
+        "auto_repair": {
+          "triggered": false,
+          "success": false,
+          "repairs_applied": []
+        },
+        "overall_valid": false,
+        "num_nodes": 0,
+        "num_edges": 0
+      },
+      "success": false
+    },
+    {
+      "instance_file": "planbench_data/plan-bench/instances/blocksworld/generated/instance-101.pddl",
+      "instance_name": "instance-101",
+      "timestamp": "2026-02-10T21:29:19.843211",
+      "pddl_data": {
+        "problem_name": "BW-generalization-4",
+        "num_objects": 11,
+        "num_init": 23,
+        "num_goals": 10
+      },
+      "beliefs": "BLOCKSWORLD DOMAIN\n\n=== CURRENT STATE ===\nAvailable blocks (11): a, c, d, e, f, g, h, i, j, k, l\nBlocks on table: a, c, d, e, f, g, h, i, j, k, l\nClear blocks (can pick up): a, c, d, e, f, g, h, i, j,...",
+      "desire": "Build the following tower structure:\n  - j stacked on h\n  - h stacked on l\n  - l stacked on a\n  - a stacked on e\n  - e stacked on g\n  - g stacked on k\n  - k stacked on d\n  - d stacked on c\n  - c stack...",
+      "bdi_metrics": {
+        "generation_time": 12.074585914611816,
+        "verification_layers": {
+          "structural": {
+            "valid": false,
+            "errors": [
+              "litellm.InternalServerError: InternalServerError: OpenAIException - Connection error."
+            ]
+          },
+          "physics": {
+            "valid": false,
+            "errors": []
+          }
+        },
+        "auto_repair": {
+          "triggered": false,
+          "success": false,
+          "repairs_applied": []
+        },
+        "overall_valid": false,
+        "num_nodes": 0,
+        "num_edges": 0
+      },
+      "success": false
+    },
+    {
+      "instance_file": "planbench_data/plan-bench/instances/blocksworld/generated/instance-102.pddl",
+      "instance_name": "instance-102",
+      "timestamp": "2026-02-10T21:29:31.919271",
+      "pddl_data": {
+        "problem_name": "BW-generalization-4",
+        "num_objects": 3,
+        "num_init": 7,
+        "num_goals": 2
+      },
+      "beliefs": "BLOCKSWORLD DOMAIN\n\n=== CURRENT STATE ===\nAvailable blocks (3): c, e, l\nBlocks on table: c, e, l\nClear blocks (can pick up): c, e, l\nHand: empty\n\n=== PHYSICS CONSTRAINTS ===\n1. You can only hold ONE b...",
+      "desire": "Build the following tower structure:\n  - l stacked on e\n  - e stacked on c\n\nWork step-by-step, one action at a time. Each action depends on completing the previous action....",
+      "bdi_metrics": {
+        "generation_time": 12.541698217391968,
+        "verification_layers": {
+          "structural": {
+            "valid": false,
+            "errors": [
+              "litellm.InternalServerError: InternalServerError: OpenAIException - Connection error."
+            ]
+          },
+          "physics": {
+            "valid": false,
+            "errors": []
+          }
+        },
+        "auto_repair": {
+          "triggered": false,
+          "success": false,
+          "repairs_applied": []
+        },
+        "overall_valid": false,
+        "num_nodes": 0,
+        "num_edges": 0
+      },
+      "success": false
+    }
+  ],
+  "summary": {
+    "total_evaluated": 5,
+    "success_count": 0,
+    "failed_count": 5,
+    "success_rate": 0.0,
+    "avg_generation_time": 12.41874303817749,
+    "structural_only_success": 0,
+    "physics_caught_errors": 0,
+    "auto_repair": {
+      "triggered": 0,
+      "successful": 0,
+      "success_rate": 0
+    }
+  }
+}

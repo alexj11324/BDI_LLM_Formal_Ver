@@ -4,23 +4,18 @@ import networkx as nx
 from .schemas import BDIPlan
 from .verifier import PlanVerifier
 
-# 1. Configure DSPy (Using CMU AI Gateway with Claude)
-import os
+from .config import Config
 
-# Load API key from environment variable (never hardcode secrets!)
-# Set via: export OPENAI_API_KEY=your-key-here
-# Or use a .env file with python-dotenv
-API_KEY = os.environ.get("OPENAI_API_KEY")
-API_BASE = os.environ.get("OPENAI_API_BASE", "https://ai-gateway.andrew.cmu.edu/v1")
+# 1. Configure DSPy
+# Ensure configuration is valid before proceeding
+Config.validate()
 
-if not API_KEY:
-    raise ValueError(
-        "OPENAI_API_KEY environment variable is not set. "
-        "Please set it before running the planner:\n"
-        "  export OPENAI_API_KEY=your-api-key-here"
-    )
-
-lm = dspy.LM(model="openai/gpt-4o-2024-05-13", max_tokens=4000, api_base=API_BASE)
+lm = dspy.LM(
+    model=Config.MODEL_NAME,
+    max_tokens=Config.MAX_TOKENS,
+    api_key=Config.OPENAI_API_KEY,  # Explicitly pass key if needed by dspy adapter
+    api_base=Config.OPENAI_API_BASE  # Can be None, DSPy handles it
+)
 dspy.configure(lm=lm)
 
 # 2. Define the Signature
@@ -59,6 +54,15 @@ class GeneratePlan(dspy.Signature):
        ```
        Each action depends on the previous one completing.
 
+    6. **Explicit Teardown**:
+       If the beliefs say a block is stacked but the goal requires moving it, you MUST explicitly unstack it first.
+       Do NOT skip unstack/put-down steps.
+       Example: If A is on B, and you need A on C:
+         1. unstack A B
+         2. put-down A
+         3. pick-up A
+         4. stack A C
+
     EXAMPLE CORRECT STRUCTURE (Blocksworld, stack 3 blocks):
     Nodes: [pick_a, stack_a_b, pick_c, stack_c_a]
     Edges: [(pick_a, stack_a_b), (stack_a_b, pick_c), (pick_c, stack_c_a)]
@@ -78,6 +82,16 @@ class GeneratePlan(dspy.Signature):
       params:
         pick-up / put-down : {"block": <block>}
         stack / unstack    : {"block": <block>, "target": <block>}
+      check-before-act preconditions (MUST be true before choosing an action):
+        pick-up : block is clear, block is on the table, and hand is empty
+        put-down: hand is holding the block
+        unstack : block is clear, block is on target, and hand is empty
+        stack   : hand is holding the block, and target is clear
+      worked example (initial stacks exist):
+        beliefs: on(a,b), on(b,table), clear(a), clear(c), on(c,table), handempty
+        goal: on(a,c)
+        valid action chain:
+          unstack(a,b) → put-down(a) → pick-up(a) → stack(a,c)
 
     **LOGISTICS** (logistics-strips):
       action_type must be one of:
