@@ -22,35 +22,38 @@ share/python-wheels/
 *.egg
 MANIFEST
 
-# Environment
+# Virtual environments
 .env
 .venv
 env/
 venv/
 ENV/
-env.bak/
-venv.bak/
 
 # IDEs
 .idea/
 .vscode/
 *.swp
 *.swo
+
+# OS
 .DS_Store
+Thumbs.db
 
 # Logs
 *.log
-firebase-debug.log
 
-# Artifacts & Results
-*.png
-benchmark_results.json
-results/logs/
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# AI/Agent tools
+.claude/
+.ralph/
+AGENT_RULES.md
+
+# Temporary
 tmp/
 
-# Tools
-.ralph/
-.claude/
-ralph-claude-code/
-AGENT_RULES.md
-AGENT_RULES.md
+# Unrelated projects
+activation_functions/

@@ -19,15 +19,27 @@ We track success rates across different validation layers:
 2.  **Multi-Layer Success**: Percentage of plans that pass **both** structural checks and domain physics validation.
 3.  **Auto-Repair Efficiency**: Rate at which structurally invalid plans are successfully repaired by the heuristic system.
 
-## Preliminary Results
+## Results
 
-### Phase 2 Evaluation (Snapshot)
+### Blocksworld
 
-| Metric | Success Rate | Notes |
-| :--- | :--- | :--- |
-| **Structural Accuracy** | **93.75%** | High success rate due to prompt engineering & schemas |
-| **Multi-Layer Success** | **~60%** | Physics checks catch subtle logical errors (e.g., unstacking order) |
-| **Auto-Repair Success** | **100%** | Successfully creates connectivity for parallel tasks |
+| Run | Instances | Overall Success | Structural | Symbolic | Physics | Auto-Repair |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| Subset (100) | 100 | **100%** | — | — | — | — |
+| Subset (500) | 500 | **100%** | — | — | — | — |
+| Full | 1103 | **49.41%** | 99.46% | 55.58% | 49.95% | 0.27% triggered |
+
+### Logistics
+
+| Instances | Overall Success |
+| :--- | :--- |
+| 572 | **0%** |
+
+### Depots
+
+| Instances | Overall Success |
+| :--- | :--- |
+| 501 | **0%** |
 
 ### Failure Analysis
 
