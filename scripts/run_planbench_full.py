@@ -212,32 +212,46 @@ def pddl_to_nl_blocksworld(pddl_data: dict) -> Tuple[str, str]:
     beliefs_parts.append(f"\n=== CURRENT STATE ===")
     beliefs_parts.append(f"Available blocks ({len(objects)}): {', '.join(sorted(objects))}")
 
-    # Describe stacks (what's on what)
+    # Describe stacks (what's on what) - ENHANCED
     if stacks:
         stack_descs = []
         for top, bottom in sorted(stacks.items()):
             stack_descs.append(f"{top} is on top of {bottom}")
-        beliefs_parts.append(f"Stacks: {'; '.join(stack_descs)}")
+        beliefs_parts.append(f"Current stacks: {'; '.join(stack_descs)}")
+        beliefs_parts.append(f"⚠️  IMPORTANT: These blocks are STACKED. To move them, you MUST unstack first!")
+    else:
+        beliefs_parts.append(f"Current stacks: None (all blocks are on table)")
 
     # Describe blocks on table
     if on_table:
         beliefs_parts.append(f"Blocks on table: {', '.join(sorted(on_table))}")
 
     # Describe clear blocks (can be picked up)
-    beliefs_parts.append(f"Clear blocks (can pick up): {', '.join(sorted(clear_blocks))}")
+    beliefs_parts.append(f"Clear blocks (nothing on top): {', '.join(sorted(clear_blocks))}")
 
     # Hand state
     beliefs_parts.append(f"Hand: {'empty' if hand_empty else 'holding something'}")
+
+    beliefs_parts.append(f"\n=== CRITICAL RULES FOR INITIAL STACKS ===")
+    beliefs_parts.append("⚠️  If a block is ON another block in the initial state:")
+    beliefs_parts.append("   1. You CANNOT pick-up that block directly")
+    beliefs_parts.append("   2. You MUST use 'unstack X Y' to remove X from Y first")
+    beliefs_parts.append("   3. After unstacking, you are HOLDING the block")
+    beliefs_parts.append("   4. Then you can put-down or stack it elsewhere")
+    beliefs_parts.append("")
+    beliefs_parts.append("Example: If initial state has '(on B A)' and you want to move B:")
+    beliefs_parts.append("   ✓ Correct: unstack B A → put-down B (or stack B somewhere)")
+    beliefs_parts.append("   ✗ Wrong: pick-up B (this will FAIL - B is not on table!)")
 
     beliefs_parts.append(f"\n=== PHYSICS CONSTRAINTS ===")
     beliefs_parts.append("1. You can only hold ONE block at a time")
     beliefs_parts.append("2. You can only pick up blocks that are CLEAR (nothing on top)")
     beliefs_parts.append("3. You can only stack on blocks that are CLEAR")
-    beliefs_parts.append("4. You can only pick up from table, not from other blocks")
-    beliefs_parts.append("5. To move a block from another block, use UNSTACK (not pick-up)")
+    beliefs_parts.append("4. pick-up ONLY works for blocks ON TABLE")
+    beliefs_parts.append("5. unstack ONLY works for blocks ON OTHER BLOCKS")
 
     beliefs_parts.append(f"\n=== AVAILABLE ACTIONS ===")
-    beliefs_parts.append("- pick-up X: Pick up block X from table (X must be clear and on table)")
+    beliefs_parts.append("- pick-up X: Pick up block X from TABLE (X must be clear and ON TABLE)")
     beliefs_parts.append("- put-down X: Put block X on table (you must be holding X)")
     beliefs_parts.append("- stack X Y: Put block X on top of block Y (you hold X, Y must be clear)")
     beliefs_parts.append("- unstack X Y: Take block X off block Y (X must be clear, hand empty)")
@@ -327,9 +341,28 @@ def pddl_to_nl_blocksworld(pddl_data: dict) -> Tuple[str, str]:
             goal_desc += f"    Step {step_num}: pick-up {blk}, then stack {blk} on {tgt}\n"
             step_num += 1
 
-    goal_desc += "\nExample — to build tower C -> B -> A (C on table, B on C, A on B):\n"
-    goal_desc += "  1. pick-up B   2. stack B C   3. pick-up A   4. stack A B\n"
-    goal_desc += "\nWork step-by-step, one action at a time. Each action depends on completing the previous action."
+    goal_desc += "\n=== EXAMPLES ===\n"
+    goal_desc += "\nExample 1 — Simple case (all blocks on table):\n"
+    goal_desc += "  Initial: A, B, C all on table\n"
+    goal_desc += "  Goal: Build tower C -> B -> A (C on table, B on C, A on B)\n"
+    goal_desc += "  Plan: 1. pick-up B   2. stack B C   3. pick-up A   4. stack A B\n"
+
+    goal_desc += "\nExample 2 — Complex case (initial stacks exist):\n"
+    goal_desc += "  Initial: (on C B), (on B A), A on table  [tower: C-B-A]\n"
+    goal_desc += "  Goal: (on A B), (on C A)  [tower: B-A-C]\n"
+    goal_desc += "  Analysis: Need to dismantle C-B-A, then rebuild as B-A-C\n"
+    goal_desc += "  Plan:\n"
+    goal_desc += "    1. unstack C B  (now holding C)\n"
+    goal_desc += "    2. put-down C   (C on table, hand empty)\n"
+    goal_desc += "    3. unstack B A  (now holding B)\n"
+    goal_desc += "    4. put-down B   (B on table, hand empty)\n"
+    goal_desc += "    5. pick-up A    (now holding A)\n"
+    goal_desc += "    6. stack A B    (A on B, hand empty)\n"
+    goal_desc += "    7. pick-up C    (now holding C)\n"
+    goal_desc += "    8. stack C A    (C on A, done!)\n"
+
+    goal_desc += "\n⚠️  KEY INSIGHT: When blocks are already stacked, you MUST unstack them first!\n"
+    goal_desc += "Work step-by-step, one action at a time. Each action depends on completing the previous action."
 
     desire = goal_desc
 
@@ -349,7 +382,7 @@ def pddl_to_nl_generic(pddl_data: dict) -> Tuple[str, str]:
 
 
 def pddl_to_nl_logistics(pddl_data: dict) -> Tuple[str, str]:
-    """Logistics domain conversion with proper state description"""
+    """Logistics domain conversion with enhanced parameter format guidance"""
     objects = pddl_data['objects']
     init = pddl_data['init']
     goal = pddl_data['goal']
@@ -385,47 +418,186 @@ def pddl_to_nl_logistics(pddl_data: dict) -> Tuple[str, str]:
         veh_descs = [f"{pkg} is in {veh}" for pkg, veh in list(in_vehicle.items())[:10]]
         beliefs_parts.append(f"In vehicles: {'; '.join(veh_descs)}")
 
-    beliefs_parts.append("\n=== AVAILABLE ACTIONS ===")
-    beliefs_parts.append("- load-truck: Load package into truck")
-    beliefs_parts.append("- unload-truck: Unload package from truck")
-    beliefs_parts.append("- load-airplane: Load package into airplane")
-    beliefs_parts.append("- unload-airplane: Unload package from airplane")
-    beliefs_parts.append("- drive-truck: Drive truck between locations")
-    beliefs_parts.append("- fly-airplane: Fly airplane between airports")
+    beliefs_parts.append("\n=== AVAILABLE ACTIONS WITH EXACT PARAMETER FORMAT ===")
+    beliefs_parts.append("⚠️  CRITICAL: Use these EXACT parameter names in your JSON:")
+    beliefs_parts.append("")
+    beliefs_parts.append('1. load-truck: {"obj": "package_name", "truck": "truck_name", "loc": "location_name"}')
+    beliefs_parts.append('   Example: {"obj": "package1", "truck": "truck1", "loc": "loc1"}')
+    beliefs_parts.append("")
+    beliefs_parts.append('2. unload-truck: {"obj": "package_name", "truck": "truck_name", "loc": "location_name"}')
+    beliefs_parts.append('   Example: {"obj": "package1", "truck": "truck1", "loc": "loc2"}')
+    beliefs_parts.append("")
+    beliefs_parts.append('3. load-airplane: {"obj": "package_name", "airplane": "airplane_name", "loc": "location_name"}')
+    beliefs_parts.append('   Example: {"obj": "package2", "airplane": "airplane1", "loc": "airport1"}')
+    beliefs_parts.append("")
+    beliefs_parts.append('4. unload-airplane: {"obj": "package_name", "airplane": "airplane_name", "loc": "location_name"}')
+    beliefs_parts.append('   Example: {"obj": "package2", "airplane": "airplane1", "loc": "airport2"}')
+    beliefs_parts.append("")
+    beliefs_parts.append('5. drive-truck: {"truck": "truck_name", "from": "location1", "to": "location2", "city": "city_name"}')
+    beliefs_parts.append('   Example: {"truck": "truck1", "from": "loc1", "to": "loc2", "city": "city1"}')
+    beliefs_parts.append("")
+    beliefs_parts.append('6. fly-airplane: {"airplane": "airplane_name", "from": "airport1", "to": "airport2"}')
+    beliefs_parts.append('   Example: {"airplane": "airplane1", "from": "airport1", "to": "airport2"}')
+
+    beliefs_parts.append("\n=== LOGISTICS MECHANICS ===")
+    beliefs_parts.append("1. Packages start at locations and need to reach goal locations")
+    beliefs_parts.append("2. Trucks move packages within a city (between locations in same city)")
+    beliefs_parts.append("3. Airplanes move packages between cities (between airports)")
+    beliefs_parts.append("4. To move a package: load → transport vehicle → unload")
+    beliefs_parts.append("5. Vehicles must be at the same location as the package to load it")
+    beliefs_parts.append("6. Vehicles must drive/fly to destination before unloading")
 
     beliefs_parts.append("\n=== PLANNING REQUIREMENTS ===")
     beliefs_parts.append("Generate a SEQUENTIAL plan with CONNECTED actions.")
+    beliefs_parts.append("Each action must use the EXACT parameter names shown above.")
 
     beliefs = "\n".join(beliefs_parts)
 
-    # Build goal
+    # Build goal with worked example
     goal_descs = []
     for pred in goal[:10]:  # Limit for readability
         parts = pred.split()
         if parts[0] == 'at' and len(parts) >= 3:
             goal_descs.append(f"{parts[1]} should be at {parts[2]}")
 
-    desire = f"Goal: {'; '.join(goal_descs)}. Work step-by-step with connected actions."
+    desire_parts = []
+    desire_parts.append(f"Goal: {'; '.join(goal_descs)}")
+    desire_parts.append("\n=== WORKED EXAMPLE ===")
+    desire_parts.append("Scenario: Move package1 from loc1 to loc3 (both in city1)")
+    desire_parts.append("Initial: package1 at loc1, truck1 at loc2")
+    desire_parts.append("Plan:")
+    desire_parts.append('  1. drive-truck: {"truck": "truck1", "from": "loc2", "to": "loc1", "city": "city1"}')
+    desire_parts.append('  2. load-truck: {"obj": "package1", "truck": "truck1", "loc": "loc1"}')
+    desire_parts.append('  3. drive-truck: {"truck": "truck1", "from": "loc1", "to": "loc3", "city": "city1"}')
+    desire_parts.append('  4. unload-truck: {"obj": "package1", "truck": "truck1", "loc": "loc3"}')
+    desire_parts.append("\nWork step-by-step with connected actions using EXACT parameter names.")
+
+    desire = "\n".join(desire_parts)
 
     return beliefs, desire
 
 
 def pddl_to_nl_depots(pddl_data: dict) -> Tuple[str, str]:
-    """Depots domain conversion"""
+    """Enhanced Depots domain conversion with clear action specifications"""
     objects = pddl_data['objects']
     init = pddl_data['init']
     goal = pddl_data['goal']
 
+    # Parse depots state
+    crates = []
+    trucks = []
+    hoists = []
+    pallets = []
+    locations = []
+
+    at_locations = {}  # object -> location
+    on_surface = {}    # crate -> surface (pallet or crate)
+    in_truck = {}      # crate -> truck
+    lifting = {}       # hoist -> crate (if any)
+    available = set()  # available hoists
+
+    for pred in init:
+        parts = pred.split()
+        if not parts:
+            continue
+
+        pred_name = parts[0]
+
+        if pred_name == 'at' and len(parts) >= 3:
+            at_locations[parts[1]] = parts[2]
+        elif pred_name == 'on' and len(parts) >= 3:
+            on_surface[parts[1]] = parts[2]
+        elif pred_name == 'in' and len(parts) >= 3:
+            in_truck[parts[1]] = parts[2]
+        elif pred_name == 'lifting' and len(parts) >= 3:
+            lifting[parts[1]] = parts[2]
+        elif pred_name == 'available' and len(parts) >= 2:
+            available.add(parts[1])
+
+    # Build beliefs with detailed state description
     beliefs_parts = []
     beliefs_parts.append("DEPOTS DOMAIN")
-    beliefs_parts.append(f"\nObjects: {', '.join(objects[:20])}")
-    beliefs_parts.append(f"\nInitial state: {'; '.join(init[:10])}")
+    beliefs_parts.append("\n=== CURRENT STATE ===")
+    beliefs_parts.append(f"Objects: {', '.join(objects[:30])}")
+
+    if at_locations:
+        loc_descs = [f"{obj} is at {loc}" for obj, loc in list(at_locations.items())[:15]]
+        beliefs_parts.append(f"\nLocations: {'; '.join(loc_descs)}")
+
+    if on_surface:
+        surface_descs = [f"{crate} is on {surf}" for crate, surf in list(on_surface.items())[:10]]
+        beliefs_parts.append(f"On surfaces: {'; '.join(surface_descs)}")
+
+    if in_truck:
+        truck_descs = [f"{crate} is in {truck}" for crate, truck in list(in_truck.items())[:10]]
+        beliefs_parts.append(f"In trucks: {'; '.join(truck_descs)}")
+
+    if available:
+        beliefs_parts.append(f"Available hoists: {', '.join(list(available)[:10])}")
+
+    beliefs_parts.append("\n=== AVAILABLE ACTIONS ===")
+    beliefs_parts.append("⚠️  CRITICAL: Use ONLY these Depots actions. DO NOT use blocksworld actions!")
+    beliefs_parts.append("")
+    beliefs_parts.append("1. Lift <hoist> <crate> <surface> <place>")
+    beliefs_parts.append("   - Use hoist to lift crate from surface at place")
+    beliefs_parts.append("   - Preconditions: hoist available, crate on surface, both at place")
+    beliefs_parts.append("   - Effects: hoist lifting crate, crate no longer on surface")
+    beliefs_parts.append("")
+    beliefs_parts.append("2. Drop <hoist> <crate> <surface> <place>")
+    beliefs_parts.append("   - Use hoist to drop crate onto surface at place")
+    beliefs_parts.append("   - Preconditions: hoist lifting crate, surface clear, both at place")
+    beliefs_parts.append("   - Effects: crate on surface, hoist available")
+    beliefs_parts.append("")
+    beliefs_parts.append("3. Load <hoist> <crate> <truck> <place>")
+    beliefs_parts.append("   - Use hoist to load crate into truck at place")
+    beliefs_parts.append("   - Preconditions: hoist lifting crate, truck at place")
+    beliefs_parts.append("   - Effects: crate in truck, hoist available")
+    beliefs_parts.append("")
+    beliefs_parts.append("4. Unload <hoist> <crate> <truck> <place>")
+    beliefs_parts.append("   - Use hoist to unload crate from truck at place")
+    beliefs_parts.append("   - Preconditions: hoist available, crate in truck, truck at place")
+    beliefs_parts.append("   - Effects: hoist lifting crate, crate no longer in truck")
+    beliefs_parts.append("")
+    beliefs_parts.append("5. Drive <truck> <from> <to>")
+    beliefs_parts.append("   - Drive truck from one location to another")
+    beliefs_parts.append("   - Preconditions: truck at from location")
+    beliefs_parts.append("   - Effects: truck at to location")
+
+    beliefs_parts.append("\n=== CRITICAL RULES ===")
+    beliefs_parts.append("❌ DO NOT use blocksworld actions: pick-up, put-down, stack, unstack")
+    beliefs_parts.append("✓ ONLY use depots actions: Lift, Drop, Load, Unload, Drive")
+    beliefs_parts.append("- Hoists are used to manipulate crates (like robotic arms)")
+    beliefs_parts.append("- Crates can be on pallets or on other crates")
+    beliefs_parts.append("- Trucks transport crates between locations")
+    beliefs_parts.append("- All manipulation requires a hoist at the same location")
+
+    beliefs_parts.append("\n=== EXAMPLE: Moving a crate between locations ===")
+    beliefs_parts.append("Initial: crate0 on pallet0 at depot0, truck0 at depot0, hoist0 at depot0")
+    beliefs_parts.append("Goal: crate0 at distributor0")
+    beliefs_parts.append("Plan:")
+    beliefs_parts.append("  1. Lift hoist0 crate0 pallet0 depot0     (hoist picks up crate)")
+    beliefs_parts.append("  2. Load hoist0 crate0 truck0 depot0      (load crate into truck)")
+    beliefs_parts.append("  3. Drive truck0 depot0 distributor0      (drive truck to destination)")
+    beliefs_parts.append("  4. Unload hoist1 crate0 truck0 distributor0  (unload at destination)")
+    beliefs_parts.append("  5. Drop hoist1 crate0 pallet1 distributor0   (place on pallet)")
+
     beliefs_parts.append("\n=== PLANNING REQUIREMENTS ===")
-    beliefs_parts.append("Generate a SEQUENTIAL plan with CONNECTED actions.")
+    beliefs_parts.append("Generate a SEQUENTIAL plan where each action depends on the previous one.")
+    beliefs_parts.append("The plan graph must be CONNECTED - all actions form one chain/path.")
+    beliefs_parts.append("Work step-by-step, one action at a time.")
 
     beliefs = "\n".join(beliefs_parts)
 
-    desire = f"Goal: {'; '.join(goal[:5])}. Work step-by-step."
+    # Build goal description
+    goal_descs = []
+    for pred in goal[:15]:
+        parts = pred.split()
+        if parts[0] == 'at' and len(parts) >= 3:
+            goal_descs.append(f"{parts[1]} should be at {parts[2]}")
+        elif parts[0] == 'on' and len(parts) >= 3:
+            goal_descs.append(f"{parts[1]} should be on {parts[2]}")
+
+    desire = f"Goal: {'; '.join(goal_descs)}. Use Depots actions (Lift/Drop/Load/Unload/Drive) to achieve this goal."
 
     return beliefs, desire
 
@@ -528,33 +700,101 @@ def bdi_to_pddl_actions(plan: BDIPlan, domain: str = "blocksworld") -> List[str]
                 pddl_actions.append(f"(unstack {block} {target})")
 
         elif domain == "logistics":
-            # Common params
-            obj = _pick_param(params, ["obj", "object", "package", "p"])
-            truck = _pick_param(params, ["truck", "vehicle", "t"])
-            airplane = _pick_param(params, ["airplane", "plane", "a"])
-            loc = _pick_param(params, ["loc", "location", "l", "at"])
-            loc_from = _pick_param(params, ["from", "source", "origin", "loc_from"])
-            loc_to = _pick_param(params, ["to", "dest", "destination", "target", "loc_to"])
-            city = _pick_param(params, ["city", "c"])
+            # Enhanced parameter extraction with more variations and fallbacks
+            # Try multiple parameter name variations
+            obj = _pick_param(params, ["obj", "object", "package", "pkg", "p", "item", "package_name", "obj_name"])
+            truck = _pick_param(params, ["truck", "vehicle", "t", "truck_name", "veh"])
+            airplane = _pick_param(params, ["airplane", "plane", "a", "airplane_name", "aircraft"])
+            loc = _pick_param(params, ["loc", "location", "l", "at", "place", "loc_name", "location_name"])
+            loc_from = _pick_param(params, ["from", "source", "origin", "loc_from", "from_loc", "start"])
+            loc_to = _pick_param(params, ["to", "dest", "destination", "target", "loc_to", "to_loc", "end"])
+            city = _pick_param(params, ["city", "c", "city_name"])
+
+            # Fallback: try to extract from description if parameters are missing
+            description = action_node.description.lower() if hasattr(action_node, 'description') and action_node.description else ""
+
+            # Fallback: use positional parameters if named parameters fail
+            param_values = list(params.values())
 
             if canon == "load-truck":
+                if not obj and len(param_values) >= 1:
+                    obj = _normalise_param(param_values[0])
+                if not truck and len(param_values) >= 2:
+                    truck = _normalise_param(param_values[1])
+                if not loc and len(param_values) >= 3:
+                    loc = _normalise_param(param_values[2])
+
                 if obj and truck and loc:
                     pddl_actions.append(f"(LOAD-TRUCK {obj} {truck} {loc})")
+                else:
+                    print(f"    DEBUG: load-truck missing params - obj={obj}, truck={truck}, loc={loc}, params={params}")
+
             elif canon == "load-airplane":
+                if not obj and len(param_values) >= 1:
+                    obj = _normalise_param(param_values[0])
+                if not airplane and len(param_values) >= 2:
+                    airplane = _normalise_param(param_values[1])
+                if not loc and len(param_values) >= 3:
+                    loc = _normalise_param(param_values[2])
+
                 if obj and airplane and loc:
                     pddl_actions.append(f"(LOAD-AIRPLANE {obj} {airplane} {loc})")
+                else:
+                    print(f"    DEBUG: load-airplane missing params - obj={obj}, airplane={airplane}, loc={loc}, params={params}")
+
             elif canon == "unload-truck":
+                if not obj and len(param_values) >= 1:
+                    obj = _normalise_param(param_values[0])
+                if not truck and len(param_values) >= 2:
+                    truck = _normalise_param(param_values[1])
+                if not loc and len(param_values) >= 3:
+                    loc = _normalise_param(param_values[2])
+
                 if obj and truck and loc:
                     pddl_actions.append(f"(UNLOAD-TRUCK {obj} {truck} {loc})")
+                else:
+                    print(f"    DEBUG: unload-truck missing params - obj={obj}, truck={truck}, loc={loc}, params={params}")
+
             elif canon == "unload-airplane":
+                if not obj and len(param_values) >= 1:
+                    obj = _normalise_param(param_values[0])
+                if not airplane and len(param_values) >= 2:
+                    airplane = _normalise_param(param_values[1])
+                if not loc and len(param_values) >= 3:
+                    loc = _normalise_param(param_values[2])
+
                 if obj and airplane and loc:
                     pddl_actions.append(f"(UNLOAD-AIRPLANE {obj} {airplane} {loc})")
+                else:
+                    print(f"    DEBUG: unload-airplane missing params - obj={obj}, airplane={airplane}, loc={loc}, params={params}")
+
             elif canon == "drive-truck":
+                if not truck and len(param_values) >= 1:
+                    truck = _normalise_param(param_values[0])
+                if not loc_from and len(param_values) >= 2:
+                    loc_from = _normalise_param(param_values[1])
+                if not loc_to and len(param_values) >= 3:
+                    loc_to = _normalise_param(param_values[2])
+                if not city and len(param_values) >= 4:
+                    city = _normalise_param(param_values[3])
+
                 if truck and loc_from and loc_to and city:
                     pddl_actions.append(f"(DRIVE-TRUCK {truck} {loc_from} {loc_to} {city})")
+                else:
+                    print(f"    DEBUG: drive-truck missing params - truck={truck}, from={loc_from}, to={loc_to}, city={city}, params={params}")
+
             elif canon == "fly-airplane":
+                if not airplane and len(param_values) >= 1:
+                    airplane = _normalise_param(param_values[0])
+                if not loc_from and len(param_values) >= 2:
+                    loc_from = _normalise_param(param_values[1])
+                if not loc_to and len(param_values) >= 3:
+                    loc_to = _normalise_param(param_values[2])
+
                 if airplane and loc_from and loc_to:
                     pddl_actions.append(f"(FLY-AIRPLANE {airplane} {loc_from} {loc_to})")
+                else:
+                    print(f"    DEBUG: fly-airplane missing params - airplane={airplane}, from={loc_from}, to={loc_to}, params={params}")
 
         elif domain == "depots":
             # Depots combines logistics and blocksworld
@@ -585,11 +825,7 @@ def bdi_to_pddl_actions(plan: BDIPlan, domain: str = "blocksworld") -> List[str]
 
         if len(pddl_actions) == before_len:
             print(
-                "Warning: Skipped action '{atype}' with params {params} for domain '{domain}'".format(
-                    atype=action_node.action_type,
-                    params=params,
-                    domain=domain
-                )
+                f"    ⚠️  WARNING: Skipped action '{action_node.action_type}' (canon: {canon}) with params {params} for domain '{domain}'"
             )
 
     return pddl_actions
