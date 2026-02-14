@@ -69,4 +69,4 @@ Validation includes:
 
 ## Why This Prevents Future Drift
 
-`/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/results/planbench_results/` can be overwritten by later experiments. The frozen snapshot in `/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/artifacts/paper_eval_20260213/` is the immutable evidence package for publication.
+Mutable outputs under `/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/runs/` can be overwritten by later experiments. Historical pre-freeze outputs are preserved at `/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/runs/legacy/planbench_results_20260211/`, and some older local runs may still appear under root-level `/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_results/`; both are non-canonical. The frozen snapshot in `/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/artifacts/paper_eval_20260213/` is the immutable evidence package for publication.

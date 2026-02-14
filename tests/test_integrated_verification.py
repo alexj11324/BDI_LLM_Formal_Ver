@@ -29,12 +29,12 @@ if not HAS_API_KEY:
     print("Note: Using dummy API key - LLM tests will be skipped\n")
 
 # Import parse_pddl_problem directly (doesn't need API)
-from run_planbench_full import parse_pddl_problem
+from scripts.run_planbench_full import parse_pddl_problem
 
 # Only import generate_bdi_plan if we have real API key
 generate_bdi_plan = None
 if HAS_API_KEY:
-    from run_planbench_full import generate_bdi_plan
+    from scripts.run_planbench_full import generate_bdi_plan
 
 
 def test_pddl_parser_init_state():

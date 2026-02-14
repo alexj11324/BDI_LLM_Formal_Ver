@@ -79,4 +79,5 @@ paper.zip
 # Unrelated projects
 activation_functions/
 AI-Research-SKILLs/
-results/planbench_results/
+runs/planbench_results/
+runs/legacy/planbench_results_20260211/

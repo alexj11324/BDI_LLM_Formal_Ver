@@ -1,0 +1,170 @@
+\section{Method}\label{sec:method}
+
+We present the BDI-LLM framework, a neuro-symbolic planning architecture that bridges Large Language Models with formal verification to produce provably correct plans. The framework treats the LLM as a \emph{generative compiler}---translating natural language goals into structured BDI (Belief-Desire-Intention) plans---and subjects every generated plan to rigorous multi-layer verification. Figure~\ref{fig:architecture} provides an overview.
+
+\subsection{System Overview}
+
+Given a PDDL planning problem $(D, P)$ with domain $D$ and problem instance $P$, the framework operates in four stages:
+
+\begin{enumerate}
+    \item \textbf{PDDL-to-NL Translation}: Convert the formal PDDL problem into domain-specific natural language beliefs $\mathcal{B}$ and desires $\mathcal{D}$.
+    \item \textbf{Structured Plan Generation}: Use DSPy~\cite{khattab2023dspy} to prompt the LLM with a domain-specific signature, producing a BDI plan $\pi$ as a directed graph of typed actions.
+    \item \textbf{Multi-Layer Verification}: Validate $\pi$ through three successive layers---structural, symbolic, and domain-specific.
+    \item \textbf{Error-Driven Repair}: If symbolic verification fails, feed VAL error diagnostics back to the LLM for targeted plan repair with cumulative history.
+\end{enumerate}
+
+\subsection{Domain-Aware PDDL-to-NL Translation}\label{sec:pddl-to-nl}
+
+A critical insight of our approach is that the quality of natural language problem descriptions directly impacts LLM planning accuracy. Rather than using generic PDDL-to-text conversion, we implement \emph{domain-specific translators} that emphasize the constraints most likely to cause LLM errors.
+
+\paragraph{Blocksworld.} The translator produces structured state descriptions with explicit stack decomposition, teardown ordering (top-first unstacking for mismatched initial stacks), and bottom-up tower construction steps. It includes physics constraints (single-block holding, clear-block requirements) and worked examples showing both simple and complex scenarios with initial stacks.
+
+\paragraph{Logistics.} The translator explicitly identifies \emph{airport} locations---the \#1 failure cause in preliminary experiments---and annotates each vehicle position with airport status. It distinguishes intra-city (truck-only) from inter-city (airplane-required) deliveries in the goal description, and includes mandatory state-tracking instructions for vehicle positions after every move action.
+
+\paragraph{Depots.} The translator implements a \emph{hoist state machine} description, explicitly modeling the two-state lifecycle (available $\leftrightarrow$ lifting) that governs all crate manipulation. It tracks truck positions and contents, and provides a complete worked example with state changes annotated after every action.
+
+Each translator also embeds \emph{common error patterns} specific to the domain (e.g., ``flying to non-airport locations'' for Logistics, ``double-lifting with same hoist'' for Depots), serving as negative examples that steer the LLM away from known failure modes.
+
+\subsection{Structured Plan Generation with DSPy}\label{sec:dspy}
+
+We use DSPy's \texttt{ChainOfThought} module to structure LLM interactions, defining domain-specific \emph{signatures} that constrain the output format while enabling flexible reasoning.
+
+\subsubsection{Domain-Specific Signatures}
+
+Each planning domain has a dedicated DSPy signature class that encodes:
+
+\begin{itemize}
+    \item \textbf{Graph structure requirements}: Connectivity (weakly connected DAG), acyclicity, and sequential chaining constraints.
+    \item \textbf{Action type constraints}: An exhaustive enumeration of valid action types and their parameter schemas. For Blocksworld: \texttt{\{pick-up, put-down, stack, unstack\}}; for Logistics: \texttt{\{load-truck, unload-truck, load-airplane, unload-airplane, drive-truck, fly-airplane\}}; for Depots: \texttt{\{drive, lift, drop, load, unload\}}.
+    \item \textbf{Precondition specifications}: Check-before-act rules that the LLM must verify before selecting each action.
+    \item \textbf{State tracking protocol}: A mandatory three-component reasoning framework:
+    \begin{enumerate}
+        \item \emph{Explicit State Tracking} (P0-1): Maintain a state table updated after every action.
+        \item \emph{Chain-of-Symbol Representation} (P0-2): Use symbolic notation (e.g., \texttt{on(X,Y)}, \texttt{holding(X)}) for unambiguous state descriptions.
+        \item \emph{Logical Chain-of-Thought} (P0-3): A 4-step verification protocol (Identify Goal $\rightarrow$ List Preconditions $\rightarrow$ Check State $\rightarrow$ Decision) applied to every action.
+    \end{enumerate}
+\end{itemize}
+
+The output schema is a typed \texttt{BDIPlan} object containing \texttt{ActionNode}s (with \texttt{id}, \texttt{action\_type}, \texttt{params}, \texttt{description}) and \texttt{DependencyEdge}s, which DSPy automatically serializes and deserializes as structured JSON.
+
+\subsubsection{Few-Shot Demonstrations}
+
+For the Logistics domain, we provide two VAL-verified few-shot demonstrations:
+
+\begin{itemize}
+    \item \textbf{Instance-10} (3 goals, single city): Demonstrates correct sequential truck routing with 9 actions, emphasizing vehicle position tracking after each \texttt{drive-truck}.
+    \item \textbf{Instance-116} (6 goals, 2 cities): Demonstrates cross-city transport with 18 actions, showing correct airplane usage between airports and multi-vehicle coordination.
+\end{itemize}
+
+Both demonstrations are \emph{gold-standard plans} verified by VAL, ensuring the LLM learns from provably correct examples. This is a key distinction from prior work that uses hand-crafted or unverified demonstrations.
+
+\subsubsection{Action Constraint Validation}
+
+Before proceeding to formal verification, the framework performs a lightweight \emph{action constraint check} that validates:
+\begin{enumerate}
+    \item Every \texttt{action\_type} belongs to the domain's valid action set.
+    \item Every action node contains all required parameters for its type.
+\end{enumerate}
+This catches gross generation errors (e.g., Blocksworld actions in a Depots problem) early, avoiding unnecessary VAL invocations.
+
+\subsection{Multi-Layer Verification}\label{sec:verification}
+
+The generated plan undergoes three successive verification layers, each catching a distinct class of errors.
+
+\subsubsection{Layer 1: Structural Verification}
+
+The BDI plan is converted to a NetworkX directed graph $G = (V, E)$, where nodes represent actions and edges represent dependencies. The structural verifier checks:
+
+\begin{itemize}
+    \item \textbf{Acyclicity}: $G$ must be a DAG (no circular dependencies).
+    \item \textbf{Weak connectivity}: All nodes must be reachable from each other (no disconnected subgraphs).
+    \item \textbf{Topological sortability}: A valid execution order must exist.
+\end{itemize}
+
+If structural verification fails, an \emph{auto-repair} module attempts heuristic fixes: connecting disconnected subgraphs via virtual \texttt{START}/\texttt{END} nodes, unifying multiple root nodes, and canonicalizing node IDs. This handles the common LLM failure mode of generating ``disconnected islands'' for parallel subtasks.
+
+\subsubsection{Layer 2: Symbolic Verification (VAL)}
+
+Plans that pass structural verification are converted to PDDL action sequences and validated using VAL~\cite{howey2004val}, the standard PDDL plan validator. The conversion process uses a deterministic \texttt{bdi\_to\_pddl\_actions} function that:
+
+\begin{itemize}
+    \item Extracts actions in topological order from the plan graph.
+    \item Normalizes action type strings (handling variations like \texttt{pickup}/\texttt{pick-up}/\texttt{pick\_up}).
+    \item Maps BDI parameters to PDDL arguments using a priority-ordered key lookup with positional fallback.
+\end{itemize}
+
+VAL is invoked with the \texttt{-v} (verbose) flag, which provides:
+\begin{itemize}
+    \item The specific action that failed and at which step.
+    \item Unsatisfied preconditions with concrete predicates.
+    \item \textbf{Plan Repair Advice}: Explicit predicates that need to be established for the plan to succeed.
+\end{itemize}
+
+This rich error information is critical for the repair loop described in Section~\ref{sec:repair}.
+
+\subsubsection{Layer 3: Domain-Specific Validation}
+
+For Blocksworld, a physics simulator validates constraints that complement VAL's logical checking:
+\begin{itemize}
+    \item Single-block holding (hand holds at most one block).
+    \item Clear-block requirements (cannot pick up blocks with something on top).
+    \item State consistency (tracking \texttt{on\_table}, \texttt{on}, \texttt{clear}, \texttt{holding} predicates through the action sequence).
+\end{itemize}
+
+For Logistics and Depots, Layer 3 is bypassed (set to pass), as VAL's PDDL verification already captures the relevant domain constraints through typed action schemas.
+
+A plan is considered valid only if it passes \emph{all three layers}.
+
+\subsection{Error-Driven VAL Repair Loop}\label{sec:repair}
+
+When symbolic verification (Layer 2) fails, the framework initiates an iterative repair loop that leverages VAL's diagnostic output to guide the LLM toward a correct plan.
+
+\subsubsection{Repair Mechanism}
+
+The repair loop uses a dedicated \texttt{RepairPlan} DSPy signature that receives:
+\begin{itemize}
+    \item The original beliefs and desires (problem context).
+    \item The failed plan as a PDDL action sequence.
+    \item Cleaned VAL error messages (specific failed actions and repair advice, with verbose output filtered out).
+    \item \textbf{Cumulative repair history}: All previous repair attempts and their errors.
+\end{itemize}
+
+The signature's docstring includes detailed instructions on interpreting VAL error patterns:
+\begin{itemize}
+    \item \emph{Unsatisfied precondition}: Add prerequisite actions before the failing action.
+    \item \emph{Goal not satisfied}: Append actions to achieve remaining goal predicates.
+    \item \emph{Type-checking error}: Correct parameter types using domain object names.
+\end{itemize}
+
+\subsubsection{Cumulative History for Monotonic Progress}
+
+A key design choice is the \emph{cumulative repair history}, which records every previous failed attempt (plan actions + VAL errors) and passes the full history to each subsequent repair call. This serves two purposes:
+
+\begin{enumerate}
+    \item \textbf{Avoiding repetition}: The LLM is explicitly instructed not to repeat plans from previous attempts.
+    \item \textbf{Pattern recognition}: With multiple failed attempts visible, the LLM can identify recurring error patterns and attempt fundamentally different approaches rather than incremental fixes.
+\end{enumerate}
+
+The repair loop runs for up to 3 iterations. After each repair, the repaired plan undergoes the same structural verification and action constraint checks before re-submission to VAL.
+
+\subsubsection{Repair Success Analysis}
+
+In our experiments, the VAL repair loop was triggered 78 times across 1,270 instances (6.1\%). Of these, 77 were successfully repaired (98.7\% repair success rate), requiring a total of 87 attempts (average 1.1 attempts per repair). Only 2 instances could not be repaired within the 3-attempt budget:
+\begin{itemize}
+    \item \textbf{Instance-166} (Logistics): Failed due to cycle detection in structural verification after repair---the LLM introduced circular dependencies while attempting to fix a precondition error.
+    \item \textbf{Instance-228} (Logistics): Persistent unsatisfied precondition in \texttt{load-airplane}---the LLM repeatedly failed to track airplane position after a \texttt{fly-airplane} action.
+\end{itemize}
+
+Both failure modes point to state-tracking limitations in the LLM's reasoning, suggesting that more sophisticated prompting strategies (e.g., explicit state simulation) could further reduce the failure rate.
+
+\subsection{Implementation Details}
+
+The framework is implemented in Python using DSPy 3.x for structured LLM interaction. Key implementation choices include:
+
+\begin{itemize}
+    \item \textbf{Model}: Google Gemini 3 Flash Preview via Vertex AI, with temperature 0.2 for near-deterministic output and 16K max tokens.
+    \item \textbf{Concurrency}: ThreadPoolExecutor with up to 400 parallel workers and a semaphore limiting concurrent API calls to 15, enabling efficient batch evaluation.
+    \item \textbf{Resilience}: Exponential backoff retry (up to 3 retries) for transient API errors (rate limits, timeouts, connection failures).
+    \item \textbf{Checkpointing}: Results are saved every 10 instances, enabling resumption from interruptions.
+    \item \textbf{VAL Integration}: The VAL binary is bundled with the PlanBench dataset; domain files are resolved automatically based on PDDL problem headers, preferring \texttt{generated\_domain.pddl} files whose action names match instance files.
+\end{itemize}

@@ -435,11 +435,17 @@ def print_summary(results: Dict):
     print(f"  Repair success rate: {bdi['repaired_count']/results['n_scenarios']*100:.1f}%")
 
 
-def save_results(results: Dict, output_file: str = "planbench_comparison_results.json"):
+def save_results(
+    results: Dict,
+    output_file: str = "runs/planbench_comparison/planbench_comparison_results.json",
+):
     """Save results to JSON file"""
-    with open(output_file, 'w') as f:
+    output_path = Path(output_file)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(output_path, 'w') as f:
         json.dump(results, f, indent=2, default=str)
-    print(f"\n✅ Results saved to {output_file}")
+    print(f"\n✅ Results saved to {output_path}")
 
 
 # ============================================================================
@@ -454,7 +460,7 @@ def main():
                        help="Number of scenarios to test (default: all)")
     parser.add_argument("--mode", choices=["bdi", "vanilla", "both"], default="both",
                        help="Which planner to test")
-    parser.add_argument("--output", type=str, default="planbench_comparison_results.json",
+    parser.add_argument("--output", type=str, default="runs/planbench_comparison/planbench_comparison_results.json",
                        help="Output file for results")
 
     args = parser.parse_args()
