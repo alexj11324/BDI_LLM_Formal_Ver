@@ -1,0 +1,146 @@
+{
+  "snapshot_id": "paper_eval_20260213",
+  "source_archive": {
+    "file": "planbench_results_archive.tar.gz",
+    "path": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_results_archive.tar.gz"
+  },
+  "evidence_dir": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/artifacts/paper_eval_20260213",
+  "model": {
+    "env_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/.env",
+    "llm_model": "vertex_ai/gemini-3-flash-preview"
+  },
+  "files": {
+    "results_blocksworld_20260212_214230.json": {
+      "path": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/artifacts/paper_eval_20260213/results_blocksworld_20260212_214230.json",
+      "sha256": "f4d5f2a23980888bdd1c70af1fc02ce8d548b468662241196ce20e0a61a8cb18",
+      "domain": "blocksworld",
+      "total_instances_field": 200,
+      "rows": 200,
+      "unique_instance_count": 200,
+      "success_count_recomputed": 200,
+      "failed_count_recomputed": 0,
+      "failed_instance_ids": []
+    },
+    "results_logistics_20260213_025757.json": {
+      "path": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/artifacts/paper_eval_20260213/results_logistics_20260213_025757.json",
+      "sha256": "acc899fc5b156c584125fb1ba4cad3ddca2c1f606265b143e2bdc0c52874636c",
+      "domain": "logistics",
+      "total_instances_field": 572,
+      "rows": 572,
+      "unique_instance_count": 286,
+      "success_count_recomputed": 570,
+      "failed_count_recomputed": 2,
+      "failed_instance_ids": [
+        "instance-166.pddl",
+        "instance-228.pddl"
+      ]
+    },
+    "results_depots_20260213_014014.json": {
+      "path": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/artifacts/paper_eval_20260213/results_depots_20260213_014014.json",
+      "sha256": "caabcdd83800ef3ccdb87d274987cda8e7010e3ca485368609a09c30f8e88f47",
+      "domain": "depots",
+      "total_instances_field": 501,
+      "rows": 501,
+      "unique_instance_count": 501,
+      "success_count_recomputed": 498,
+      "failed_count_recomputed": 3,
+      "failed_instance_ids": [
+        "instance-173.pddl",
+        "instance-179.pddl",
+        "instance-187.pddl"
+      ]
+    },
+    "checkpoint_blocksworld.json": {
+      "path": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/artifacts/paper_eval_20260213/checkpoint_blocksworld.json",
+      "sha256": "464a56a685043f1a25d75deb2b4f5f20d45332ebba0b82ab45fc592535e43a97",
+      "domain": "blocksworld",
+      "total_instances_field": 200,
+      "rows": 200,
+      "unique_instance_count": 200,
+      "success_count_recomputed": 200,
+      "failed_count_recomputed": 0,
+      "failed_instance_ids": []
+    },
+    "checkpoint_logistics.json": {
+      "path": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/artifacts/paper_eval_20260213/checkpoint_logistics.json",
+      "sha256": "24654c62d83f0068ec5d1ad88fe90c89eb47b2f922bd7d05b1afbb662c988681",
+      "domain": "logistics",
+      "total_instances_field": 572,
+      "rows": 570,
+      "unique_instance_count": 286,
+      "success_count_recomputed": 568,
+      "failed_count_recomputed": 2,
+      "failed_instance_ids": [
+        "instance-166.pddl",
+        "instance-228.pddl"
+      ]
+    },
+    "checkpoint_depots.json": {
+      "path": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/artifacts/paper_eval_20260213/checkpoint_depots.json",
+      "sha256": "f911a6611c9f7b1af6ecd79764e78706dc31d2745abd94ecf1df9cedc5ae1356",
+      "domain": "depots",
+      "total_instances_field": 501,
+      "rows": 500,
+      "unique_instance_count": 500,
+      "success_count_recomputed": 497,
+      "failed_count_recomputed": 3,
+      "failed_instance_ids": [
+        "instance-173.pddl",
+        "instance-179.pddl",
+        "instance-187.pddl"
+      ]
+    }
+  },
+  "paper_primary_counts": {
+    "blocksworld": {
+      "passed": 200,
+      "total": 200,
+      "accuracy": 1.0
+    },
+    "logistics": {
+      "passed": 568,
+      "total": 570,
+      "accuracy": 0.9964912280701754,
+      "failed_instances": [
+        "instance-166.pddl",
+        "instance-228.pddl"
+      ]
+    },
+    "depots": {
+      "passed": 497,
+      "total": 500,
+      "accuracy": 0.994,
+      "failed_instances": [
+        "instance-173.pddl",
+        "instance-179.pddl",
+        "instance-187.pddl"
+      ]
+    },
+    "overall": {
+      "passed": 1265,
+      "total": 1270,
+      "failed": 5,
+      "accuracy": 0.9960629921259843,
+      "formatted": "1265/1270 = 99.6%"
+    }
+  },
+  "upstream_vs_checkpoint_relationship": {
+    "logistics": {
+      "results_file": "results_logistics_20260213_025757.json",
+      "checkpoint_file": "checkpoint_logistics.json",
+      "delta_instance_occurrence_count_results_minus_checkpoint": {
+        "instance-259.pddl": 1,
+        "instance-264.pddl": 1
+      },
+      "interpretation": "Relative to checkpoint, results has one extra duplicate row for instance-259 and instance-264."
+    },
+    "depots": {
+      "results_file": "results_depots_20260213_014014.json",
+      "checkpoint_file": "checkpoint_depots.json",
+      "extra_instances_in_results_only": [
+        "instance-183.pddl"
+      ],
+      "interpretation": "results has one extra successful instance: instance-183.pddl."
+    }
+  }
+}
