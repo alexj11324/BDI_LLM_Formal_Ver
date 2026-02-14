@@ -87,9 +87,11 @@ class PDDLSymbolicVerifier:
         plan_file = self._create_plan_file(plan_actions)
 
         try:
-            # Run VAL validator
+            # Run VAL validator with -v for verbose output
+            # -v provides: specific failed action, unsatisfied preconditions,
+            # and Plan Repair Advice with concrete predicates to fix
             result = subprocess.run(
-                [self.val_path, domain_file, problem_file, plan_file],
+                [self.val_path, '-v', domain_file, problem_file, plan_file],
                 capture_output=True,
                 text=True,
                 timeout=30
@@ -142,28 +144,40 @@ class PDDLSymbolicVerifier:
 
     def _parse_val_output(self, output: str, verbose: bool) -> Tuple[bool, List[str]]:
         """
-        Parse VAL validator output
+        Parse VAL validator output (with -v verbose flag)
 
-        VAL outputs patterns like:
-        - "Plan valid" / "Plan executed successfully" → Valid
-        - "Plan failed to execute" / "Bad plan" → Invalid
-        - Specific errors: "Precondition not satisfied", "Goal not achieved", etc.
+        VAL -v outputs patterns like:
+        - "Plan executed successfully - checking goal" + no "Goal not satisfied" → Valid
+        - "Plan failed because of unsatisfied precondition in:" → Precondition failure
+        - "Goal not satisfied" / "Plan invalid" → Goal not achieved
+        - "Error in type-checking!" → Type error in action parameters
+        - "Bad plan" / "Bad problem file!" → Structural PDDL error
         """
         errors = []
 
-        # Check for success indicators
-        if "Plan valid" in output or "Plan executed successfully" in output:
+        # Check for full success: plan executed AND goal satisfied
+        if "Plan executed successfully" in output and "Goal not satisfied" not in output and "Plan invalid" not in output:
             return True, []
 
-        # Check for failure indicators
-        if "Plan failed" in output or "Bad plan" in output:
-            # Extract specific errors
+        # Check for goal not satisfied (plan executes but doesn't reach goal)
+        if "Goal not satisfied" in output or "Plan invalid" in output:
             errors = self._extract_val_errors(output)
-
             if verbose:
-                # Include full VAL output
                 errors.append(f"\nFull VAL output:\n{output}")
+            return False, errors
 
+        # Check for precondition / execution failure
+        if "Plan failed" in output or "Bad plan" in output:
+            errors = self._extract_val_errors(output)
+            if verbose:
+                errors.append(f"\nFull VAL output:\n{output}")
+            return False, errors
+
+        # Check for type-checking errors
+        if "Error in type-checking" in output or "Bad problem file" in output:
+            errors = self._extract_val_errors(output)
+            if verbose:
+                errors.append(f"\nFull VAL output:\n{output}")
             return False, errors
 
         # Unknown output format
@@ -175,36 +189,60 @@ class PDDLSymbolicVerifier:
         return False, errors
 
     def _extract_val_errors(self, output: str) -> List[str]:
-        """Extract specific error messages from VAL output"""
+        """Extract specific error messages from VAL -v verbose output.
+
+        With -v flag, VAL provides:
+        - Which action failed and at which step
+        - Unsatisfied preconditions with specific predicates
+        - Plan Repair Advice with concrete fixes
+        """
         errors = []
 
-        # Pattern 1: Precondition violations
+        # Pattern 1 (verbose): Unsatisfied precondition with specific action
+        # "Plan failed because of unsatisfied precondition in:\n(action-name args)"
+        precond_verbose = re.search(
+            r"Plan failed because of unsatisfied precondition in:\s*\n\s*(\(.+?\))",
+            output, re.DOTALL
+        )
+        if precond_verbose:
+            failed_action = precond_verbose.group(1).strip()
+            errors.append(f"Unsatisfied precondition in action: {failed_action}")
+
+        # Pattern 2 (verbose): Plan Repair Advice section
+        # Captures the entire repair advice block
+        repair_advice = re.search(
+            r"Plan Repair Advice:\s*\n(.*?)(?:\n\s*\n|\nFailed plans:|\Z)",
+            output, re.DOTALL
+        )
+        if repair_advice:
+            advice_text = repair_advice.group(1).strip()
+            errors.append(f"VAL Repair Advice: {advice_text}")
+
+        # Pattern 3: Goal not satisfied
+        if "Goal not satisfied" in output:
+            errors.append("Plan executed but goal not satisfied")
+
+        # Pattern 4 (legacy): Precondition not satisfied (non-verbose format)
         precond_pattern = r"Precondition not satisfied: (.+)"
         for match in re.finditer(precond_pattern, output):
             errors.append(f"Precondition violation: {match.group(1)}")
 
-        # Pattern 2: Goal not achieved
-        if "Goal not achieved" in output or "Goals not met" in output:
-            errors.append("Plan does not achieve goal state")
+        # Pattern 5: Type-checking errors
+        if "Error in type-checking" in output:
+            errors.append("Type-checking error: action parameters have invalid types")
 
-        # Pattern 3: Invalid action parameters
+        # Pattern 6: Invalid action parameters
         invalid_action_pattern = r"Invalid action: (.+)"
         for match in re.finditer(invalid_action_pattern, output):
             errors.append(f"Invalid action: {match.group(1)}")
 
-        # Pattern 4: Type errors
+        # Pattern 7: Type errors
         type_error_pattern = r"Type error: (.+)"
         for match in re.finditer(type_error_pattern, output):
             errors.append(f"Type error: {match.group(1)}")
 
-        # Pattern 5: Failed action execution
-        failed_action_pattern = r"Action (.+) failed"
-        for match in re.finditer(failed_action_pattern, output):
-            errors.append(f"Action execution failed: {match.group(1)}")
-
         # If no specific errors extracted, provide generic message
         if not errors:
-            # Try to find first error line
             lines = output.split('\n')
             for line in lines:
                 if 'error' in line.lower() or 'fail' in line.lower():

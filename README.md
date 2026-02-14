@@ -1,5 +1,7 @@
 # BDI-LLM Formal Verification Framework
 
+English | [简体中文](README_CN.md)
+
 A framework for generating and verifying BDI plans using LLMs with formal verification guarantees.
 
 ## Overview
@@ -20,7 +22,7 @@ This project implements a hybrid planning architecture that combines the generat
 
 1.  Clone the repository:
     ```bash
-    git clone https://github.com/yourusername/BDI_LLM_Formal_Ver.git
+    git clone https://github.com/alexj11324/BDI_LLM_Formal_Ver.git
     cd BDI_LLM_Formal_Ver
     ```
 
@@ -79,10 +81,10 @@ BDI_LLM_Formal_Ver/
 
 ## Documentation
 
-*   [User Guide](docs/USER_GUIDE.md): Detailed guide on how to usage and configuration.
+*   [User Guide](docs/USER_GUIDE.md): Detailed guide on usage and configuration.
 *   [Architecture](docs/ARCHITECTURE.md): System architecture and verification layers.
 *   [Benchmarks](docs/BENCHMARKS.md): Evaluation methodology and results.
 
 ## License
 
-[MIT License](LICENSE)
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

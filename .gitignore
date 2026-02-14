@@ -54,6 +54,27 @@ AGENT_RULES.md
 
 # Temporary
 tmp/
+*.tar.gz
+*_archive/
+
+# Experiment data
+mlflow.db
+mlruns/
+planbench_results/
+
+# Analysis scripts (temporary)
+analyze_*.py
+diagnose_*.py
+verify_*.py
+rerun_*.py
+test_*.py
+*_failed_*.txt
+*_root_cause_*.md
+
+# Paper drafts
+paper/
+paper.zip
 
 # Unrelated projects
 activation_functions/
+AI-Research-SKILLs/
