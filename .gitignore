@@ -70,6 +70,7 @@ rerun_*.py
 test_*.py
 *_failed_*.txt
 *_root_cause_*.md
+!scripts/verify_paper_eval_snapshot.py
 
 # Paper drafts
 paper/
