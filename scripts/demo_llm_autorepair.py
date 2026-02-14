@@ -194,12 +194,12 @@ if __name__ == "__main__":
         print("❌ ERROR: OPENAI_API_KEY environment variable not set")
         print("\nPlease set it first:")
         print("  export OPENAI_API_KEY=your-api-key")
-        print("\nFor CMU students, get your key from:")
-        print("  https://ai-gateway.andrew.cmu.edu/")
+        print("\nSet your OpenAI API key:")
+        print("  export OPENAI_API_KEY=your-api-key")
         sys.exit(1)
 
     print("🚀 Starting Live LLM Demo...")
-    print(f"   Model: Claude Opus 4 (via CMU AI Gateway)")
+    print(f"   Model: Claude Opus 4")
     print(f"   Mode: {args.mode}")
 
     if args.mode in ["parallel", "both"]:

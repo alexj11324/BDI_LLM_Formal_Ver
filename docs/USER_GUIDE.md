@@ -348,8 +348,6 @@ plan, valid, metrics = generate_bdi_plan(beliefs, desire, init_state)
 
 ## References
 
-- **Architecture**: `docs/SYMBOLIC_VERIFICATION_ARCHITECTURE.md`
-- **Status**: `docs/SYMBOLIC_VERIFICATION_STATUS.md`
-- **Implementation**: `PHASE2_IMPLEMENTATION_SUMMARY.md`
-- **API Reference**: `.claude/allowed_apis_reference.md`
-- **Test Suite**: `test_integrated_verification.py`, `test_integration_phase2.py`
+- **Architecture**: `docs/ARCHITECTURE.md`
+- **Benchmarks**: `docs/BENCHMARKS.md`
+- **Test Suite**: `tests/test_integrated_verification.py`, `tests/test_integration_phase2.py`

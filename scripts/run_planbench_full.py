@@ -28,6 +28,8 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 from datetime import datetime
 from tqdm import tqdm
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from threading import Lock
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
 
@@ -36,6 +38,15 @@ from src.bdi_llm.schemas import BDIPlan
 from src.bdi_llm.verifier import PlanVerifier
 from src.bdi_llm.plan_repair import repair_and_verify, PlanRepairer
 import networkx as nx
+
+# MLflow integration for experiment tracking
+try:
+    import mlflow
+    MLFLOW_AVAILABLE = True
+except ImportError:
+    MLFLOW_AVAILABLE = False
+    print("⚠️  MLflow not installed. Install with: pip install mlflow")
+    print("   Experiment tracking will be disabled.")
 
 
 # ============================================================================
@@ -55,9 +66,24 @@ def parse_pddl_problem(pddl_file: str) -> dict:
     domain_match = re.search(r'\(:domain\s+(.*?)\)', content)
     domain_name = domain_match.group(1).strip() if domain_match else "blocksworld"
 
-    # Extract objects
-    objects_match = re.search(r':objects\s+(.*?)\)', content)
-    objects = objects_match.group(1).split() if objects_match else []
+    # Extract objects (supports typed PDDL format: "obj1 obj2 - Type")
+    objects_match = re.search(r':objects\s+(.*?)\)', content, re.DOTALL)
+    objects = []
+    typed_objects = {}  # object_name -> type_name
+    if objects_match:
+        objects_text = objects_match.group(1)
+        # Parse typed object declarations: "obj1 obj2 - Type"
+        typed_pattern = re.findall(r'([\w\s]+?)\s*-\s*(\w+)', objects_text)
+        if typed_pattern:
+            for names_str, type_name in typed_pattern:
+                for name in names_str.split():
+                    name = name.strip()
+                    if name:
+                        objects.append(name)
+                        typed_objects[name] = type_name
+        else:
+            # Fallback: untyped objects (e.g., blocksworld)
+            objects = objects_text.split()
 
     # Extract init state
     init_match = re.search(r':init\s+(.*?)\(:goal', content, re.DOTALL)
@@ -68,10 +94,10 @@ def parse_pddl_problem(pddl_file: str) -> dict:
         init_predicates = []
 
     # Extract goal
-    goal_match = re.search(r':goal\s+\(and(.*?)\)\)', content, re.DOTALL)
+    goal_match = re.search(r':goal\s*\(and\s*((?:\([^)]+\)\s*)+)\)', content, re.DOTALL)
     if goal_match:
-        goal_text = goal_match.group(1)
-        goal_predicates = re.findall(r'\((.*?)\)', goal_text)
+        goal_content = goal_match.group(1)
+        goal_predicates = re.findall(r'\(([^)]+)\)', goal_content)
     else:
         goal_predicates = []
 
@@ -105,6 +131,7 @@ def parse_pddl_problem(pddl_file: str) -> dict:
         'problem_name': problem_name,
         'domain_name': domain_name,  # NEW: For resolving domain file
         'objects': objects,
+        'typed_objects': typed_objects,  # NEW: object_name -> type_name mapping
         'init': init_predicates,
         'goal': goal_predicates,
         'init_state': init_state  # NEW: For physics validation
@@ -119,7 +146,7 @@ def resolve_domain_file(domain_name: str, base_path: str = None) -> str:
     Falls back to pddlgenerators/ domain.pddl otherwise.
     """
     if base_path is None:
-        base_path = str(Path(__file__).resolve().parent / "planbench_data/plan-bench")
+        base_path = str(Path(__file__).resolve().parent.parent / "planbench_data/plan-bench")
 
     # Map PDDL domain name -> instance directory name
     dir_map = {
@@ -382,95 +409,149 @@ def pddl_to_nl_generic(pddl_data: dict) -> Tuple[str, str]:
 
 
 def pddl_to_nl_logistics(pddl_data: dict) -> Tuple[str, str]:
-    """Logistics domain conversion with enhanced parameter format guidance"""
+    """Logistics domain conversion with enhanced airport/city awareness"""
     objects = pddl_data['objects']
     init = pddl_data['init']
     goal = pddl_data['goal']
 
-    # Parse logistics state
+    # Parse logistics state comprehensively
     packages = []
     trucks = []
     airplanes = []
-    locations = []
+    airports = set()       # locations that are airports
     cities = []
+    city_locations = {}    # city -> [locations]
+    location_city = {}     # location -> city
 
     at_locations = {}  # object -> location
     in_vehicle = {}    # package -> vehicle
 
     for pred in init:
         parts = pred.split()
-        if parts[0] == 'at' and len(parts) >= 3:
+        if not parts:
+            continue
+        pred_name = parts[0].lower()
+
+        if pred_name == 'at' and len(parts) >= 3:
             at_locations[parts[1]] = parts[2]
-        elif parts[0] == 'in' and len(parts) >= 3:
+        elif pred_name == 'in' and len(parts) >= 3:
             in_vehicle[parts[1]] = parts[2]
+        elif pred_name == 'airport' and len(parts) >= 2:
+            airports.add(parts[1])
+        elif pred_name == 'in-city' and len(parts) >= 3:
+            loc, city = parts[1], parts[2]
+            city_locations.setdefault(city, []).append(loc)
+            location_city[loc] = city
+        elif pred_name == 'obj' and len(parts) >= 2:
+            packages.append(parts[1])
+        elif pred_name == 'truck' and len(parts) >= 2:
+            trucks.append(parts[1])
+        elif pred_name == 'airplane' and len(parts) >= 2:
+            airplanes.append(parts[1])
+        elif pred_name == 'city' and len(parts) >= 2:
+            cities.append(parts[1])
 
     # Build beliefs
     beliefs_parts = []
     beliefs_parts.append("LOGISTICS DOMAIN")
-    beliefs_parts.append("\n=== CURRENT STATE ===")
-    beliefs_parts.append(f"Objects: {', '.join(objects[:20])}")  # Limit for readability
 
-    if at_locations:
-        loc_descs = [f"{obj} is at {loc}" for obj, loc in list(at_locations.items())[:10]]
-        beliefs_parts.append(f"Locations: {'; '.join(loc_descs)}")
+    # === WORLD STRUCTURE: Cities, Locations, Airports ===
+    beliefs_parts.append("\n=== WORLD STRUCTURE ===")
+    beliefs_parts.append(f"Cities: {', '.join(sorted(cities))}")
+    for city in sorted(city_locations.keys()):
+        locs = city_locations[city]
+        airport_locs = sorted([l for l in locs if l in airports])
+        non_airport_locs = sorted([l for l in locs if l not in airports])
+        beliefs_parts.append(f"  {city}: AIRPORT(s)={airport_locs}, other locations={non_airport_locs}")
 
-    if in_vehicle:
-        veh_descs = [f"{pkg} is in {veh}" for pkg, veh in list(in_vehicle.items())[:10]]
-        beliefs_parts.append(f"In vehicles: {'; '.join(veh_descs)}")
+    beliefs_parts.append("")
+    beliefs_parts.append(f"⚠️  AIRPORTS (airplanes can ONLY fly between these): {sorted(airports)}")
+    beliefs_parts.append("   Non-airport locations CANNOT be used with fly-airplane!")
 
+    # === VEHICLE POSITIONS ===
+    beliefs_parts.append("\n=== VEHICLE POSITIONS ===")
+    beliefs_parts.append("Airplanes (fly between AIRPORTS only):")
+    for ap in sorted(airplanes):
+        loc = at_locations.get(ap, "unknown")
+        city = location_city.get(loc, "?")
+        is_airport = "✓ AIRPORT" if loc in airports else "✗ NOT airport"
+        beliefs_parts.append(f"  {ap} is at {loc} ({is_airport}, {city})")
+
+    beliefs_parts.append("Trucks (drive within ONE city only):")
+    for tr in sorted(trucks):
+        loc = at_locations.get(tr, "unknown")
+        city = location_city.get(loc, "?")
+        beliefs_parts.append(f"  {tr} is at {loc} ({city})")
+
+    # === PACKAGE POSITIONS ===
+    beliefs_parts.append("\n=== PACKAGE POSITIONS ===")
+    for pkg in sorted(packages):
+        if pkg in in_vehicle:
+            beliefs_parts.append(f"  {pkg} is IN {in_vehicle[pkg]}")
+        elif pkg in at_locations:
+            loc = at_locations[pkg]
+            city = location_city.get(loc, "?")
+            beliefs_parts.append(f"  {pkg} is at {loc} ({city})")
+
+    # === ACTIONS ===
     beliefs_parts.append("\n=== AVAILABLE ACTIONS WITH EXACT PARAMETER FORMAT ===")
-    beliefs_parts.append("⚠️  CRITICAL: Use these EXACT parameter names in your JSON:")
-    beliefs_parts.append("")
-    beliefs_parts.append('1. load-truck: {"obj": "package_name", "truck": "truck_name", "loc": "location_name"}')
-    beliefs_parts.append('   Example: {"obj": "package1", "truck": "truck1", "loc": "loc1"}')
-    beliefs_parts.append("")
-    beliefs_parts.append('2. unload-truck: {"obj": "package_name", "truck": "truck_name", "loc": "location_name"}')
-    beliefs_parts.append('   Example: {"obj": "package1", "truck": "truck1", "loc": "loc2"}')
-    beliefs_parts.append("")
-    beliefs_parts.append('3. load-airplane: {"obj": "package_name", "airplane": "airplane_name", "loc": "location_name"}')
-    beliefs_parts.append('   Example: {"obj": "package2", "airplane": "airplane1", "loc": "airport1"}')
-    beliefs_parts.append("")
-    beliefs_parts.append('4. unload-airplane: {"obj": "package_name", "airplane": "airplane_name", "loc": "location_name"}')
-    beliefs_parts.append('   Example: {"obj": "package2", "airplane": "airplane1", "loc": "airport2"}')
-    beliefs_parts.append("")
-    beliefs_parts.append('5. drive-truck: {"truck": "truck_name", "from": "location1", "to": "location2", "city": "city_name"}')
-    beliefs_parts.append('   Example: {"truck": "truck1", "from": "loc1", "to": "loc2", "city": "city1"}')
-    beliefs_parts.append("")
-    beliefs_parts.append('6. fly-airplane: {"airplane": "airplane_name", "from": "airport1", "to": "airport2"}')
-    beliefs_parts.append('   Example: {"airplane": "airplane1", "from": "airport1", "to": "airport2"}')
+    beliefs_parts.append('1. load-truck: {"obj": "<package>", "truck": "<truck>", "loc": "<location>"}')
+    beliefs_parts.append('2. unload-truck: {"obj": "<package>", "truck": "<truck>", "loc": "<location>"}')
+    beliefs_parts.append('3. load-airplane: {"obj": "<package>", "airplane": "<airplane>", "loc": "<AIRPORT>"}')
+    beliefs_parts.append('4. unload-airplane: {"obj": "<package>", "airplane": "<airplane>", "loc": "<AIRPORT>"}')
+    beliefs_parts.append('5. drive-truck: {"truck": "<truck>", "from": "<loc>", "to": "<loc>", "city": "<city>"}')
+    beliefs_parts.append('6. fly-airplane: {"airplane": "<airplane>", "from": "<AIRPORT>", "to": "<AIRPORT>"}')
 
-    beliefs_parts.append("\n=== LOGISTICS MECHANICS ===")
-    beliefs_parts.append("1. Packages start at locations and need to reach goal locations")
-    beliefs_parts.append("2. Trucks move packages within a city (between locations in same city)")
-    beliefs_parts.append("3. Airplanes move packages between cities (between airports)")
-    beliefs_parts.append("4. To move a package: load → transport vehicle → unload")
-    beliefs_parts.append("5. Vehicles must be at the same location as the package to load it")
-    beliefs_parts.append("6. Vehicles must drive/fly to destination before unloading")
+    # === CRITICAL RULES ===
+    beliefs_parts.append("\n=== CRITICAL RULES ===")
+    beliefs_parts.append(f"⚠️  AIRPORTS in this problem: {sorted(airports)}")
+    beliefs_parts.append("1. fly-airplane: BOTH 'from' and 'to' MUST be AIRPORT locations")
+    beliefs_parts.append("   ❌ WRONG: fly-airplane with non-airport location")
+    beliefs_parts.append("2. drive-truck: 'from' and 'to' MUST be in the SAME city")
+    beliefs_parts.append("   ❌ WRONG: drive-truck between different cities")
+    beliefs_parts.append("3. load/unload: vehicle and package MUST be at the SAME location")
+    beliefs_parts.append("4. Inter-city transport pattern:")
+    beliefs_parts.append("   truck→airport(load)→fly→airport(unload)→truck→destination")
 
-    beliefs_parts.append("\n=== PLANNING REQUIREMENTS ===")
-    beliefs_parts.append("Generate a SEQUENTIAL plan with CONNECTED actions.")
-    beliefs_parts.append("Each action must use the EXACT parameter names shown above.")
+    # === STATE TRACKING ===
+    beliefs_parts.append("\n=== STATE TRACKING (MANDATORY) ===")
+    beliefs_parts.append("After EVERY action, update your mental state table:")
+    beliefs_parts.append("  - fly-airplane: airplane moves to destination AIRPORT")
+    beliefs_parts.append("  - drive-truck: truck moves to destination location")
+    beliefs_parts.append("  - load-*: package is IN vehicle, no longer at location")
+    beliefs_parts.append("  - unload-*: package is AT location, no longer in vehicle")
+    beliefs_parts.append("")
+    beliefs_parts.append("BEFORE each action, verify:")
+    beliefs_parts.append("  - Is the vehicle at the correct location RIGHT NOW?")
+    beliefs_parts.append("  - Is the package at the correct location (for load)?")
+    beliefs_parts.append("  - Is the package in the vehicle (for unload)?")
+    beliefs_parts.append(f"  - For fly-airplane: is the location an AIRPORT? (only {sorted(airports)})")
 
     beliefs = "\n".join(beliefs_parts)
 
-    # Build goal with worked example
+    # Build goal
     goal_descs = []
-    for pred in goal[:10]:  # Limit for readability
+    for pred in goal:
         parts = pred.split()
         if parts[0] == 'at' and len(parts) >= 3:
-            goal_descs.append(f"{parts[1]} should be at {parts[2]}")
+            pkg, loc = parts[1], parts[2]
+            city = location_city.get(loc, "?")
+            # Determine if inter-city transport is needed
+            pkg_loc = at_locations.get(pkg, "")
+            pkg_city = location_city.get(pkg_loc, "?")
+            if pkg_city != city and pkg_city != "?":
+                goal_descs.append(f"{pkg} → {loc} ({city}) [currently in {pkg_city}, needs AIRPLANE]")
+            else:
+                goal_descs.append(f"{pkg} → {loc} ({city}) [same city, truck only]")
 
     desire_parts = []
-    desire_parts.append(f"Goal: {'; '.join(goal_descs)}")
-    desire_parts.append("\n=== WORKED EXAMPLE ===")
-    desire_parts.append("Scenario: Move package1 from loc1 to loc3 (both in city1)")
-    desire_parts.append("Initial: package1 at loc1, truck1 at loc2")
-    desire_parts.append("Plan:")
-    desire_parts.append('  1. drive-truck: {"truck": "truck1", "from": "loc2", "to": "loc1", "city": "city1"}')
-    desire_parts.append('  2. load-truck: {"obj": "package1", "truck": "truck1", "loc": "loc1"}')
-    desire_parts.append('  3. drive-truck: {"truck": "truck1", "from": "loc1", "to": "loc3", "city": "city1"}')
-    desire_parts.append('  4. unload-truck: {"obj": "package1", "truck": "truck1", "loc": "loc3"}')
-    desire_parts.append("\nWork step-by-step with connected actions using EXACT parameter names.")
+    desire_parts.append(f"Goal: deliver {len(goal_descs)} package(s):")
+    for gd in goal_descs:
+        desire_parts.append(f"  - {gd}")
+
+    desire_parts.append(f"\n⚠️  AIRPORTS: {sorted(airports)} — fly-airplane ONLY between these!")
+    desire_parts.append("Track vehicle positions after EVERY action.")
+    desire_parts.append("Generate a SEQUENTIAL plan with CONNECTED actions.")
 
     desire = "\n".join(desire_parts)
 
@@ -480,6 +561,7 @@ def pddl_to_nl_logistics(pddl_data: dict) -> Tuple[str, str]:
 def pddl_to_nl_depots(pddl_data: dict) -> Tuple[str, str]:
     """Enhanced Depots domain conversion with clear action specifications"""
     objects = pddl_data['objects']
+    typed_objects = pddl_data.get('typed_objects', )
     init = pddl_data['init']
     goal = pddl_data['goal']
 
@@ -495,6 +577,7 @@ def pddl_to_nl_depots(pddl_data: dict) -> Tuple[str, str]:
     in_truck = {}      # crate -> truck
     lifting = {}       # hoist -> crate (if any)
     available = set()  # available hoists
+    clear = set()      # clear surfaces
 
     for pred in init:
         parts = pred.split()
@@ -513,12 +596,39 @@ def pddl_to_nl_depots(pddl_data: dict) -> Tuple[str, str]:
             lifting[parts[1]] = parts[2]
         elif pred_name == 'available' and len(parts) >= 2:
             available.add(parts[1])
+        elif pred_name == 'clear' and len(parts) >= 2:
+            clear.add(parts[1])
+
+    # Classify objects by type using typed_objects mapping
+    for obj in objects:
+        obj_type = typed_objects.get(obj, '').lower()
+        if 'crate' in obj or obj_type == 'crate':
+            crates.append(obj)
+        elif 'truck' in obj or obj_type == 'truck':
+            trucks.append(obj)
+        elif 'hoist' in obj or obj_type == 'hoist':
+            hoists.append(obj)
+        elif 'pallet' in obj or obj_type == 'pallet':
+            pallets.append(obj)
+        elif 'depot' in obj or 'distributor' in obj or obj_type in ('depot', 'distributor', 'place'):
+            locations.append(obj)
 
     # Build beliefs with detailed state description
     beliefs_parts = []
     beliefs_parts.append("DEPOTS DOMAIN")
+
+    # List objects with types
+    beliefs_parts.append("\n=== OBJECTS AND TYPES ===")
+    if typed_objects:
+        type_groups = {}
+        for obj_name, obj_type in typed_objects.items():
+            type_groups.setdefault(obj_type, []).append(obj_name)
+        for type_name, obj_names in sorted(type_groups.items()):
+            beliefs_parts.append(f"  {type_name}: {', '.join(sorted(obj_names))}")
+    else:
+        beliefs_parts.append(f"  Objects: {', '.join(objects[:30])}")
+
     beliefs_parts.append("\n=== CURRENT STATE ===")
-    beliefs_parts.append(f"Objects: {', '.join(objects[:30])}")
 
     if at_locations:
         loc_descs = [f"{obj} is at {loc}" for obj, loc in list(at_locations.items())[:15]]
@@ -533,35 +643,43 @@ def pddl_to_nl_depots(pddl_data: dict) -> Tuple[str, str]:
         beliefs_parts.append(f"In trucks: {'; '.join(truck_descs)}")
 
     if available:
-        beliefs_parts.append(f"Available hoists: {', '.join(list(available)[:10])}")
+        beliefs_parts.append(f"Available hoists: {', '.join(sorted(available))}")
+
+    if clear:
+        beliefs_parts.append(f"Clear surfaces: {', '.join(sorted(clear))}")
 
     beliefs_parts.append("\n=== AVAILABLE ACTIONS ===")
     beliefs_parts.append("⚠️  CRITICAL: Use ONLY these Depots actions. DO NOT use blocksworld actions!")
+    beliefs_parts.append("⚠️  Parameter names MUST use the EXACT object names listed above (e.g., hoist0, crate0, pallet0, depot0)")
     beliefs_parts.append("")
     beliefs_parts.append("1. Lift <hoist> <crate> <surface> <place>")
-    beliefs_parts.append("   - Use hoist to lift crate from surface at place")
-    beliefs_parts.append("   - Preconditions: hoist available, crate on surface, both at place")
-    beliefs_parts.append("   - Effects: hoist lifting crate, crate no longer on surface")
+    beliefs_parts.append("   - hoist: a Hoist object (e.g., hoist0)")
+    beliefs_parts.append("   - crate: a Crate object (e.g., crate0)")
+    beliefs_parts.append("   - surface: a Pallet or Crate the crate is ON (e.g., pallet0)")
+    beliefs_parts.append("   - place: a Depot or Distributor location (e.g., depot0)")
+    beliefs_parts.append("   - Preconditions: hoist available, crate on surface, crate clear, all at place")
+    beliefs_parts.append("   - Effects: hoist lifting crate, crate no longer on surface, surface becomes clear")
     beliefs_parts.append("")
     beliefs_parts.append("2. Drop <hoist> <crate> <surface> <place>")
-    beliefs_parts.append("   - Use hoist to drop crate onto surface at place")
-    beliefs_parts.append("   - Preconditions: hoist lifting crate, surface clear, both at place")
-    beliefs_parts.append("   - Effects: crate on surface, hoist available")
+    beliefs_parts.append("   - hoist: a Hoist | crate: a Crate")
+    beliefs_parts.append("   - surface: a Pallet or Crate to drop ONTO | place: a Depot or Distributor")
+    beliefs_parts.append("   - Preconditions: hoist lifting crate, surface clear, all at place")
+    beliefs_parts.append("   - Effects: crate on surface, hoist available, crate becomes clear")
     beliefs_parts.append("")
     beliefs_parts.append("3. Load <hoist> <crate> <truck> <place>")
-    beliefs_parts.append("   - Use hoist to load crate into truck at place")
-    beliefs_parts.append("   - Preconditions: hoist lifting crate, truck at place")
+    beliefs_parts.append("   - hoist: a Hoist | crate: a Crate | truck: a Truck | place: a Depot/Distributor")
+    beliefs_parts.append("   - Preconditions: hoist lifting crate, truck at place, hoist at place")
     beliefs_parts.append("   - Effects: crate in truck, hoist available")
     beliefs_parts.append("")
     beliefs_parts.append("4. Unload <hoist> <crate> <truck> <place>")
-    beliefs_parts.append("   - Use hoist to unload crate from truck at place")
-    beliefs_parts.append("   - Preconditions: hoist available, crate in truck, truck at place")
+    beliefs_parts.append("   - hoist: a Hoist | crate: a Crate | truck: a Truck | place: a Depot/Distributor")
+    beliefs_parts.append("   - Preconditions: hoist available, crate in truck, truck at place, hoist at place")
     beliefs_parts.append("   - Effects: hoist lifting crate, crate no longer in truck")
     beliefs_parts.append("")
     beliefs_parts.append("5. Drive <truck> <from> <to>")
-    beliefs_parts.append("   - Drive truck from one location to another")
+    beliefs_parts.append("   - truck: a Truck | from: a Depot/Distributor | to: a Depot/Distributor")
     beliefs_parts.append("   - Preconditions: truck at from location")
-    beliefs_parts.append("   - Effects: truck at to location")
+    beliefs_parts.append("   - Effects: truck at to location, no longer at from")
 
     beliefs_parts.append("\n=== CRITICAL RULES ===")
     beliefs_parts.append("❌ DO NOT use blocksworld actions: pick-up, put-down, stack, unstack")
@@ -570,16 +688,91 @@ def pddl_to_nl_depots(pddl_data: dict) -> Tuple[str, str]:
     beliefs_parts.append("- Crates can be on pallets or on other crates")
     beliefs_parts.append("- Trucks transport crates between locations")
     beliefs_parts.append("- All manipulation requires a hoist at the same location")
+    beliefs_parts.append("- To move a crate to a different location: Lift -> Load -> Drive -> Unload -> Drop")
+    beliefs_parts.append("- To rearrange crates at the SAME location: just Lift and Drop (no truck needed)")
 
-    beliefs_parts.append("\n=== EXAMPLE: Moving a crate between locations ===")
-    beliefs_parts.append("Initial: crate0 on pallet0 at depot0, truck0 at depot0, hoist0 at depot0")
-    beliefs_parts.append("Goal: crate0 at distributor0")
-    beliefs_parts.append("Plan:")
-    beliefs_parts.append("  1. Lift hoist0 crate0 pallet0 depot0     (hoist picks up crate)")
-    beliefs_parts.append("  2. Load hoist0 crate0 truck0 depot0      (load crate into truck)")
-    beliefs_parts.append("  3. Drive truck0 depot0 distributor0      (drive truck to destination)")
-    beliefs_parts.append("  4. Unload hoist1 crate0 truck0 distributor0  (unload at destination)")
-    beliefs_parts.append("  5. Drop hoist1 crate0 pallet1 distributor0   (place on pallet)")
+    beliefs_parts.append("\n=== CRITICAL: HOIST STATE MACHINE ===")
+    beliefs_parts.append("⚠️  A hoist has TWO states - you MUST track this:")
+    beliefs_parts.append("")
+    beliefs_parts.append("1. AVAILABLE: Can lift a crate")
+    beliefs_parts.append("2. LIFTING <crate>: Holding a crate, CANNOT lift another crate")
+    beliefs_parts.append("")
+    beliefs_parts.append("State transitions:")
+    beliefs_parts.append("  - Lift: available → lifting <crate>")
+    beliefs_parts.append("  - Drop: lifting <crate> → available")
+    beliefs_parts.append("  - Load: lifting <crate> → available (crate goes into truck)")
+    beliefs_parts.append("  - Unload: available → lifting <crate> (crate comes out of truck)")
+    beliefs_parts.append("")
+    beliefs_parts.append("❌ WRONG: (Lift hoist0 crate1 ...) then (Lift hoist0 crate2 ...)")
+    beliefs_parts.append("   → hoist0 is LIFTING crate1, cannot lift crate2!")
+    beliefs_parts.append("")
+    beliefs_parts.append("✓ RIGHT: (Lift hoist0 crate1 ...) then (Drop hoist0 crate1 ...) then (Lift hoist0 crate2 ...)")
+    beliefs_parts.append("   → hoist0 becomes available after Drop")
+    beliefs_parts.append("")
+    beliefs_parts.append("✓ ALSO RIGHT: (Lift hoist0 crate1 ...) then (Load hoist0 crate1 truck0 ...)")
+    beliefs_parts.append("   → hoist0 becomes available after Load")
+
+    beliefs_parts.append("\n=== CRITICAL: TRUCK POSITION & CONTENTS TRACKING ===")
+    beliefs_parts.append("⚠️  You MUST track truck positions and contents:")
+    beliefs_parts.append("")
+    beliefs_parts.append("1. TRUCK POSITION:")
+    beliefs_parts.append("   - After Drive: truck is NOW at destination, NOT at origin")
+    beliefs_parts.append("   - Example: (Drive truck0 depot0 depot1) → truck0 is now AT depot1")
+    beliefs_parts.append("   - ❌ WRONG: Unload at old location after driving away")
+    beliefs_parts.append("   - ✓ RIGHT: Only Load/Unload at truck's CURRENT location")
+    beliefs_parts.append("")
+    beliefs_parts.append("2. TRUCK CONTENTS:")
+    beliefs_parts.append("   - After Load: crate is IN truck, NOT at location")
+    beliefs_parts.append("   - After Unload: crate is being LIFTED by hoist, NOT in truck")
+    beliefs_parts.append("   - Example: (Load hoist0 crate0 truck0 depot0) → crate0 is now IN truck0")
+    beliefs_parts.append("   - ❌ WRONG: Unload a crate that was never loaded")
+    beliefs_parts.append("   - ✓ RIGHT: Only unload crates that are IN the truck")
+
+    beliefs_parts.append("\n=== BEFORE EACH ACTION, CHECK ===")
+    beliefs_parts.append("1. Is the hoist AVAILABLE? (not lifting another crate)")
+    beliefs_parts.append("2. Is the truck at the right location?")
+    beliefs_parts.append("3. Is the crate at the expected location/surface?")
+    beliefs_parts.append("4. For Unload: Is the crate IN the truck?")
+    beliefs_parts.append("5. For Lift: Is the crate CLEAR (nothing on top)?")
+
+
+    beliefs_parts.append("\n=== WORKED EXAMPLE WITH STATE TRACKING ===")
+    beliefs_parts.append("Scenario: crate0 on pallet0 at depot0, crate1 on pallet1 at depot1")
+    beliefs_parts.append("          truck0 at depot0, hoist0 at depot0, hoist1 at depot1")
+    beliefs_parts.append("Goal: crate0 on crate1 at depot1")
+    beliefs_parts.append("")
+    beliefs_parts.append("Initial state:")
+    beliefs_parts.append("  - hoist0: AVAILABLE at depot0")
+    beliefs_parts.append("  - hoist1: AVAILABLE at depot1")
+    beliefs_parts.append("  - truck0: at depot0, EMPTY")
+    beliefs_parts.append("  - crate0: on pallet0 at depot0")
+    beliefs_parts.append("")
+    beliefs_parts.append("Step-by-step with state changes:")
+    beliefs_parts.append("  1. Lift hoist0 crate0 pallet0 depot0")
+    beliefs_parts.append("     → State: hoist0 is now LIFTING crate0 (not available!)")
+    beliefs_parts.append("     → State: crate0 is now held by hoist0 (not on pallet0)")
+    beliefs_parts.append("")
+    beliefs_parts.append("  2. Load hoist0 crate0 truck0 depot0")
+    beliefs_parts.append("     → State: hoist0 is now AVAILABLE (released crate0)")
+    beliefs_parts.append("     → State: crate0 is now IN truck0 (not held by hoist)")
+    beliefs_parts.append("     → State: truck0 contains crate0")
+    beliefs_parts.append("")
+    beliefs_parts.append("  3. Drive truck0 depot0 depot1")
+    beliefs_parts.append("     → State: truck0 is now AT depot1 (not at depot0!)")
+    beliefs_parts.append("     → State: truck0 still contains crate0")
+    beliefs_parts.append("")
+    beliefs_parts.append("  4. Unload hoist1 crate0 truck0 depot1")
+    beliefs_parts.append("     → State: hoist1 is now LIFTING crate0 (not available!)")
+    beliefs_parts.append("     → State: crate0 is now held by hoist1 (not in truck)")
+    beliefs_parts.append("     → State: truck0 is now EMPTY")
+    beliefs_parts.append("")
+    beliefs_parts.append("  5. Drop hoist1 crate0 crate1 depot1")
+    beliefs_parts.append("     → State: hoist1 is now AVAILABLE (released crate0)")
+    beliefs_parts.append("     → State: crate0 is now ON crate1 at depot1 ✓ GOAL ACHIEVED")
+    beliefs_parts.append("")
+    beliefs_parts.append("⚠️  CRITICAL: Track hoist state! After Lift/Unload, hoist is LIFTING (not available).")
+    beliefs_parts.append("⚠️  CRITICAL: Track truck position! After Drive, truck is at NEW location.")
+    beliefs_parts.append("⚠️  CRITICAL: Track crate location! After Load, crate is IN truck (not at depot).")
 
     beliefs_parts.append("\n=== PLANNING REQUIREMENTS ===")
     beliefs_parts.append("Generate a SEQUENTIAL plan where each action depends on the previous one.")
@@ -799,29 +992,119 @@ def bdi_to_pddl_actions(plan: BDIPlan, domain: str = "blocksworld") -> List[str]
         elif domain == "depots":
             # Depots combines logistics and blocksworld
             # Actions: Drive, Lift, Drop, Load, Unload
-            hoist = _pick_param(params, ["hoist", "h"])
-            crate = _pick_param(params, ["crate", "c", "obj", "object"])
-            truck = _pick_param(params, ["truck", "t"])
-            surface = _pick_param(params, ["surface", "s", "pallet"])
-            loc = _pick_param(params, ["loc", "location", "place", "p"])
-            loc_from = _pick_param(params, ["from", "loc_from"])
-            loc_to = _pick_param(params, ["to", "loc_to"])
+            # Domain PDDL signature reference:
+            #   Drive(?x - truck ?y - place ?z - place)
+            #   Lift(?x - hoist ?y - crate ?z - surface ?p - place)
+            #   Drop(?x - hoist ?y - crate ?z - surface ?p - place)
+            #   Load(?x - hoist ?y - crate ?z - truck ?p - place)
+            #   Unload(?x - hoist ?y - crate ?z - truck ?p - place)
+            hoist = _pick_param(params, [
+                "hoist", "h", "x", "hoist_name", "lifter",
+            ])
+            crate = _pick_param(params, [
+                "crate", "c", "obj", "object", "y", "item", "package",
+                "crate_name", "cargo", "box",
+            ])
+            truck = _pick_param(params, [
+                "truck", "t", "vehicle", "z", "truck_name", "veh",
+            ])
+            surface = _pick_param(params, [
+                "surface", "s", "pallet", "z", "on", "target", "dest",
+                "surface_name", "onto", "below", "under",
+            ])
+            loc = _pick_param(params, [
+                "loc", "location", "place", "p", "at", "depot",
+                "loc_name", "location_name", "position", "area",
+            ])
+            loc_from = _pick_param(params, [
+                "from", "loc_from", "from_loc", "from_location",
+                "source", "origin", "start", "y",
+            ])
+            loc_to = _pick_param(params, [
+                "to", "loc_to", "to_loc", "to_location",
+                "dest", "destination", "target", "end", "z",
+            ])
+
+            # Positional fallback using param_values
+            param_values = list(params.values())
 
             if canon == "drive":
+                # Drive(?x - truck ?y - place ?z - place)
+                if not truck and len(param_values) >= 1:
+                    truck = _normalise_param(param_values[0])
+                if not loc_from and len(param_values) >= 2:
+                    loc_from = _normalise_param(param_values[1])
+                if not loc_to and len(param_values) >= 3:
+                    loc_to = _normalise_param(param_values[2])
+
                 if truck and loc_from and loc_to:
                     pddl_actions.append(f"(Drive {truck} {loc_from} {loc_to})")
+                else:
+                    print(f"    DEBUG: drive missing params - truck={truck}, from={loc_from}, to={loc_to}, params={params}")
+
             elif canon == "lift":
+                # Lift(?x - hoist ?y - crate ?z - surface ?p - place)
+                if not hoist and len(param_values) >= 1:
+                    hoist = _normalise_param(param_values[0])
+                if not crate and len(param_values) >= 2:
+                    crate = _normalise_param(param_values[1])
+                if not surface and len(param_values) >= 3:
+                    surface = _normalise_param(param_values[2])
+                if not loc and len(param_values) >= 4:
+                    loc = _normalise_param(param_values[3])
+
                 if hoist and crate and surface and loc:
                     pddl_actions.append(f"(Lift {hoist} {crate} {surface} {loc})")
+                else:
+                    print(f"    DEBUG: lift missing params - hoist={hoist}, crate={crate}, surface={surface}, loc={loc}, params={params}")
+
             elif canon == "drop":
+                # Drop(?x - hoist ?y - crate ?z - surface ?p - place)
+                if not hoist and len(param_values) >= 1:
+                    hoist = _normalise_param(param_values[0])
+                if not crate and len(param_values) >= 2:
+                    crate = _normalise_param(param_values[1])
+                if not surface and len(param_values) >= 3:
+                    surface = _normalise_param(param_values[2])
+                if not loc and len(param_values) >= 4:
+                    loc = _normalise_param(param_values[3])
+
                 if hoist and crate and surface and loc:
                     pddl_actions.append(f"(Drop {hoist} {crate} {surface} {loc})")
+                else:
+                    print(f"    DEBUG: drop missing params - hoist={hoist}, crate={crate}, surface={surface}, loc={loc}, params={params}")
+
             elif canon == "load":
+                # Load(?x - hoist ?y - crate ?z - truck ?p - place)
+                if not hoist and len(param_values) >= 1:
+                    hoist = _normalise_param(param_values[0])
+                if not crate and len(param_values) >= 2:
+                    crate = _normalise_param(param_values[1])
+                if not truck and len(param_values) >= 3:
+                    truck = _normalise_param(param_values[2])
+                if not loc and len(param_values) >= 4:
+                    loc = _normalise_param(param_values[3])
+
                 if hoist and crate and truck and loc:
                     pddl_actions.append(f"(Load {hoist} {crate} {truck} {loc})")
+                else:
+                    print(f"    DEBUG: load missing params - hoist={hoist}, crate={crate}, truck={truck}, loc={loc}, params={params}")
+
             elif canon == "unload":
+                # Unload(?x - hoist ?y - crate ?z - truck ?p - place)
+                if not hoist and len(param_values) >= 1:
+                    hoist = _normalise_param(param_values[0])
+                if not crate and len(param_values) >= 2:
+                    crate = _normalise_param(param_values[1])
+                if not truck and len(param_values) >= 3:
+                    truck = _normalise_param(param_values[2])
+                if not loc and len(param_values) >= 4:
+                    loc = _normalise_param(param_values[3])
+
                 if hoist and crate and truck and loc:
                     pddl_actions.append(f"(Unload {hoist} {crate} {truck} {loc})")
+                else:
+                    print(f"    DEBUG: unload missing params - hoist={hoist}, crate={crate}, truck={truck}, loc={loc}, params={params}")
 
         if len(pddl_actions) == before_len:
             print(
@@ -866,13 +1149,18 @@ def generate_bdi_plan(
         'generation_time': 0,
         'verification_layers': {
             'structural': {'valid': False, 'errors': []},
-            'symbolic': {'valid': False, 'errors': []},  # NEW: VAL verification
+            'symbolic': {'valid': False, 'errors': []},  # VAL verification
             'physics': {'valid': False, 'errors': []}
         },
         'auto_repair': {
             'triggered': False,
             'success': False,
             'repairs_applied': []
+        },
+        'val_repair': {
+            'attempts': 0,
+            'success': False,
+            'history': []  # List of {attempt, errors, repaired}
         },
         'overall_valid': False,
         'num_nodes': 0,
@@ -883,7 +1171,7 @@ def generate_bdi_plan(
     last_error = None
     for attempt in range(max_retries):
         try:
-            planner = BDIPlanner(auto_repair=auto_repair)
+            planner = BDIPlanner(auto_repair=auto_repair, domain=domain)
             result = planner.generate_plan(beliefs=beliefs, desire=desire)
             plan = result.plan
             metrics['retries'] = attempt
@@ -896,12 +1184,12 @@ def generate_bdi_plan(
 
             # If structural verification fails and auto_repair is enabled at this level too
             if not struct_valid and auto_repair:
+                metrics['auto_repair']['triggered'] = True
                 repaired_plan, repaired_valid, messages = repair_and_verify(plan)
                 if repaired_valid:
                     plan = repaired_plan
                     G = plan.to_networkx()
                     struct_valid, struct_errors = PlanVerifier.verify(G)
-                    metrics['auto_repair']['triggered'] = True
                     metrics['auto_repair']['success'] = True
                     metrics['auto_repair']['repairs_applied'] = messages
 
@@ -910,9 +1198,10 @@ def generate_bdi_plan(
             metrics['num_nodes'] = len(plan.nodes)
             metrics['num_edges'] = len(plan.edges)
 
-            # Layer 2: Symbolic Verification (PDDL/VAL) - NEW
+            # Layer 2: Symbolic Verification (PDDL/VAL) with repair loop
             symbolic_valid = False
             symbolic_errors = ["Skipped - Structural failure"]
+            max_val_repairs = 3
 
             if struct_valid and pddl_problem_path and pddl_domain_path:
                 try:
@@ -924,8 +1213,79 @@ def generate_bdi_plan(
                     symbolic_valid, symbolic_errors = val_verifier.verify_plan(
                         domain_file=pddl_domain_path,
                         problem_file=pddl_problem_path,
-                        plan_actions=pddl_actions
+                        plan_actions=pddl_actions,
+                        verbose=True
                     )
+
+                    # VAL error-driven repair loop (with cumulative history)
+                    val_repair_attempt = 0
+                    cumulative_repair_history = []  # Accumulate all previous attempts
+                    while not symbolic_valid and val_repair_attempt < max_val_repairs:
+                        val_repair_attempt += 1
+                        metrics['val_repair']['attempts'] = val_repair_attempt
+
+                        # Filter out verbose full VAL output — only keep
+                        # specific error messages and repair advice for the LLM
+                        clean_errors = [
+                            e for e in symbolic_errors
+                            if not e.lstrip().startswith("Full VAL output:")
+                            and not e.lstrip().startswith("\nFull VAL output:")
+                        ]
+
+                        metrics['val_repair']['history'].append({
+                            'attempt': val_repair_attempt,
+                            'errors': clean_errors[:5],  # Limit stored errors
+                            'repaired': False
+                        })
+
+                        # Record current failed attempt before repair (clean errors only)
+                        cumulative_repair_history.append({
+                            'attempt': val_repair_attempt,
+                            'plan_actions': pddl_actions,
+                            'val_errors': clean_errors,
+                        })
+
+                        try:
+                            print(f"    VAL repair attempt {val_repair_attempt}/{max_val_repairs} - errors: {clean_errors[:2]}")
+
+                            # Call LLM to repair based on VAL errors + full history
+                            repair_result = planner.repair_from_val_errors(
+                                beliefs=beliefs,
+                                desire=desire,
+                                previous_plan_actions=pddl_actions,
+                                val_errors=clean_errors,
+                                repair_history=cumulative_repair_history,
+                            )
+                            plan = repair_result.plan
+
+                            # Re-verify structure
+                            G = plan.to_networkx()
+                            struct_valid_r, struct_errors_r = PlanVerifier.verify(G)
+                            if not struct_valid_r:
+                                print(f"    VAL repair {val_repair_attempt}: structural failure after repair")
+                                break
+
+                            # Re-convert and re-verify with VAL
+                            pddl_actions = bdi_to_pddl_actions(plan, domain=domain)
+                            symbolic_valid, symbolic_errors = val_verifier.verify_plan(
+                                domain_file=pddl_domain_path,
+                                problem_file=pddl_problem_path,
+                                plan_actions=pddl_actions,
+                                verbose=True
+                            )
+
+                            if symbolic_valid:
+                                metrics['val_repair']['success'] = True
+                                metrics['val_repair']['history'][-1]['repaired'] = True
+                                # Update structural metrics with repaired plan
+                                metrics['num_nodes'] = len(plan.nodes)
+                                metrics['num_edges'] = len(plan.edges)
+                                print(f"    VAL repair {val_repair_attempt}: SUCCESS")
+
+                        except Exception as repair_err:
+                            print(f"    VAL repair {val_repair_attempt} failed: {str(repair_err)[:100]}")
+                            break
+
                 except Exception as e:
                     symbolic_valid = False
                     symbolic_errors = [f"Symbolic verification error: {str(e)}"]
@@ -951,11 +1311,16 @@ def generate_bdi_plan(
                 # Convert BDI plan to PDDL actions (if not done already)
                 pddl_actions = bdi_to_pddl_actions(plan, domain=domain)
 
-                # Validate physics
-                physics_validator = BlocksworldPhysicsValidator()
-                physics_valid, physics_errors = physics_validator.validate_plan(
-                    pddl_actions, init_state
-                )
+                # Validate physics (only for blocksworld domain)
+                if domain == "blocksworld":
+                    physics_validator = BlocksworldPhysicsValidator()
+                    physics_valid, physics_errors = physics_validator.validate_plan(
+                        pddl_actions, init_state
+                    )
+                elif domain != "blocksworld":
+                    # Skip physics validation for non-blocksworld domains
+                    physics_valid = True
+                    physics_errors = ["Skipped - No physics validator for this domain"]
 
             metrics['verification_layers']['physics']['valid'] = physics_valid
             metrics['verification_layers']['physics']['errors'] = physics_errors
@@ -971,9 +1336,11 @@ def generate_bdi_plan(
             last_error = str(e)
             metrics['retries'] = attempt + 1
 
-            # Check if it's a retryable error (connection issues)
+            # Check if it's a retryable error (connection issues, rate limits)
             error_str = str(e).lower()
-            if 'connection' in error_str or 'timeout' in error_str or 'internal' in error_str:
+            if ('connection' in error_str or 'timeout' in error_str or 'internal' in error_str
+                or 'resourceexhausted' in error_str or '429' in error_str
+                or 'rate' in error_str or 'quota' in error_str):
                 if attempt < max_retries - 1:
                     import time as time_module
                     wait_time = 2 ** (attempt + 1)  # Exponential backoff
@@ -1015,28 +1382,123 @@ def find_all_instances(base_path: str, domain: str) -> List[str]:
     return sorted([str(f) for f in instance_files])
 
 
+def evaluate_single_instance(instance_file: str, domain: str) -> dict:
+    """
+    Evaluate a single PDDL instance.
+
+    Args:
+        instance_file: Path to PDDL problem file
+        domain: Domain name (blocksworld, depots, logistics)
+
+    Returns:
+        Dictionary with evaluation results
+    """
+    instance_result = {
+        'instance_file': instance_file,
+        'instance_name': Path(instance_file).stem,
+        'timestamp': datetime.now().isoformat()
+    }
+
+    try:
+        # Parse PDDL
+        pddl_data = parse_pddl_problem(instance_file)
+        instance_result['pddl_data'] = {
+            'problem_name': pddl_data['problem_name'],
+            'num_objects': len(pddl_data['objects']),
+            'num_init': len(pddl_data['init']),
+            'num_goals': len(pddl_data['goal'])
+        }
+
+        # Convert to NL
+        beliefs, desire = pddl_to_natural_language(pddl_data, domain)
+        instance_result['beliefs'] = beliefs[:200] + "..."  # Truncate for storage
+        instance_result['desire'] = desire[:200] + "..."
+
+        # Generate plan with init_state for physics validation
+        init_state = pddl_data.get('init_state', None)
+
+        # Resolve PDDL domain file for VAL
+        domain_name = pddl_data.get('domain_name', 'blocksworld')
+        domain_file = resolve_domain_file(domain_name)
+
+        plan, is_valid, metrics = generate_bdi_plan(
+            beliefs=beliefs,
+            desire=desire,
+            pddl_problem_path=instance_file,
+            pddl_domain_path=domain_file,
+            init_state=init_state,
+            domain=domain
+        )
+
+        instance_result['bdi_metrics'] = metrics
+        instance_result['success'] = is_valid
+
+    except Exception as e:
+        instance_result['success'] = False
+        instance_result['error'] = str(e)
+
+    return instance_result
+
+
 def run_batch_evaluation(
     domain: str,
     max_instances: int = None,
     resume_from: str = None,
-    output_dir: str = "planbench_results"
+    output_dir: str = "planbench_results",
+    parallel: bool = False,
+    max_workers: int = 3,
+    instances_file: str = None
 ) -> dict:
-    """Run evaluation on all instances in a domain"""
+    """Run evaluation on all instances in a domain with MLflow tracking"""
+    global MLFLOW_AVAILABLE
 
     print(f"\n{'='*80}")
     print(f"  PLANBENCH FULL EVALUATION: {domain}")
     print(f"{'='*80}\n")
 
     # Setup
-    base_path = Path(__file__).resolve().parent / "planbench_data/plan-bench"
+    base_path = Path(__file__).resolve().parent.parent / "planbench_data/plan-bench"
     os.makedirs(output_dir, exist_ok=True)
 
     # Find instances
-    instances = find_all_instances(base_path, domain)
-    if max_instances:
-        instances = instances[:max_instances]
+    if instances_file:
+        # Load instances from file
+        print(f"Loading instances from: {instances_file}")
+        with open(instances_file, 'r') as f:
+            instances = [line.strip() for line in f if line.strip()]
+        print(f"Loaded {len(instances)} instances from file")
+    else:
+        # Find all instances in domain
+        instances = find_all_instances(base_path, domain)
+        if max_instances:
+            instances = instances[:max_instances]
+        print(f"Found {len(instances)} instances")
 
-    print(f"Found {len(instances)} instances")
+    # Initialize MLflow tracking
+    mlflow_run_id = None
+    if MLFLOW_AVAILABLE:
+        try:
+            # Set experiment name based on domain
+            mlflow.set_experiment(f"planbench-{domain}")
+
+            # Start MLflow run with descriptive name
+            run_name = f"{domain}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            mlflow.start_run(run_name=run_name)
+            mlflow_run_id = mlflow.active_run().info.run_id
+
+            # Log parameters
+            mlflow.log_param("domain", domain)
+            mlflow.log_param("max_instances", max_instances if max_instances else "all")
+            mlflow.log_param("total_instances", len(instances))
+            mlflow.log_param("resume_from", resume_from if resume_from else "none")
+            mlflow.log_param("model", "claude-opus-4")
+            mlflow.log_param("auto_repair", True)
+
+            print(f"✓ MLflow tracking enabled (Run ID: {mlflow_run_id})")
+        except Exception as e:
+            print(f"⚠️  MLflow initialization failed: {e}")
+            print("   Continuing without MLflow tracking...")
+            MLFLOW_AVAILABLE = False
 
     # Load checkpoint if resuming
     completed = set()
@@ -1058,69 +1520,85 @@ def run_batch_evaluation(
     # Evaluate each instance
     success_count = 0
     failed_count = 0
+    results_lock = Lock()  # Thread-safe results collection
 
-    for instance_file in tqdm(instances, desc=f"Evaluating {domain}"):
-        # Skip if already completed
-        if instance_file in completed:
-            continue
+    # Filter out completed instances
+    instances_to_process = [inst for inst in instances if inst not in completed]
 
-        instance_result = {
-            'instance_file': instance_file,
-            'instance_name': Path(instance_file).stem,
-            'timestamp': datetime.now().isoformat()
-        }
+    if parallel and max_workers > 1:
+        # Parallel execution mode
+        print(f"Running in parallel mode with {max_workers} workers")
 
-        try:
-            # Parse PDDL
-            pddl_data = parse_pddl_problem(instance_file)
-            instance_result['pddl_data'] = {
-                'problem_name': pddl_data['problem_name'],
-                'num_objects': len(pddl_data['objects']),
-                'num_init': len(pddl_data['init']),
-                'num_goals': len(pddl_data['goal'])
+        # Rate limiting: limit concurrent API calls to 15
+        import threading
+        api_semaphore = threading.Semaphore(15)
+
+        def rate_limited_evaluate(instance_file, domain):
+            with api_semaphore:
+                return evaluate_single_instance(instance_file, domain)
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all tasks
+            future_to_instance = {
+                executor.submit(rate_limited_evaluate, instance_file, domain): instance_file
+                for instance_file in instances_to_process
             }
 
-            # Convert to NL
-            beliefs, desire = pddl_to_natural_language(pddl_data, domain)
-            instance_result['beliefs'] = beliefs[:200] + "..."  # Truncate for storage
-            instance_result['desire'] = desire[:200] + "..."
+            # Process completed tasks with progress bar
+            with tqdm(total=len(instances_to_process), desc=f"Evaluating {domain}") as pbar:
+                for future in as_completed(future_to_instance):
+                    try:
+                        instance_result = future.result(timeout=300)  # 5 minute timeout
+                    except TimeoutError:
+                        instance_file = future_to_instance[future]
+                        instance_result = {
+                            'instance_file': instance_file,
+                            'instance_name': Path(instance_file).stem,
+                            'success': False,
+                            'error': 'Timeout after 300 seconds',
+                            'bdi_metrics': {
+                                'overall_valid': False,
+                                'verification_layers': {
+                                    'structural': {'valid': False, 'errors': ['Timeout after 300 seconds']},
+                                    'symbolic': {'valid': False, 'errors': []},
+                                    'physics': {'valid': False, 'errors': []}
+                                }
+                            }
+                        }
 
-            # Generate plan with init_state for physics validation
-            init_state = pddl_data.get('init_state', None)
+                    # Thread-safe result collection
+                    with results_lock:
+                        results['results'].append(instance_result)
 
-            # Resolve PDDL domain file for VAL
-            domain_name = pddl_data.get('domain_name', 'blocksworld')
-            domain_file = resolve_domain_file(domain_name)
+                        if instance_result.get('success', False):
+                            success_count += 1
+                        else:
+                            failed_count += 1
 
-            plan, is_valid, metrics = generate_bdi_plan(
-                beliefs=beliefs,
-                desire=desire,
-                pddl_problem_path=instance_file,  # Pass problem path for VAL
-                pddl_domain_path=domain_file,     # Pass domain path for VAL
-                init_state=init_state,
-                domain=domain
-            )
+                        # Save checkpoint every 10 instances
+                        if len(results['results']) % 10 == 0:
+                            checkpoint_file = f"{output_dir}/checkpoint_{domain}.json"
+                            with open(checkpoint_file, 'w') as f:
+                                json.dump(results, f, indent=2)
 
-            instance_result['bdi_metrics'] = metrics
-            instance_result['success'] = is_valid
+                    pbar.update(1)
+    else:
+        # Serial execution mode (original behavior)
+        for instance_file in tqdm(instances_to_process, desc=f"Evaluating {domain}"):
+            instance_result = evaluate_single_instance(instance_file, domain)
 
-            if is_valid:
+            results['results'].append(instance_result)
+
+            if instance_result.get('success', False):
                 success_count += 1
             else:
                 failed_count += 1
 
-        except Exception as e:
-            instance_result['success'] = False
-            instance_result['error'] = str(e)
-            failed_count += 1
-
-        results['results'].append(instance_result)
-
-        # Save checkpoint every 10 instances
-        if len(results['results']) % 10 == 0:
-            checkpoint_file = f"{output_dir}/checkpoint_{domain}.json"
-            with open(checkpoint_file, 'w') as f:
-                json.dump(results, f, indent=2)
+            # Save checkpoint every 10 instances
+            if len(results['results']) % 10 == 0:
+                checkpoint_file = f"{output_dir}/checkpoint_{domain}.json"
+                with open(checkpoint_file, 'w') as f:
+                    json.dump(results, f, indent=2)
 
     # Final statistics with comparative analysis
     # Count structural-only vs multi-layer success
@@ -1155,6 +1633,20 @@ def run_batch_evaluation(
         if r.get('bdi_metrics', {}).get('auto_repair', {}).get('success', False)
     )
 
+    # VAL repair loop statistics
+    val_repair_triggered = sum(
+        1 for r in results['results']
+        if r.get('bdi_metrics', {}).get('val_repair', {}).get('attempts', 0) > 0
+    )
+    val_repair_success = sum(
+        1 for r in results['results']
+        if r.get('bdi_metrics', {}).get('val_repair', {}).get('success', False)
+    )
+    val_repair_total_attempts = sum(
+        r.get('bdi_metrics', {}).get('val_repair', {}).get('attempts', 0)
+        for r in results['results']
+    )
+
     results['summary'] = {
         'total_evaluated': len(results['results']),
         'success_count': success_count,
@@ -1165,12 +1657,18 @@ def run_batch_evaluation(
             for r in results['results']
         ) / len(results['results']) if results['results'] else 0,
         'structural_only_success': structural_only_success,
-        'symbolic_caught_errors': symbolic_caught_errors,  # New metric
+        'symbolic_caught_errors': symbolic_caught_errors,
         'physics_caught_errors': physics_caught_errors,
         'auto_repair': {
             'triggered': auto_repair_triggered,
             'successful': auto_repair_success,
             'success_rate': auto_repair_success / auto_repair_triggered if auto_repair_triggered > 0 else 0
+        },
+        'val_repair': {
+            'triggered': val_repair_triggered,
+            'successful': val_repair_success,
+            'total_attempts': val_repair_total_attempts,
+            'success_rate': val_repair_success / val_repair_triggered if val_repair_triggered > 0 else 0
         }
     }
 
@@ -1178,6 +1676,45 @@ def run_batch_evaluation(
     output_file = f"{output_dir}/results_{domain}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     with open(output_file, 'w') as f:
         json.dump(results, f, indent=2)
+
+    # Log metrics and artifacts to MLflow
+    if MLFLOW_AVAILABLE and mlflow_run_id:
+        try:
+            summary = results['summary']
+
+            # Log aggregate metrics
+            mlflow.log_metric("success_rate", summary['success_rate'])
+            mlflow.log_metric("success_count", summary['success_count'])
+            mlflow.log_metric("failed_count", summary['failed_count'])
+            mlflow.log_metric("avg_generation_time", summary['avg_generation_time'])
+
+            # Log verification layer metrics
+            mlflow.log_metric("structural_only_success", summary['structural_only_success'])
+            mlflow.log_metric("symbolic_caught_errors", summary['symbolic_caught_errors'])
+            mlflow.log_metric("physics_caught_errors", summary['physics_caught_errors'])
+
+            # Log auto-repair metrics
+            mlflow.log_metric("auto_repair_triggered", summary['auto_repair']['triggered'])
+            mlflow.log_metric("auto_repair_successful", summary['auto_repair']['successful'])
+            mlflow.log_metric("auto_repair_success_rate", summary['auto_repair']['success_rate'])
+
+            # Log VAL repair metrics
+            mlflow.log_metric("val_repair_triggered", summary['val_repair']['triggered'])
+            mlflow.log_metric("val_repair_successful", summary['val_repair']['successful'])
+            mlflow.log_metric("val_repair_total_attempts", summary['val_repair']['total_attempts'])
+            mlflow.log_metric("val_repair_success_rate", summary['val_repair']['success_rate'])
+
+            # Log results file as artifact
+            mlflow.log_artifact(output_file)
+
+            print(f"✓ Metrics and artifacts logged to MLflow")
+            print(f"  View at: http://localhost:5000/#/experiments/{mlflow.active_run().info.experiment_id}/runs/{mlflow_run_id}")
+
+        except Exception as e:
+            print(f"⚠️  MLflow logging failed: {e}")
+        finally:
+            # End MLflow run
+            mlflow.end_run()
 
     print(f"\n{'='*80}")
     print(f"  EVALUATION COMPLETE")
@@ -1194,6 +1731,12 @@ def run_batch_evaluation(
     print(f"Auto-repair successful: {auto_repair_success}")
     if auto_repair_triggered > 0:
         print(f"Auto-repair success rate: {auto_repair_success/auto_repair_triggered*100:.1f}%")
+    print(f"\n--- VAL Repair Loop Statistics ---")
+    print(f"VAL repair triggered: {val_repair_triggered}")
+    print(f"VAL repair successful: {val_repair_success}")
+    print(f"VAL repair total attempts: {val_repair_total_attempts}")
+    if val_repair_triggered > 0:
+        print(f"VAL repair success rate: {val_repair_success/val_repair_triggered*100:.1f}%")
     print(f"\nFinal success: {success_count} ({success_count/len(results['results'])*100:.1f}%)")
     print(f"Failed: {failed_count}")
     print(f"\nResults saved to: {output_file}")
@@ -1221,13 +1764,21 @@ def main():
                        help="Resume from checkpoint file")
     parser.add_argument("--output_dir", type=str, default="planbench_results",
                        help="Output directory for results")
+    parser.add_argument("--parallel", action="store_true",
+                       help="Enable parallel execution")
+    parser.add_argument("--workers", type=int, default=3,
+                       help="Number of parallel workers (default: 3, recommended: 3-5)")
+    parser.add_argument("--instances", type=str, default=None,
+                       help="File containing list of instance paths to evaluate (one per line)")
 
     args = parser.parse_args()
 
-    # Check API key
-    if not os.environ.get("OPENAI_API_KEY"):
-        print("❌ ERROR: OPENAI_API_KEY not set")
+    # Check API key (accept OPENAI_API_KEY, GOOGLE_API_KEY, or GOOGLE_APPLICATION_CREDENTIALS)
+    if not os.environ.get("OPENAI_API_KEY") and not os.environ.get("GOOGLE_API_KEY") and not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
+        print("❌ ERROR: No API key set")
         print("   export OPENAI_API_KEY=your-key")
+        print("   OR export GOOGLE_API_KEY=your-key")
+        print("   OR export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json")
         sys.exit(1)
 
     # Determine domains to evaluate
@@ -1246,7 +1797,10 @@ def main():
             domain=domain,
             max_instances=args.max_instances,
             resume_from=args.resume,
-            output_dir=args.output_dir
+            output_dir=args.output_dir,
+            parallel=args.parallel,
+            max_workers=args.workers,
+            instances_file=args.instances
         )
         all_results[domain] = results
 
