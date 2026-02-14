@@ -1,0 +1,122 @@
+% =========================================================================
+% Methodology / Framework Architecture
+% =========================================================================
+\section{Framework Architecture}
+\label{sec:method}
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=0.85\textwidth]{figures/architecture.pdf}
+    \caption{BDI-LLM system architecture. Natural language problem descriptions are processed through four stages: (1)~LLM plan generation with domain-specific DSPy prompts, (2)~structural verification ensuring valid DAG structure, (3)~symbolic verification via the VAL validator, and (4)~an error-driven LLM repair loop with cumulative error history. Plans passing all layers are output as formally verified PDDL plans.}
+    \label{fig:architecture}
+\end{figure*}
+
+Figure~\ref{fig:architecture} illustrates the end-to-end BDI-LLM pipeline. Given a PDDL problem instance, the framework (i)~converts the formal specification into a structured natural language representation, (ii)~invokes an LLM to generate a BDI plan as a directed acyclic graph, and (iii)~subjects the plan to a three-layer verification pipeline with an error-driven repair loop. We describe each component below.
+
+\subsection{PDDL-to-Natural-Language Conversion}
+\label{sec:pddl_to_nl}
+
+Classical planning benchmarks encode problems in PDDL, a formal language that is syntactically precise but opaque to LLMs trained predominantly on natural language corpora. Rather than prompting the LLM with raw PDDL---an approach shown to yield poor results~\cite{valmeekam2024llms}---we convert each problem instance into a structured natural language representation consisting of two components aligned with the BDI model~\cite{rao1995bdi}:
+
+\begin{itemize}
+    \item \textbf{Beliefs}: A comprehensive description of the current world state, including typed object inventories, spatial relationships, vehicle/agent positions, and domain constraints. Critical rules (e.g., which locations are airports in Logistics) are highlighted with explicit warning markers.
+    \item \textbf{Desires}: The goal specification, augmented with analysis of required transport modes (e.g., same-city vs.\ cross-city delivery) and, for Blocksworld, a pre-computed bottom-up tower construction ordering.
+\end{itemize}
+
+The conversion is domain-specific. For \textbf{Blocksworld}, we parse the initial state to identify existing stacks, compute which \texttt{on(X,Y)} pairs conflict with the goal, and generate an explicit teardown sequence (ordered top-down by stack height) followed by a bottom-up construction plan. This effectively reduces the planning problem to plan \emph{execution}, which explains the 100\% first-attempt accuracy. For \textbf{Logistics}, we extract the city--location--airport topology, classify each delivery goal as intra-city (truck-only) or inter-city (requires airplane), and enumerate the airport set with repeated warnings that \texttt{fly-airplane} may only use airport locations. For \textbf{Depots}, we parse typed objects (hoists, crates, pallets, trucks, depots, distributors), describe the hoist state machine (available $\leftrightarrow$ lifting), and provide a worked example with explicit state tracking after each action.
+
+Each conversion also includes the complete action schema for the domain---action names, parameter formats, preconditions, and effects---presented in a structured, human-readable format rather than PDDL syntax.
+
+\subsection{BDI-Structured Plan Generation with DSPy}
+\label{sec:plan_generation}
+
+We implement plan generation using DSPy~\cite{khattab2023dspy}, a framework for programming LLM pipelines with typed signatures and automatic prompt optimization. Each planning domain is associated with a dedicated \texttt{Signature} class that encodes domain-specific instructions in its docstring:
+
+\begin{itemize}
+    \item \texttt{GeneratePlan} (Blocksworld): Specifies the four valid action types (\texttt{pick-up}, \texttt{put-down}, \texttt{stack}, \texttt{unstack}) with parameter schemas and precondition/effect rules. Includes mandatory state tracking via a block position table updated after every action, chain-of-symbol (CoS) representations for state clarity, and a four-step LogiCoT verification protocol (identify goal $\rightarrow$ list preconditions $\rightarrow$ check state $\rightarrow$ decide).
+    \item \texttt{GeneratePlanLogistics}: Defines six transport actions with exact parameter formats. Emphasizes the two most common failure causes: (1)~using non-airport locations with \texttt{fly-airplane}, and (2)~failing to track airplane/truck positions after movement actions. Includes a logistics state table tracking object type, location, contents, and airport status.
+    \item \texttt{GeneratePlanDepots}: Specifies five manipulation/transport actions with a hoist state machine diagram. Highlights the critical truck position tracking requirement and provides a five-step worked example with state updates marked after each action.
+\end{itemize}
+
+All signatures use \texttt{dspy.ChainOfThought}, which instructs the LLM to produce step-by-step reasoning before outputting the structured plan. The output is a \texttt{BDIPlan} Pydantic model containing:
+\begin{itemize}
+    \item A \texttt{goal\_description} string summarizing the objective.
+    \item A list of \texttt{ActionNode} objects, each with a unique ID, \texttt{action\_type}, typed \texttt{params} dictionary, and natural language \texttt{description}.
+    \item A list of \texttt{DependencyEdge} objects encoding temporal ordering as a DAG.
+\end{itemize}
+
+The LLM is configured with temperature 0.2 for near-deterministic output. At runtime, the \texttt{BDIPlanner} module validates that all generated action types belong to the domain's valid set and that all required parameters are present, raising a \texttt{ValueError} that triggers DSPy's automatic retry mechanism if constraints are violated.
+
+\subsection{Few-Shot Demonstrations}
+\label{sec:few_shot}
+
+For the Logistics domain---where the action space and state tracking requirements are most complex---we provide two VAL-verified few-shot demonstrations as \texttt{dspy.Example} objects:
+
+\begin{enumerate}
+    \item A \textbf{single-city} example (3 delivery goals, 9 actions) demonstrating correct sequential truck routing with position tracking after each \texttt{drive-truck} action.
+    \item A \textbf{cross-city} example (6 delivery goals across 2 cities, 18 actions) demonstrating airplane position tracking, airport identification, and multi-vehicle coordination.
+\end{enumerate}
+
+Both demonstrations are derived from actual PlanBench instances and verified correct by the VAL validator, ensuring that the LLM learns from gold-standard plans rather than potentially flawed human-written examples.
+
+\subsection{Three-Layer Verification Pipeline}
+\label{sec:verification}
+
+Generated plans undergo three layers of verification, each targeting a distinct class of errors.
+
+\subsubsection{Layer 1: Structural Verification}
+
+The BDI plan's DAG structure is validated using graph-theoretic checks:
+\begin{itemize}
+    \item \textbf{Acyclicity}: The dependency graph must be a DAG (no circular dependencies).
+    \item \textbf{Weak connectivity}: All action nodes must be reachable from each other, preventing disconnected ``island'' subgraphs.
+\end{itemize}
+
+When structural violations are detected and auto-repair is enabled, the system attempts to unify disconnected components by inserting virtual \texttt{\_\_START\_\_} and \texttt{\_\_END\_\_} nodes. This repair succeeds when the plan's actions are individually correct but the LLM failed to specify explicit ordering edges between independent action subsequences.
+
+\subsubsection{Layer 2: Symbolic Verification with VAL}
+
+Plans passing structural verification are converted from the BDI representation to PDDL action sequences. The conversion normalizes action type names (e.g., mapping LLM-generated variants like ``pickup'' to the canonical ``pick-up''), extracts parameters from the typed \texttt{params} dictionary using domain-specific key mappings with positional fallbacks, and produces a topologically sorted sequence of PDDL actions.
+
+The action sequence is then validated by the VAL plan validator~\cite{howey2004val}, which performs full forward simulation of the plan against the PDDL domain and problem specifications. VAL checks:
+\begin{itemize}
+    \item Action preconditions are satisfied at each step.
+    \item Action effects are correctly applied to the state.
+    \item The goal state is achieved after the final action.
+    \item All action parameters have valid types.
+\end{itemize}
+
+VAL is invoked with the \texttt{-v} (verbose) flag, which provides detailed error diagnostics including the specific failing action, unsatisfied preconditions, and concrete \emph{Plan Repair Advice} specifying which predicates need to be established.
+
+\subsubsection{Layer 3: Domain-Specific Physics Validation}
+
+For Blocksworld, a dedicated physics simulator traces state transitions through the action sequence, maintaining a state table of block positions (\texttt{on\_table}, \texttt{on}), clear status, and hand state. This layer catches physical constraint violations such as picking up non-clear blocks, stacking on occupied surfaces, or holding multiple blocks simultaneously. For Logistics and Depots, this layer defers to the comprehensive checking performed by VAL in Layer~2.
+
+\subsection{Error-Driven Repair Loop}
+\label{sec:repair}
+
+When VAL reports errors, the framework enters a closed-loop repair cycle (up to 3 iterations). A dedicated \texttt{RepairPlan} DSPy signature receives:
+\begin{itemize}
+    \item The original \emph{beliefs} and \emph{desires} (full problem context).
+    \item The \emph{previous plan} as a PDDL action sequence.
+    \item The \emph{VAL error messages}, filtered to remove verbose output and retain only actionable diagnostics (failing action, unsatisfied preconditions, repair advice).
+    \item A \emph{cumulative repair history} containing all previous failed attempts with their plans and errors, enabling the LLM to avoid repeating the same mistakes.
+\end{itemize}
+
+The repair prompt instructs the LLM to interpret VAL error messages (e.g., ``Set \texttt{(at t1 loc1)} to true'' means the truck must be driven to \texttt{loc1} before loading), generate a \emph{complete} corrected plan (not just a patch), and try a fundamentally different approach if the same error recurs across attempts. The repaired plan undergoes the same three-layer verification, and the loop continues until the plan passes or the attempt budget is exhausted.
+
+This repair mechanism is critical to the framework's overall accuracy: 111 of 1,270 instances (8.7\%) required at least one repair attempt, with a 96.4\% repair success rate (107/111). The majority of repairs succeed on the first attempt (97/100 single-attempt repairs), with diminishing returns for subsequent attempts.
+
+\subsection{BDI Plan to PDDL Conversion}
+\label{sec:bdi_to_pddl}
+
+The conversion from BDI plan to PDDL action sequence is a critical bridge between the LLM's structured output and the formal verification layer. The process involves:
+
+\begin{enumerate}
+    \item \textbf{Topological sorting}: Action nodes are ordered using topological sort on the dependency DAG, ensuring that prerequisite actions precede dependent ones.
+    \item \textbf{Action type normalization}: LLM-generated action types are canonicalized (e.g., ``pickup'' $\rightarrow$ ``pick-up'', ``LoadTruck'' $\rightarrow$ ``LOAD-TRUCK'') to match PDDL domain definitions.
+    \item \textbf{Parameter extraction}: For each action, parameters are extracted from the \texttt{params} dictionary using a prioritized list of key aliases (e.g., for a truck parameter: ``truck'', ``vehicle'', ``t'', ``truck\_name''). If named extraction fails, positional fallback uses the parameter order defined in the PDDL domain schema.
+    \item \textbf{PDDL formatting}: Parameters are assembled into standard PDDL action strings, e.g., \texttt{(stack a b)} or \texttt{(DRIVE-TRUCK t0 l0-1 l0-2 c0)}.
+\end{enumerate}
+
+This robust conversion handles the inherent variability in LLM-generated parameter naming while maintaining strict adherence to the PDDL action schemas expected by VAL.

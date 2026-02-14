@@ -14,18 +14,26 @@ echo "  PlanBench Full Benchmark - Quick Start"
 echo "=================================================="
 echo ""
 
-# Check API key
-if [ -z "$OPENAI_API_KEY" ]; then
-    echo -e "${RED}❌ ERROR: OPENAI_API_KEY not set${NC}"
+# Resolve repo root and defaults
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+OUTPUT_DIR="${PROJECT_ROOT}/runs/planbench_results"
+PYTHON_BIN="${PYTHON_BIN:-python}"
+
+# Check API credentials
+if [ -z "$OPENAI_API_KEY" ] && [ -z "$GOOGLE_API_KEY" ] && [ -z "$GOOGLE_APPLICATION_CREDENTIALS" ]; then
+    echo -e "${RED}ERROR: No API credential set${NC}"
     echo ""
-    echo "Please set your API key:"
+    echo "Please set one of:"
     echo "  export OPENAI_API_KEY=sk-..."
+    echo "  export GOOGLE_API_KEY=..."
+    echo "  export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json"
     echo ""
     exit 1
 fi
 
 # Create output directory
-mkdir -p planbench_results
+mkdir -p "${OUTPUT_DIR}"
 
 # Show menu
 echo "Select evaluation mode:"
@@ -44,18 +52,21 @@ read -p "Enter choice [1-8]: " choice
 case $choice in
     1)
         echo -e "${GREEN}Running quick test (10 instances)...${NC}"
-        python run_planbench_full.py --domain blocksworld --max_instances 10
+        "${PYTHON_BIN}" "${PROJECT_ROOT}/scripts/run_planbench_full.py" \
+            --domain blocksworld --max_instances 10 --output_dir "${OUTPUT_DIR}"
         ;;
     2)
         echo -e "${GREEN}Running small test (100 instances)...${NC}"
-        python run_planbench_full.py --domain blocksworld --max_instances 100
+        "${PYTHON_BIN}" "${PROJECT_ROOT}/scripts/run_planbench_full.py" \
+            --domain blocksworld --max_instances 100 --output_dir "${OUTPUT_DIR}"
         ;;
     3)
         echo -e "${YELLOW}Running medium test (500 instances)...${NC}"
         echo "This will take approximately 3-5 hours."
         read -p "Continue? [y/N]: " confirm
         if [ "$confirm" = "y" ]; then
-            python run_planbench_full.py --domain blocksworld --max_instances 500
+            "${PYTHON_BIN}" "${PROJECT_ROOT}/scripts/run_planbench_full.py" \
+                --domain blocksworld --max_instances 500 --output_dir "${OUTPUT_DIR}"
         fi
         ;;
     4)
@@ -63,29 +74,33 @@ case $choice in
         echo "This will take approximately 12-24 hours."
         read -p "Continue? [y/N]: " confirm
         if [ "$confirm" = "y" ]; then
-            python run_planbench_full.py --domain blocksworld
+            "${PYTHON_BIN}" "${PROJECT_ROOT}/scripts/run_planbench_full.py" \
+                --domain blocksworld --output_dir "${OUTPUT_DIR}"
         fi
         ;;
     5)
         echo -e "${GREEN}Running full logistics (572 instances)...${NC}"
-        python run_planbench_full.py --domain logistics
+        "${PYTHON_BIN}" "${PROJECT_ROOT}/scripts/run_planbench_full.py" \
+            --domain logistics --output_dir "${OUTPUT_DIR}"
         ;;
     6)
         echo -e "${GREEN}Running full depots (501 instances)...${NC}"
-        python run_planbench_full.py --domain depots
+        "${PYTHON_BIN}" "${PROJECT_ROOT}/scripts/run_planbench_full.py" \
+            --domain depots --output_dir "${OUTPUT_DIR}"
         ;;
     7)
         echo -e "${RED}Running ALL domains (4,430 instances)...${NC}"
         echo "This will take 1-2 DAYS to complete."
         read -p "Are you sure? [y/N]: " confirm
         if [ "$confirm" = "y" ]; then
-            python run_planbench_full.py --all_domains
+            "${PYTHON_BIN}" "${PROJECT_ROOT}/scripts/run_planbench_full.py" \
+                --all_domains --output_dir "${OUTPUT_DIR}"
         fi
         ;;
     8)
         echo "Custom mode - edit run_planbench_full.py directly"
         echo "Example:"
-        echo "  python run_planbench_full.py --domain blocksworld --max_instances 50"
+        echo "  python scripts/run_planbench_full.py --domain blocksworld --max_instances 50 --output_dir runs/planbench_results"
         ;;
     *)
         echo -e "${RED}Invalid choice${NC}"
@@ -96,7 +111,4 @@ esac
 echo ""
 echo -e "${GREEN}✅ Evaluation complete!${NC}"
 echo ""
-echo "Results saved in: planbench_results/"
-echo ""
-echo "To analyze results, run:"
-echo "  python analyze_planbench_results.py planbench_results/results_*.json"
+echo "Results saved in: ${OUTPUT_DIR}/"

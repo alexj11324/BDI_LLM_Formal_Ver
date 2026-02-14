@@ -62,21 +62,17 @@ python scripts/run_evaluation.py --mode [unit|demo|benchmark]
 
 ```
 BDI_LLM_Formal_Ver/
-├── src/
-│   └── bdi_llm/            # Core package
-│       ├── planner.py      # BDI Planner with LLM integration
-│       ├── verifier.py     # Graph & PDDL verification logic
-│       ├── plan_repair.py  # Auto-repair mechanisms
-│       └── config.py       # Configuration management
-├── scripts/
-│   ├── run_evaluation.py   # Main entry point for demos/tests
-│   └── run_planbench_*.py  # Benchmark runners
-├── tests/                  # Unit and integration tests
-├── docs/
-│   ├── INTEGRATION_GUIDE.md
-│   └── research/           # Research proposals & literature reviews
-├── planbench_data/         # PlanBench dataset (PDDL files)
-└── requirements.txt        # Project dependencies
+├── src/bdi_llm/                          # Core planner + verification modules
+├── scripts/                              # Evaluation and utility scripts
+├── tests/                                # Unit and integration tests
+├── docs/                                 # User/system/provenance docs
+├── planbench_data/                       # PlanBench data + VAL binaries
+├── runs/                                 # Mutable outputs + legacy runs (see runs/README.md)
+│   └── legacy/planbench_results_20260211/  # Historical pre-freeze outputs
+├── artifacts/paper_eval_20260213/        # Frozen paper evidence snapshot
+├── planbench_results_archive.tar.gz      # Raw archived experiment bundle
+├── BDI_Paper/                            # Paper source (local authoring)
+└── requirements.txt                      # Project dependencies
 ```
 
 ## Documentation
@@ -84,6 +80,8 @@ BDI_LLM_Formal_Ver/
 *   [User Guide](docs/USER_GUIDE.md): Detailed guide on usage and configuration.
 *   [Architecture](docs/ARCHITECTURE.md): System architecture and verification layers.
 *   [Benchmarks](docs/BENCHMARKS.md): Evaluation methodology and results.
+*   [Paper Result Provenance](docs/PAPER_RESULT_PROVENANCE.md): Frozen paper-result evidence chain and verification procedure.
+*   [Repo Organization](docs/REPO_ORGANIZATION.md): Directory responsibilities and cleanup rules.
 
 ## License
 

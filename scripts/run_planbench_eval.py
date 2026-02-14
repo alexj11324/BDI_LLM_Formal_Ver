@@ -307,10 +307,13 @@ class PlanBenchEvaluator:
             ]
         }
 
-        with open(output_file, 'w') as f:
+        output_path = Path(output_file)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(output_path, 'w') as f:
             json.dump(results_dict, f, indent=2)
 
-        print(f"Results saved to {output_file}")
+        print(f"Results saved to {output_path}")
 
 
 def main():
@@ -323,7 +326,7 @@ def main():
                        help="Planning domain (default: blocksworld)")
     parser.add_argument("--verbose", action="store_true",
                        help="Print detailed output")
-    parser.add_argument("--output", default="planbench_results.json",
+    parser.add_argument("--output", default="runs/planbench_eval/planbench_results.json",
                        help="Output file for results")
 
     args = parser.parse_args()

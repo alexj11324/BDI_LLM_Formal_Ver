@@ -13,7 +13,7 @@ Usage:
     python run_planbench_full.py --all_domains --max_instances 50
 
     # Resume from checkpoint
-    python run_planbench_full.py --domain blocksworld --resume results/checkpoint.json
+    python run_planbench_full.py --domain blocksworld --resume runs/checkpoint.json
 
 Author: BDI-LLM Research
 Date: 2026-02-03
@@ -1444,7 +1444,7 @@ def run_batch_evaluation(
     domain: str,
     max_instances: int = None,
     resume_from: str = None,
-    output_dir: str = "planbench_results",
+    output_dir: str = "runs/planbench_results",
     parallel: bool = False,
     max_workers: int = 3,
     instances_file: str = None
@@ -1762,7 +1762,7 @@ def main():
                        help="Maximum number of instances per domain (default: all)")
     parser.add_argument("--resume", type=str, default=None,
                        help="Resume from checkpoint file")
-    parser.add_argument("--output_dir", type=str, default="planbench_results",
+    parser.add_argument("--output_dir", type=str, default="runs/planbench_results",
                        help="Output directory for results")
     parser.add_argument("--parallel", action="store_true",
                        help="Enable parallel execution")

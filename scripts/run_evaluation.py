@@ -19,11 +19,11 @@ import argparse
 import subprocess
 import sys
 import os
-import json
-from typing import Optional
+from pathlib import Path
 
 # Add src to path
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from bdi_llm.schemas import BDIPlan, ActionNode, DependencyEdge
 from bdi_llm.verifier import PlanVerifier
@@ -37,7 +37,7 @@ def run_unit_tests():
 
     result = subprocess.run(
         [sys.executable, "-m", "pytest", "tests/test_verifier.py", "-v", "--tb=short"],
-        cwd=os.path.dirname(os.path.abspath(__file__))
+        cwd=str(PROJECT_ROOT)
     )
     return result.returncode == 0
 
@@ -187,7 +187,9 @@ def run_benchmark():
 
     try:
         from tests.test_integration import run_benchmark as benchmark_func
-        benchmark_func("benchmark_results.json")
+        output_file = PROJECT_ROOT / "runs" / "benchmark_results.json"
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        benchmark_func(str(output_file))
         return True
     except Exception as e:
         print(f"Error running benchmark: {e}")
