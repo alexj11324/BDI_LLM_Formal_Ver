@@ -1,0 +1,41 @@
+{
+  "domains": {
+    "blocksworld": {
+      "domain": "blocksworld",
+      "total": 1103,
+      "evaluated": 1103,
+      "success": 385,
+      "failed": 718,
+      "accuracy": 0.34904805077062556,
+      "repair_triggered": 0,
+      "repair_success": 0
+    },
+    "logistics": {
+      "domain": "logistics",
+      "total": 572,
+      "evaluated": 572,
+      "success": 0,
+      "failed": 572,
+      "accuracy": 0.0,
+      "repair_triggered": 82,
+      "repair_success": 82
+    },
+    "depots": {
+      "domain": "depots",
+      "total": 501,
+      "evaluated": 501,
+      "success": 0,
+      "failed": 501,
+      "accuracy": 0.0,
+      "repair_triggered": 19,
+      "repair_success": 19
+    }
+  },
+  "overall": {
+    "total": 2176,
+    "success": 385,
+    "failed": 1791,
+    "accuracy": 0.17693014705882354,
+    "repair_triggered": 101
+  }
+}
