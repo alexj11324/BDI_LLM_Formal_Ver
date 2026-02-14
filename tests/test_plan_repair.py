@@ -196,3 +196,58 @@ def run_all_tests():
 
 if __name__ == "__main__":
     run_all_tests()
+
+
+def test_unify_roots_does_not_duplicate_virtual_start_node():
+    """Ensure repair does not append duplicate __START__ virtual nodes."""
+    plan = BDIPlan(
+        goal_description="Duplicate start",
+        nodes=[
+            ActionNode(id=PlanRepairer.VIRTUAL_START, action_type="Virtual", description="Existing start"),
+            ActionNode(id="a", action_type="Test", description="A"),
+            ActionNode(id="b", action_type="Test", description="B"),
+        ],
+        edges=[],
+    )
+
+    repaired = PlanRepairer._unify_roots(plan, ["a", "b"])
+    start_nodes = [node for node in repaired.nodes if node.id == PlanRepairer.VIRTUAL_START]
+
+    assert len(start_nodes) == 1
+
+
+def test_unify_terminals_does_not_duplicate_virtual_end_node():
+    """Ensure repair does not append duplicate __END__ virtual nodes."""
+    plan = BDIPlan(
+        goal_description="Duplicate end",
+        nodes=[
+            ActionNode(id="a", action_type="Test", description="A"),
+            ActionNode(id="b", action_type="Test", description="B"),
+            ActionNode(id=PlanRepairer.VIRTUAL_END, action_type="Virtual", description="Existing end"),
+        ],
+        edges=[],
+    )
+
+    repaired = PlanRepairer._unify_terminals(plan, ["a", "b"])
+    end_nodes = [node for node in repaired.nodes if node.id == PlanRepairer.VIRTUAL_END]
+
+    assert len(end_nodes) == 1
+
+
+def test_connect_subgraphs_reuses_existing_virtual_nodes():
+    """Disconnected repairs should reuse existing virtual nodes instead of duplicating them."""
+    plan = BDIPlan(
+        goal_description="Reuse virtual nodes",
+        nodes=[
+            ActionNode(id=PlanRepairer.VIRTUAL_START, action_type="Virtual", description="Existing start"),
+            ActionNode(id=PlanRepairer.VIRTUAL_END, action_type="Virtual", description="Existing end"),
+            ActionNode(id="a", action_type="Test", description="A"),
+            ActionNode(id="b", action_type="Test", description="B"),
+        ],
+        edges=[DependencyEdge(source="a", target=PlanRepairer.VIRTUAL_END)],
+    )
+
+    repaired = PlanRepairer._connect_subgraphs(plan, plan.to_networkx())
+
+    assert len([node for node in repaired.nodes if node.id == PlanRepairer.VIRTUAL_START]) == 1
+    assert len([node for node in repaired.nodes if node.id == PlanRepairer.VIRTUAL_END]) == 1
