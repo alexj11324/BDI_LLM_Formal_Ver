@@ -2,7 +2,7 @@
 
 ## Overview
 
-BDI-LLM is a research framework that combines Large Language Models with formal verification to generate provably correct planning solutions. The system bridges the gap between neural generation and symbolic reasoning by subjecting LLM-generated plans to rigorous multi-layer verification.
+BDI-LLM is a research framework that combines Large Language Models with formal verification to generate provably correct planning solutions. The system bridges neural generation and symbolic reasoning by subjecting LLM-generated plans to rigorous multi-layer verification.
 
 ## Core Architecture
 
@@ -13,23 +13,29 @@ Natural Language Problem → LLM Plan Generation → Multi-Layer Verification �
 
 ### Key Components
 
-1. **PDDL-to-NL Translation**: Converts formal planning problems into structured natural language using the BDI (Belief-Desire-Intention) model
-2. **Structured Plan Generation**: Uses DSPy framework with domain-specific signatures to generate plans as directed acyclic graphs
+1. **PDDL-to-NL Translation**: Converts formal planning problems into structured natural language with the BDI (Belief-Desire-Intention) model.
+2. **Structured Plan Generation**: Uses DSPy signatures to generate plans as directed graphs.
 3. **Three-Layer Verification**:
    - Layer 1: Structural verification (DAG validity, connectivity)
    - Layer 2: Symbolic verification (VAL validator for PDDL correctness)
    - Layer 3: Domain-specific physics validation
-4. **Error-Driven Repair**: Iterative repair loop using VAL diagnostics to guide LLM corrections
+4. **Error-Driven Repair**: Iterative repair loop using verifier diagnostics to guide plan fixes.
 
-## Repository Structure
+## Repository Structure (Reorganized)
 
 ```
-├── src/bdi_llm/          # Core framework implementation
-├── scripts/              # Evaluation and demo scripts
-├── tests/                # Unit and integration tests
-├── docs/                 # Architecture and user documentation
-├── planbench_data/       # PlanBench benchmark dataset
-└── results/              # Benchmark results and visualizations
+├── src/bdi_llm/                        # Core framework implementation
+├── scripts/                            # Evaluation, benchmark, and utility entrypoints
+├── tests/                              # Pytest test suite
+├── docs/                               # User/system/provenance/organization docs
+├── planbench_data/                     # PlanBench dataset and planner/VAL tooling
+├── runs/                               # Mutable experiment outputs
+│   ├── planbench_*.json/png            # Non-canonical summaries/charts
+│   └── legacy/                         # Historical pre-freeze outputs
+├── artifacts/paper_eval_20260213/      # Frozen, canonical paper evidence snapshot
+├── BDI_Paper/                          # Paper source files
+├── README.md / README_CN.md            # Primary entry documentation
+└── requirements.txt                    # Runtime dependencies
 ```
 
 ## Supported Domains
@@ -38,20 +44,14 @@ Natural Language Problem → LLM Plan Generation → Multi-Layer Verification �
 - **Logistics**: Multi-city package delivery with trucks and airplanes
 - **Depots**: Warehouse operations with hoists and trucks
 
-## Key Results
-
-- **High Accuracy**: Achieves competitive performance on PlanBench benchmark
-- **Formal Guarantees**: All generated plans are VAL-verified for correctness
-- **Effective Repair**: 96.4% repair success rate when initial plans fail verification
-
 ## Getting Started
 
-See [USER_GUIDE.md](docs/USER_GUIDE.md) for installation and usage instructions.
-
-## Experiment Data
-
-Historical experiment results are archived in `planbench_results_archive.tar.gz` (2.6MB).
+- User guide: `docs/USER_GUIDE.md`
+- Architecture: `docs/ARCHITECTURE.md`
+- Benchmark notes: `docs/BENCHMARKS.md`
+- Provenance and frozen evidence: `docs/PAPER_RESULT_PROVENANCE.md`
+- Repository boundaries and mutability: `docs/REPO_ORGANIZATION.md`
 
 ## License
 
-MIT License - See [LICENSE](LICENSE) for details.
+MIT License. See `LICENSE`.

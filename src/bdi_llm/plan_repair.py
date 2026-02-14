@@ -181,6 +181,8 @@ class PlanRepairer:
 
             # Connect START to each root
             for root_id in roots_in_component:
+                if root_id == cls.VIRTUAL_START:
+                    continue
                 new_edges.append(DependencyEdge(
                     source=cls.VIRTUAL_START,
                     target=root_id
@@ -195,6 +197,8 @@ class PlanRepairer:
 
             # Connect each terminal to END
             for terminal_id in terminals_in_component:
+                if terminal_id == cls.VIRTUAL_END:
+                    continue
                 new_edges.append(DependencyEdge(
                     source=terminal_id,
                     target=cls.VIRTUAL_END
