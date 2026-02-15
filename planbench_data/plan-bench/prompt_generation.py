@@ -9,6 +9,7 @@ from tarski.io import PDDLReader
 import argparse
 import time
 import json
+import ast
 
 from tqdm import tqdm
 
@@ -864,9 +865,9 @@ if __name__=="__main__":
     args = parser.parse_args()
     task = args.task
     config = args.config
-    verbose = eval(args.verbose)
+    verbose = ast.literal_eval(args.verbose)
     specified_instances = args.specific_instances
-    random_example = eval(args.random_example)
+    random_example = ast.literal_eval(args.random_example)
     ignore_existing = args.ignore_existing
     seed = args.seed
     # print(task, config, verbose, specified_instances, random_example)
