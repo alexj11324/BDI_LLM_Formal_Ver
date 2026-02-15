@@ -18,6 +18,7 @@ import os
 import re
 from pathlib import Path
 from typing import Tuple, List, Dict
+from .config import Config
 
 
 class PDDLSymbolicVerifier:
@@ -39,9 +40,7 @@ class PDDLSymbolicVerifier:
                      Default: planbench_data/planner_tools/VAL/validate
         """
         if val_path is None:
-            # Auto-detect VAL in PlanBench
-            base = Path(__file__).parent.parent.parent
-            val_path = base / "planbench_data/planner_tools/VAL/validate"
+            val_path = Config.VAL_VALIDATOR_PATH
 
         self.val_path = str(val_path)
 
