@@ -20,7 +20,7 @@ class TestPDDLSymbolicVerifier:
 
         # Mock successful VAL output
         mock_process = MagicMock()
-        mock_process.stdout = "Plan executed successfully - checking goal\nFinal value: 10 \n"
+        mock_process.stdout = "Plan executed successfully - checking goal\nPlan valid\nFinal value: 10 \n"
         mock_process.stderr = ""
         mock_run.return_value = mock_process
 
