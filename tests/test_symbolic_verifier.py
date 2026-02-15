@@ -1,6 +1,7 @@
 
 import pytest
 import os
+import subprocess
 from unittest.mock import patch, MagicMock
 from src.bdi_llm.symbolic_verifier import PDDLSymbolicVerifier
 
@@ -83,3 +84,40 @@ class TestPDDLSymbolicVerifier:
             MockConfig.VAL_VALIDATOR_PATH = "/env/val"
             verifier = PDDLSymbolicVerifier()
             assert verifier.val_path == "/env/val"
+
+    @patch("subprocess.run")
+    def test_verify_plan_timeout(self, mock_run, verifier):
+        mock_run.side_effect = subprocess.TimeoutExpired(cmd="val", timeout=30)
+        is_valid, errors = verifier.verify_plan("d.pddl", "p.pddl", ["(action)"])
+        assert is_valid is False
+        assert "VAL validation timeout" in errors[0]
+
+    @patch("subprocess.run")
+    def test_verify_plan_file_not_found(self, mock_run, verifier):
+        mock_run.side_effect = FileNotFoundError()
+        is_valid, errors = verifier.verify_plan("d.pddl", "p.pddl", ["(action)"])
+        assert is_valid is False
+        assert "VAL executable not found" in errors[0]
+
+    @patch("subprocess.run")
+    def test_verify_plan_os_error(self, mock_run, verifier):
+        mock_run.side_effect = OSError("Generic OS Error")
+        is_valid, errors = verifier.verify_plan("d.pddl", "p.pddl", ["(action)"])
+        assert is_valid is False
+        assert "VAL execution error (OSError)" in errors[0]
+
+    @patch("subprocess.run")
+    def test_verify_plan_exec_format_error(self, mock_run, verifier):
+        error = OSError()
+        error.errno = 8
+        mock_run.side_effect = error
+        is_valid, errors = verifier.verify_plan("d.pddl", "p.pddl", ["(action)"])
+        assert is_valid is False
+        assert "VAL executable incompatible" in errors[0]
+
+    @patch("subprocess.run")
+    def test_verify_plan_generic_exception(self, mock_run, verifier):
+        mock_run.side_effect = Exception("Unknown error")
+        is_valid, errors = verifier.verify_plan("d.pddl", "p.pddl", ["(action)"])
+        assert is_valid is False
+        assert "VAL execution error" in errors[0]
