@@ -1,5 +1,6 @@
 import os
 import random
+import ast
 
 import yaml
 from Executor import Executor
@@ -159,7 +160,7 @@ if __name__=="__main__":
     ignore_existing = args.ignore_existing
     print(f"Task: {task}, Engine: {engine}, Config: {config}, Verbose: {verbose}, Run till completion: {run_till_completion}")
     # specified_instances = args.specified_instances
-    # random_example = eval(args.random_example)
+    # random_example = ast.literal_eval(args.random_example)
     # print(task, config, verbose, specified_instances, random_example)
     config_file = f'./configs/{config}.yaml'
     response_generator = ResponseGenerator(config_file, engine, verbose, ignore_existing)

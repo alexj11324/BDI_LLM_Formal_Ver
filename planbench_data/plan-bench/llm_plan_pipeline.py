@@ -1,6 +1,7 @@
 import random
 import argparse
 import os
+import ast
 from prompt_generation import PromptGenerator
 from response_evaluation import ResponseEvaluator
 from response_generation import ResponseGenerator
@@ -44,12 +45,12 @@ if __name__=="__main__":
     task = args.task
     config = args.config
     engine = args.engine
-    verbose = eval(args.verbose)
+    verbose = ast.literal_eval(args.verbose)
     specified_instances = args.specific_instances
     seed=args.seed
     ignore_existing = args.ignore_existing
-    random_example = eval(args.random_example)
-    run_till_completion = eval(args.run_till_completion)
+    random_example = ast.literal_eval(args.random_example)
+    run_till_completion = ast.literal_eval(args.run_till_completion)
     # print(task, config, verbose, specified_instances, random_example)
     config_file = f'./configs/{config}.yaml'
 

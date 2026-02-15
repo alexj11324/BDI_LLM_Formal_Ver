@@ -352,7 +352,7 @@ if __name__=="__main__":
     print(f"Task: {task}, Engine: {engine}, Config: {config}, Verbose: {verbose}")
 
     # specified_instances = args.specified_instances
-    # random_example = eval(args.random_example)
+    # random_example = ast.literal_eval(args.random_example)
     # print(task, config, verbose, specified_instances, random_example)
     config_file = f'./configs/{config}.yaml'
     response_evaluator = ResponseEvaluator(config_file, engine, specified_instances, verbose, ignore_existing)
