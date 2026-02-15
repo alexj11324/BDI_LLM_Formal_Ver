@@ -162,8 +162,7 @@ class PlanRepairer:
             # Find root nodes in this component (no incoming edges from within component)
             roots_in_component = []
             for node_id in component:
-                predecessors = set(G.predecessors(node_id))
-                if not predecessors.intersection(component):
+                if component.isdisjoint(G.predecessors(node_id)):
                     roots_in_component.append(node_id)
 
             # Connect START to each root
@@ -176,8 +175,7 @@ class PlanRepairer:
             # Find terminal nodes in this component (no outgoing edges)
             terminals_in_component = []
             for node_id in component:
-                successors = set(G.successors(node_id))
-                if not successors.intersection(component):
+                if component.isdisjoint(G.successors(node_id)):
                     terminals_in_component.append(node_id)
 
             # Connect each terminal to END
