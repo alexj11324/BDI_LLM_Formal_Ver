@@ -58,8 +58,62 @@ lm = dspy.LM(**lm_config)
 dspy.configure(lm=lm)
 
 # 2. Define the Signature
+
+_GRAPH_STRUCTURE_COMMON = """    CRITICAL GRAPH STRUCTURE REQUIREMENTS:
+
+    1. **CONNECTIVITY**: The plan graph MUST be weakly connected.
+       ALL action nodes must be reachable from each other via edges.
+       There should be NO disconnected "islands" or separate subgraphs.
+
+    2. **DAG (Directed Acyclic Graph)**: No cycles allowed.
+
+    3. **Sequential Chain**: Each action depends on the previous one completing.
+       All actions form one connected chain/path."""
+
+_STATE_TRACKING_HEADER = """    ═══════════════════════════════════════════════════════════════════════════
+    CRITICAL: STATE TRACKING AND LOGICAL VERIFICATION (P0 Requirements)
+    ═══════════════════════════════════════════════════════════════════════════
+
+    You MUST use explicit state tracking and logical verification to avoid common
+    planning errors. This is MANDATORY.
+
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │ P0-1: EXPLICIT STATE TRACKING                                           │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+    Maintain a STATE TABLE throughout planning. Update it after EVERY action."""
+
+_COS_REPRESENTATION_HEADER = """    ┌─────────────────────────────────────────────────────────────────────────┐
+    │ P0-2: CHAIN-OF-SYMBOL (CoS) REPRESENTATION                             │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+    Use symbolic notation for clarity:"""
+
+_LOGICOT_HEADER = """    ┌─────────────────────────────────────────────────────────────────────────┐
+    │ P0-3: LOGICAL CHAIN-OF-THOUGHT (LogiCoT) PROTOCOL                      │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+    For EVERY action, follow this 4-step verification protocol:"""
+
+_LOGICOT_PROTOCOL_DETAILED = """    **Step 1: Identify Goal**
+    What are you trying to achieve with this action?
+
+    **Step 2: List Preconditions**
+    What conditions MUST be true for this action to be valid?
+
+    **Step 3: Check Current State**
+    For each precondition, check against your state table:
+    - ✓ Condition satisfied
+    - ✗ Condition NOT satisfied → explain why
+
+    **Step 4: Decision**
+    - If ALL preconditions satisfied → Select this action
+    - If ANY precondition NOT satisfied → Find prerequisite actions first"""
+
+_REMINDER = "    REMEMBER: State tracking is NOT optional. It is MANDATORY for correct planning."
+
 class GeneratePlan(dspy.Signature):
-    """
+    __doc__ = f"""
     You are a BDI (Belief-Desire-Intention) Planning Agent.
     Given a set of Beliefs (current context) and a Desire (goal),
     generate a formal Intention (Plan) as a directed graph of actions.
@@ -110,7 +164,7 @@ class GeneratePlan(dspy.Signature):
     EXAMPLE WRONG STRUCTURE:
     Nodes: [pick_a, stack_a_b, pick_c, stack_c_d]
     Edges: [(pick_a, stack_a_b), (pick_c, stack_c_d)]
-    This is WRONG because {pick_a, stack_a_b} and {pick_c, stack_c_d} are disconnected!
+    This is WRONG because {{pick_a, stack_a_b}} and {{pick_c, stack_c_d}} are disconnected!
 
     Always ensure your plan forms ONE connected graph, not multiple fragments.
 
@@ -118,8 +172,8 @@ class GeneratePlan(dspy.Signature):
 
     action_type must be one of: pick-up | put-down | stack | unstack
     params:
-      pick-up / put-down : {"block": <block>}
-      stack / unstack    : {"block": <block>, "target": <block>}
+      pick-up / put-down : {{"block": <block>}}
+      stack / unstack    : {{"block": <block>, "target": <block>}}
     check-before-act preconditions (MUST be true before choosing an action):
       pick-up : block is clear, block is on the table, and hand is empty
       put-down: hand is holding the block
@@ -133,18 +187,7 @@ class GeneratePlan(dspy.Signature):
 
     Do NOT invent action types outside this set.
 
-    ═══════════════════════════════════════════════════════════════════════════
-    CRITICAL: STATE TRACKING AND LOGICAL VERIFICATION (P0 Requirements)
-    ═══════════════════════════════════════════════════════════════════════════
-
-    You MUST use explicit state tracking and logical verification to avoid common
-    planning errors. This is MANDATORY.
-
-    ┌─────────────────────────────────────────────────────────────────────────┐
-    │ P0-1: EXPLICIT STATE TRACKING                                           │
-    └─────────────────────────────────────────────────────────────────────────┘
-
-    Maintain a STATE TABLE throughout planning. Update it after EVERY action.
+{_STATE_TRACKING_HEADER}
 
     **BLOCKSWORLD State Table Format:**
     ```
@@ -161,11 +204,7 @@ class GeneratePlan(dspy.Signature):
     3. After each action: Update affected blocks, mark with [UPDATED]
     4. Track: block positions, clear status, hand state
 
-    ┌─────────────────────────────────────────────────────────────────────────┐
-    │ P0-2: CHAIN-OF-SYMBOL (CoS) REPRESENTATION                             │
-    └─────────────────────────────────────────────────────────────────────────┘
-
-    Use symbolic notation for clarity:
+{_COS_REPRESENTATION_HEADER}
 
     **Symbolic State Format:**
     - on(X,Y): block X is on block Y
@@ -179,26 +218,9 @@ class GeneratePlan(dspy.Signature):
     - After unstack(a,b): holding(a), clear(b), ontable(b), ontable(c), clear(c)
     - After put-down(a): ontable(a), clear(a), ontable(b), clear(b), ontable(c), clear(c), handempty
 
-    ┌─────────────────────────────────────────────────────────────────────────┐
-    │ P0-3: LOGICAL CHAIN-OF-THOUGHT (LogiCoT) PROTOCOL                      │
-    └─────────────────────────────────────────────────────────────────────────┘
+{_LOGICOT_HEADER}
 
-    For EVERY action, follow this 4-step verification protocol:
-
-    **Step 1: Identify Goal**
-    What are you trying to achieve with this action?
-
-    **Step 2: List Preconditions**
-    What conditions MUST be true for this action to be valid?
-
-    **Step 3: Check Current State**
-    For each precondition, check against your state table:
-    - ✓ Condition satisfied
-    - ✗ Condition NOT satisfied → explain why
-
-    **Step 4: Decision**
-    - If ALL preconditions satisfied → Select this action
-    - If ANY precondition NOT satisfied → Find prerequisite actions first
+{_LOGICOT_PROTOCOL_DETAILED}
 
     ═══════════════════════════════════════════════════════════════════════════
     WORKED EXAMPLE WITH STATE TRACKING
@@ -243,7 +265,7 @@ class GeneratePlan(dspy.Signature):
 
     ═══════════════════════════════════════════════════════════════════════════
 
-    REMEMBER: State tracking is NOT optional. It is MANDATORY for correct planning.
+{_REMINDER}
     """
     beliefs: str = dspy.InputField(desc="Current state of the world and available tools")
     desire: str = dspy.InputField(desc="The high-level goal to achieve")
@@ -251,21 +273,12 @@ class GeneratePlan(dspy.Signature):
 
 
 class GeneratePlanLogistics(dspy.Signature):
-    """
+    __doc__ = f"""
     You are a BDI (Belief-Desire-Intention) Planning Agent for the LOGISTICS domain.
     Given a set of Beliefs (current context) and a Desire (goal),
     generate a formal Intention (Plan) as a directed graph of actions.
 
-    CRITICAL GRAPH STRUCTURE REQUIREMENTS:
-
-    1. **CONNECTIVITY**: The plan graph MUST be weakly connected.
-       ALL action nodes must be reachable from each other via edges.
-       There should be NO disconnected "islands" or separate subgraphs.
-
-    2. **DAG (Directed Acyclic Graph)**: No cycles allowed.
-
-    3. **Sequential Chain**: Each action depends on the previous one completing.
-       All actions form one connected chain/path.
+{_GRAPH_STRUCTURE_COMMON}
 
     LOGISTICS ACTION TYPE CONSTRAINTS:
 
@@ -274,12 +287,12 @@ class GeneratePlanLogistics(dspy.Signature):
       drive-truck | fly-airplane
 
     params:
-      load-truck       : {"obj": <package>, "truck": <truck>, "loc": <location>}
-      unload-truck     : {"obj": <package>, "truck": <truck>, "loc": <location>}
-      load-airplane    : {"obj": <package>, "airplane": <airplane>, "loc": <airport>}
-      unload-airplane  : {"obj": <package>, "airplane": <airplane>, "loc": <airport>}
-      drive-truck      : {"truck": <truck>, "from": <location>, "to": <location>, "city": <city>}
-      fly-airplane     : {"airplane": <airplane>, "from": <airport>, "to": <airport>}
+      load-truck       : {{"obj": <package>, "truck": <truck>, "loc": <location>}}
+      unload-truck     : {{"obj": <package>, "truck": <truck>, "loc": <location>}}
+      load-airplane    : {{"obj": <package>, "airplane": <airplane>, "loc": <airport>}}
+      unload-airplane  : {{"obj": <package>, "airplane": <airplane>, "loc": <airport>}}
+      drive-truck      : {{"truck": <truck>, "from": <location>, "to": <location>, "city": <city>}}
+      fly-airplane     : {{"airplane": <airplane>, "from": <airport>, "to": <airport>}}
 
     ═══════════════════════════════════════════════════════════════════════════
     ⚠️⚠️⚠️ #1 FAILURE CAUSE: AIRPORT IDENTIFICATION ⚠️⚠️⚠️
@@ -348,11 +361,7 @@ class GeneratePlanLogistics(dspy.Signature):
       Action: unload-airplane(p1, a0, l1-0) ← CORRECT: uses a0's current location
       ❌ WRONG: load-airplane(p2, a0, l0-0) ← WRONG: a0 is no longer at l0-0!
 
-    ═══════════════════════════════════════════════════════════════════════════
-    CRITICAL: STATE TRACKING AND LOGICAL VERIFICATION
-    ═══════════════════════════════════════════════════════════════════════════
-
-    Maintain a STATE TABLE throughout planning. Update it after EVERY action.
+{_STATE_TRACKING_HEADER}
 
     **LOGISTICS State Table Format:**
     ```
@@ -363,7 +372,7 @@ class GeneratePlanLogistics(dspy.Signature):
     | a0 | airplane | l0-0 | [] | YES |
     ```
 
-    For EVERY action, follow this 4-step verification protocol:
+{_LOGICOT_HEADER}
 
     **Step 1: Identify Goal** — What are you trying to achieve?
     **Step 2: List Preconditions** — What MUST be true?
@@ -397,7 +406,7 @@ class GeneratePlanLogistics(dspy.Signature):
 
     ═══════════════════════════════════════════════════════════════════════════
 
-    REMEMBER: State tracking is NOT optional. It is MANDATORY for correct planning.
+{_REMINDER}
     """
     beliefs: str = dspy.InputField(desc="Current state of the logistics world")
     desire: str = dspy.InputField(desc="The logistics goal to achieve")
@@ -405,32 +414,23 @@ class GeneratePlanLogistics(dspy.Signature):
 
 
 class GeneratePlanDepots(dspy.Signature):
-    """
+    __doc__ = f"""
     You are a BDI (Belief-Desire-Intention) Planning Agent for the DEPOTS domain.
     Given a set of Beliefs (current context) and a Desire (goal),
     generate a formal Intention (Plan) as a directed graph of actions.
 
-    CRITICAL GRAPH STRUCTURE REQUIREMENTS:
-
-    1. **CONNECTIVITY**: The plan graph MUST be weakly connected.
-       ALL action nodes must be reachable from each other via edges.
-       There should be NO disconnected "islands" or separate subgraphs.
-
-    2. **DAG (Directed Acyclic Graph)**: No cycles allowed.
-
-    3. **Sequential Chain**: Each action depends on the previous one completing.
-       All actions form one connected chain/path.
+{_GRAPH_STRUCTURE_COMMON}
 
     DEPOTS ACTION TYPE CONSTRAINTS:
 
     action_type must be one of: drive | lift | drop | load | unload
 
     params:
-      drive  : {"truck": <truck>, "from": <place>, "to": <place>}
-      lift   : {"hoist": <hoist>, "crate": <crate>, "surface": <surface>, "place": <place>}
-      drop   : {"hoist": <hoist>, "crate": <crate>, "surface": <surface>, "place": <place>}
-      load   : {"hoist": <hoist>, "crate": <crate>, "truck": <truck>, "place": <place>}
-      unload : {"hoist": <hoist>, "crate": <crate>, "truck": <truck>, "place": <place>}
+      drive  : {{"truck": <truck>, "from": <place>, "to": <place>}}
+      lift   : {{"hoist": <hoist>, "crate": <crate>, "surface": <surface>, "place": <place>}}
+      drop   : {{"hoist": <hoist>, "crate": <crate>, "surface": <surface>, "place": <place>}}
+      load   : {{"hoist": <hoist>, "crate": <crate>, "truck": <truck>, "place": <place>}}
+      unload : {{"hoist": <hoist>, "crate": <crate>, "truck": <truck>, "place": <place>}}
 
     ═══════════════════════════════════════════════════════════════════════════
     CHECK-BEFORE-ACT PRECONDITIONS (MUST be true before choosing an action):
@@ -469,15 +469,7 @@ class GeneratePlanDepots(dspy.Signature):
     Do NOT invent action types outside this set.
     ❌ DO NOT use blocksworld actions: pick-up, put-down, stack, unstack
 
-    ═══════════════════════════════════════════════════════════════════════════
-    CRITICAL: STATE TRACKING AND LOGICAL VERIFICATION (P0 Requirements)
-    ═══════════════════════════════════════════════════════════════════════════
-
-    ┌─────────────────────────────────────────────────────────────────────────┐
-    │ P0-1: EXPLICIT STATE TRACKING                                           │
-    └─────────────────────────────────────────────────────────────────────────┘
-
-    Maintain a STATE TABLE throughout planning. Update it after EVERY action.
+{_STATE_TRACKING_HEADER}
 
     **DEPOTS State Table Format:**
     ```
@@ -495,11 +487,8 @@ class GeneratePlanDepots(dspy.Signature):
     3. After each action: Update affected objects, mark with [UPDATED]
     4. Track: hoist state (available/lifting), crate positions, truck contents, surface clear status
 
-    ┌─────────────────────────────────────────────────────────────────────────┐
-    │ P0-2: CHAIN-OF-SYMBOL (CoS) REPRESENTATION                             │
-    └─────────────────────────────────────────────────────────────────────────┘
+{_COS_REPRESENTATION_HEADER}
 
-    Use symbolic notation for clarity:
     - [hoist, available] or [hoist, lifting=crate1]
     - [crate@surface] means "crate is on surface"
     - [crate@truck] means "crate is in truck"
@@ -510,16 +499,9 @@ class GeneratePlanDepots(dspy.Signature):
     - After lift(h1, c1, pallet1, depot1): [h1, lifting=c1], [pallet1, clear]
     - After load(h1, c1, t1, depot1): [h1, available], [c1@t1]
 
-    ┌─────────────────────────────────────────────────────────────────────────┐
-    │ P0-3: LOGICAL CHAIN-OF-THOUGHT (LogiCoT) PROTOCOL                      │
-    └─────────────────────────────────────────────────────────────────────────┘
+{_LOGICOT_HEADER}
 
-    For EVERY action, follow this 4-step verification protocol:
-
-    **Step 1: Identify Goal** — What are you trying to achieve?
-    **Step 2: List Preconditions** — What MUST be true?
-    **Step 3: Check Current State** — ✓ satisfied / ✗ NOT satisfied
-    **Step 4: Decision** — ALL satisfied → proceed; ANY failed → fix first
+{_LOGICOT_PROTOCOL_DETAILED}
 
     ═══════════════════════════════════════════════════════════════════════════
     WORKED EXAMPLE WITH STATE TRACKING
@@ -623,7 +605,7 @@ class GeneratePlanDepots(dspy.Signature):
 
     ═══════════════════════════════════════════════════════════════════════════
 
-    REMEMBER: State tracking is NOT optional. It is MANDATORY for correct planning.
+{_REMINDER}
     """
     beliefs: str = dspy.InputField(desc="Current state of the depots world")
     desire: str = dspy.InputField(desc="The depots goal to achieve")
