@@ -34,10 +34,25 @@ class Config:
     VAL_VALIDATOR_PATH = os.environ.get("VAL_VALIDATOR_PATH") or os.environ.get("VAL") or str(_default_val_path)
 
     @classmethod
-    def validate(cls):
-        """Validate critical configuration."""
-        if not cls.OPENAI_API_KEY and not cls.ANTHROPIC_API_KEY and not cls.GOOGLE_API_KEY and not cls.GOOGLE_APPLICATION_CREDENTIALS:
-             raise ValueError(
+    def get_credentials(cls):
+        """Read credentials from current environment with class-level fallback."""
+        return {
+            "openai": os.environ.get("OPENAI_API_KEY") or cls.OPENAI_API_KEY,
+            "anthropic": os.environ.get("ANTHROPIC_API_KEY") or cls.ANTHROPIC_API_KEY,
+            "google": os.environ.get("GOOGLE_API_KEY") or cls.GOOGLE_API_KEY,
+            "google_application_credentials": os.environ.get("GOOGLE_APPLICATION_CREDENTIALS") or cls.GOOGLE_APPLICATION_CREDENTIALS,
+        }
+
+    @classmethod
+    def validate(cls, require_credentials: bool = True):
+        """Validate critical configuration.
+
+        Args:
+            require_credentials: if False, validation is best-effort and never raises.
+        """
+        creds = cls.get_credentials()
+        if require_credentials and not any(creds.values()):
+            raise ValueError(
                 "Missing API Key. Please set OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_API_KEY, or GOOGLE_APPLICATION_CREDENTIALS in environment or .env file."
             )
-
+        return creds
