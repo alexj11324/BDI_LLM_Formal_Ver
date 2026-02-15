@@ -347,33 +347,6 @@ class BlocksworldPhysicsValidator:
                 state['clear'].add(block)
                 state['holding'] = None
 
-            elif 'stack' in action_lower:
-                blocks = BlocksworldPhysicsValidator._extract_two_blocks(action)
-                if len(blocks) < 2:
-                    errors.append(
-                        f"Step {step_num}: Cannot parse blocks from stack action: {action}"
-                    )
-                    continue
-
-                block_from, block_to = blocks[0], blocks[1]
-
-                if state['holding'] != block_from:
-                    errors.append(
-                        f"Step {step_num}: Cannot stack {block_from} - not holding it "
-                        f"(holding {state['holding']})"
-                    )
-
-                if block_to not in state['clear']:
-                    errors.append(
-                        f"Step {step_num}: Cannot stack on {block_to} - not clear"
-                    )
-
-                state['on'].add((block_from, block_to))
-                state['clear'].add(block_from)
-                if block_to in state['clear']:
-                    state['clear'].remove(block_to)
-                state['holding'] = None
-
             elif 'unstack' in action_lower:
                 blocks = BlocksworldPhysicsValidator._extract_two_blocks(action)
                 if len(blocks) < 2:
@@ -402,6 +375,33 @@ class BlocksworldPhysicsValidator:
                     state['clear'].remove(block_from)
                 state['holding'] = block_from
 
+            elif 'stack' in action_lower:
+                blocks = BlocksworldPhysicsValidator._extract_two_blocks(action)
+                if len(blocks) < 2:
+                    errors.append(
+                        f"Step {step_num}: Cannot parse blocks from stack action: {action}"
+                    )
+                    continue
+
+                block_from, block_to = blocks[0], blocks[1]
+
+                if state['holding'] != block_from:
+                    errors.append(
+                        f"Step {step_num}: Cannot stack {block_from} - not holding it "
+                        f"(holding {state['holding']})"
+                    )
+
+                if block_to not in state['clear']:
+                    errors.append(
+                        f"Step {step_num}: Cannot stack on {block_to} - not clear"
+                    )
+
+                state['on'].add((block_from, block_to))
+                state['clear'].add(block_from)
+                if block_to in state['clear']:
+                    state['clear'].remove(block_to)
+                state['holding'] = None
+
         is_valid = len(errors) == 0
         return is_valid, errors
 
@@ -419,9 +419,13 @@ class BlocksworldPhysicsValidator:
         if len(parts) > 1:
             return parts[1]
 
-        # Fallback to regex if simple split fails (though split is safer for multi-char)
-        match = re.search(r'\b([a-z0-9_-]+)\b', action.lower())
-        return match.group(1) if match else None
+        # Fallback to regex if simple split fails
+        matches = re.findall(r'\b([a-z0-9_-]+)\b', action.lower())
+        keywords = {'stack', 'unstack', 'pick-up', 'pickup', 'put-down', 'putdown'}
+        for match in matches:
+            if match not in keywords:
+                return match
+        return None
 
     @staticmethod
     def _extract_two_blocks(action: str) -> List[str]:
