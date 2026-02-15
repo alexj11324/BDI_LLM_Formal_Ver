@@ -99,6 +99,9 @@ test_*.py
 paper/
 paper.zip
 
+# BDI_Paper is now an independent repo
+BDI_Paper/
+
 # Unrelated projects
 activation_functions/
 AI-Research-SKILLs/
