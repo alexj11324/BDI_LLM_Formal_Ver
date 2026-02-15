@@ -4,7 +4,7 @@
   "total_instances": 200,
   "results": [
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-102.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-102.pddl",
       "instance_name": "instance-102",
       "timestamp": "2026-02-12T23:18:07.222142",
       "pddl_data": {
@@ -44,7 +44,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-100.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-100.pddl",
       "instance_name": "instance-100",
       "timestamp": "2026-02-12T23:18:07.216388",
       "pddl_data": {
@@ -84,7 +84,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-107.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-107.pddl",
       "instance_name": "instance-107",
       "timestamp": "2026-02-12T23:18:07.254159",
       "pddl_data": {
@@ -124,7 +124,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-110.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-110.pddl",
       "instance_name": "instance-110",
       "timestamp": "2026-02-12T23:18:07.270961",
       "pddl_data": {
@@ -164,7 +164,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-104.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-104.pddl",
       "instance_name": "instance-104",
       "timestamp": "2026-02-12T23:18:07.223522",
       "pddl_data": {
@@ -204,7 +204,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-10.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-10.pddl",
       "instance_name": "instance-10",
       "timestamp": "2026-02-12T23:18:07.214372",
       "pddl_data": {
@@ -244,7 +244,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-105.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-105.pddl",
       "instance_name": "instance-105",
       "timestamp": "2026-02-12T23:18:07.225190",
       "pddl_data": {
@@ -284,7 +284,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-106.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-106.pddl",
       "instance_name": "instance-106",
       "timestamp": "2026-02-12T23:18:07.225756",
       "pddl_data": {
@@ -324,7 +324,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-109.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-109.pddl",
       "instance_name": "instance-109",
       "timestamp": "2026-02-12T23:18:07.262916",
       "pddl_data": {
@@ -364,7 +364,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-113.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-113.pddl",
       "instance_name": "instance-113",
       "timestamp": "2026-02-12T23:18:14.037760",
       "pddl_data": {
@@ -404,7 +404,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-103.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-103.pddl",
       "instance_name": "instance-103",
       "timestamp": "2026-02-12T23:18:07.222494",
       "pddl_data": {
@@ -444,7 +444,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-11.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-11.pddl",
       "instance_name": "instance-11",
       "timestamp": "2026-02-12T23:18:07.268307",
       "pddl_data": {
@@ -484,7 +484,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-115.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-115.pddl",
       "instance_name": "instance-115",
       "timestamp": "2026-02-12T23:18:14.831720",
       "pddl_data": {
@@ -524,7 +524,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-108.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-108.pddl",
       "instance_name": "instance-108",
       "timestamp": "2026-02-12T23:18:07.255666",
       "pddl_data": {
@@ -564,7 +564,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-111.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-111.pddl",
       "instance_name": "instance-111",
       "timestamp": "2026-02-12T23:18:07.271760",
       "pddl_data": {
@@ -604,7 +604,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-116.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-116.pddl",
       "instance_name": "instance-116",
       "timestamp": "2026-02-12T23:18:14.895758",
       "pddl_data": {
@@ -644,7 +644,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-112.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-112.pddl",
       "instance_name": "instance-112",
       "timestamp": "2026-02-12T23:18:13.201658",
       "pddl_data": {
@@ -684,7 +684,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-119.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-119.pddl",
       "instance_name": "instance-119",
       "timestamp": "2026-02-12T23:18:16.337689",
       "pddl_data": {
@@ -724,7 +724,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-12.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-12.pddl",
       "instance_name": "instance-12",
       "timestamp": "2026-02-12T23:18:16.564974",
       "pddl_data": {
@@ -764,7 +764,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-117.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-117.pddl",
       "instance_name": "instance-117",
       "timestamp": "2026-02-12T23:18:14.933322",
       "pddl_data": {
@@ -804,7 +804,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-118.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-118.pddl",
       "instance_name": "instance-118",
       "timestamp": "2026-02-12T23:18:16.025623",
       "pddl_data": {
@@ -844,7 +844,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-1.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-1.pddl",
       "instance_name": "instance-1",
       "timestamp": "2026-02-12T23:18:07.213932",
       "pddl_data": {
@@ -884,7 +884,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-114.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-114.pddl",
       "instance_name": "instance-114",
       "timestamp": "2026-02-12T23:18:14.039132",
       "pddl_data": {
@@ -924,7 +924,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-128.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-128.pddl",
       "instance_name": "instance-128",
       "timestamp": "2026-02-12T23:18:21.642895",
       "pddl_data": {
@@ -964,7 +964,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-126.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-126.pddl",
       "instance_name": "instance-126",
       "timestamp": "2026-02-12T23:18:19.471958",
       "pddl_data": {
@@ -1004,7 +1004,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-132.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-132.pddl",
       "instance_name": "instance-132",
       "timestamp": "2026-02-12T23:18:23.542980",
       "pddl_data": {
@@ -1044,7 +1044,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-127.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-127.pddl",
       "instance_name": "instance-127",
       "timestamp": "2026-02-12T23:18:21.312290",
       "pddl_data": {
@@ -1084,7 +1084,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-129.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-129.pddl",
       "instance_name": "instance-129",
       "timestamp": "2026-02-12T23:18:21.778515",
       "pddl_data": {
@@ -1124,7 +1124,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-124.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-124.pddl",
       "instance_name": "instance-124",
       "timestamp": "2026-02-12T23:18:17.962632",
       "pddl_data": {
@@ -1164,7 +1164,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-13.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-13.pddl",
       "instance_name": "instance-13",
       "timestamp": "2026-02-12T23:18:21.782260",
       "pddl_data": {
@@ -1204,7 +1204,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-120.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-120.pddl",
       "instance_name": "instance-120",
       "timestamp": "2026-02-12T23:18:16.993643",
       "pddl_data": {
@@ -1244,7 +1244,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-130.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-130.pddl",
       "instance_name": "instance-130",
       "timestamp": "2026-02-12T23:18:22.396279",
       "pddl_data": {
@@ -1284,7 +1284,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-101.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-101.pddl",
       "instance_name": "instance-101",
       "timestamp": "2026-02-12T23:18:07.221243",
       "pddl_data": {
@@ -1324,7 +1324,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-135.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-135.pddl",
       "instance_name": "instance-135",
       "timestamp": "2026-02-12T23:18:27.402413",
       "pddl_data": {
@@ -1364,7 +1364,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-14.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-14.pddl",
       "instance_name": "instance-14",
       "timestamp": "2026-02-12T23:18:29.075006",
       "pddl_data": {
@@ -1404,7 +1404,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-131.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-131.pddl",
       "instance_name": "instance-131",
       "timestamp": "2026-02-12T23:18:23.414820",
       "pddl_data": {
@@ -1444,7 +1444,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-125.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-125.pddl",
       "instance_name": "instance-125",
       "timestamp": "2026-02-12T23:18:18.017595",
       "pddl_data": {
@@ -1484,7 +1484,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-123.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-123.pddl",
       "instance_name": "instance-123",
       "timestamp": "2026-02-12T23:18:17.868632",
       "pddl_data": {
@@ -1524,7 +1524,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-139.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-139.pddl",
       "instance_name": "instance-139",
       "timestamp": "2026-02-12T23:18:29.074632",
       "pddl_data": {
@@ -1564,7 +1564,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-133.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-133.pddl",
       "instance_name": "instance-133",
       "timestamp": "2026-02-12T23:18:26.472377",
       "pddl_data": {
@@ -1604,7 +1604,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-136.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-136.pddl",
       "instance_name": "instance-136",
       "timestamp": "2026-02-12T23:18:27.470557",
       "pddl_data": {
@@ -1644,7 +1644,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-134.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-134.pddl",
       "instance_name": "instance-134",
       "timestamp": "2026-02-12T23:18:27.245121",
       "pddl_data": {
@@ -1684,7 +1684,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-122.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-122.pddl",
       "instance_name": "instance-122",
       "timestamp": "2026-02-12T23:18:17.858165",
       "pddl_data": {
@@ -1724,7 +1724,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-142.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-142.pddl",
       "instance_name": "instance-142",
       "timestamp": "2026-02-12T23:18:32.059996",
       "pddl_data": {
@@ -1764,7 +1764,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-137.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-137.pddl",
       "instance_name": "instance-137",
       "timestamp": "2026-02-12T23:18:28.624706",
       "pddl_data": {
@@ -1804,7 +1804,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-144.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-144.pddl",
       "instance_name": "instance-144",
       "timestamp": "2026-02-12T23:18:32.547997",
       "pddl_data": {
@@ -1844,7 +1844,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-140.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-140.pddl",
       "instance_name": "instance-140",
       "timestamp": "2026-02-12T23:18:30.672316",
       "pddl_data": {
@@ -1884,7 +1884,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-147.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-147.pddl",
       "instance_name": "instance-147",
       "timestamp": "2026-02-12T23:18:33.298410",
       "pddl_data": {
@@ -1924,7 +1924,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-143.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-143.pddl",
       "instance_name": "instance-143",
       "timestamp": "2026-02-12T23:18:32.180120",
       "pddl_data": {
@@ -1964,7 +1964,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-146.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-146.pddl",
       "instance_name": "instance-146",
       "timestamp": "2026-02-12T23:18:33.272188",
       "pddl_data": {
@@ -2004,7 +2004,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-145.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-145.pddl",
       "instance_name": "instance-145",
       "timestamp": "2026-02-12T23:18:33.271001",
       "pddl_data": {
@@ -2044,7 +2044,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-121.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-121.pddl",
       "instance_name": "instance-121",
       "timestamp": "2026-02-12T23:18:17.408614",
       "pddl_data": {
@@ -2084,7 +2084,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-138.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-138.pddl",
       "instance_name": "instance-138",
       "timestamp": "2026-02-12T23:18:28.865956",
       "pddl_data": {
@@ -2124,7 +2124,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-153.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-153.pddl",
       "instance_name": "instance-153",
       "timestamp": "2026-02-12T23:18:38.090973",
       "pddl_data": {
@@ -2164,7 +2164,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-159.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-159.pddl",
       "instance_name": "instance-159",
       "timestamp": "2026-02-12T23:18:39.904580",
       "pddl_data": {
@@ -2204,7 +2204,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-15.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-15.pddl",
       "instance_name": "instance-15",
       "timestamp": "2026-02-12T23:18:35.162959",
       "pddl_data": {
@@ -2244,7 +2244,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-151.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-151.pddl",
       "instance_name": "instance-151",
       "timestamp": "2026-02-12T23:18:36.541260",
       "pddl_data": {
@@ -2284,7 +2284,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-149.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-149.pddl",
       "instance_name": "instance-149",
       "timestamp": "2026-02-12T23:18:34.111025",
       "pddl_data": {
@@ -2324,7 +2324,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-150.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-150.pddl",
       "instance_name": "instance-150",
       "timestamp": "2026-02-12T23:18:35.573937",
       "pddl_data": {
@@ -2364,7 +2364,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-155.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-155.pddl",
       "instance_name": "instance-155",
       "timestamp": "2026-02-12T23:18:39.190985",
       "pddl_data": {
@@ -2404,7 +2404,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-157.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-157.pddl",
       "instance_name": "instance-157",
       "timestamp": "2026-02-12T23:18:39.393889",
       "pddl_data": {
@@ -2444,7 +2444,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-158.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-158.pddl",
       "instance_name": "instance-158",
       "timestamp": "2026-02-12T23:18:39.562456",
       "pddl_data": {
@@ -2484,7 +2484,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-154.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-154.pddl",
       "instance_name": "instance-154",
       "timestamp": "2026-02-12T23:18:38.908955",
       "pddl_data": {
@@ -2524,7 +2524,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-156.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-156.pddl",
       "instance_name": "instance-156",
       "timestamp": "2026-02-12T23:18:39.304774",
       "pddl_data": {
@@ -2564,7 +2564,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-163.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-163.pddl",
       "instance_name": "instance-163",
       "timestamp": "2026-02-12T23:18:43.132698",
       "pddl_data": {
@@ -2604,7 +2604,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-162.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-162.pddl",
       "instance_name": "instance-162",
       "timestamp": "2026-02-12T23:18:42.970576",
       "pddl_data": {
@@ -2644,7 +2644,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-169.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-169.pddl",
       "instance_name": "instance-169",
       "timestamp": "2026-02-12T23:18:45.015396",
       "pddl_data": {
@@ -2684,7 +2684,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-148.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-148.pddl",
       "instance_name": "instance-148",
       "timestamp": "2026-02-12T23:18:33.511651",
       "pddl_data": {
@@ -2724,7 +2724,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-166.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-166.pddl",
       "instance_name": "instance-166",
       "timestamp": "2026-02-12T23:18:44.072623",
       "pddl_data": {
@@ -2764,7 +2764,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-152.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-152.pddl",
       "instance_name": "instance-152",
       "timestamp": "2026-02-12T23:18:37.345406",
       "pddl_data": {
@@ -2804,7 +2804,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-160.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-160.pddl",
       "instance_name": "instance-160",
       "timestamp": "2026-02-12T23:18:42.564784",
       "pddl_data": {
@@ -2844,7 +2844,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-16.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-16.pddl",
       "instance_name": "instance-16",
       "timestamp": "2026-02-12T23:18:41.375653",
       "pddl_data": {
@@ -2884,7 +2884,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-165.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-165.pddl",
       "instance_name": "instance-165",
       "timestamp": "2026-02-12T23:18:43.845423",
       "pddl_data": {
@@ -2924,7 +2924,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-161.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-161.pddl",
       "instance_name": "instance-161",
       "timestamp": "2026-02-12T23:18:42.727114",
       "pddl_data": {
@@ -2964,7 +2964,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-141.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-141.pddl",
       "instance_name": "instance-141",
       "timestamp": "2026-02-12T23:18:31.593491",
       "pddl_data": {
@@ -3004,7 +3004,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-176.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-176.pddl",
       "instance_name": "instance-176",
       "timestamp": "2026-02-12T23:18:49.038297",
       "pddl_data": {
@@ -3044,7 +3044,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-167.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-167.pddl",
       "instance_name": "instance-167",
       "timestamp": "2026-02-12T23:18:44.637382",
       "pddl_data": {
@@ -3084,7 +3084,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-164.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-164.pddl",
       "instance_name": "instance-164",
       "timestamp": "2026-02-12T23:18:43.164089",
       "pddl_data": {
@@ -3124,7 +3124,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-17.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-17.pddl",
       "instance_name": "instance-17",
       "timestamp": "2026-02-12T23:18:45.035823",
       "pddl_data": {
@@ -3164,7 +3164,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-173.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-173.pddl",
       "instance_name": "instance-173",
       "timestamp": "2026-02-12T23:18:48.543840",
       "pddl_data": {
@@ -3204,7 +3204,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-168.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-168.pddl",
       "instance_name": "instance-168",
       "timestamp": "2026-02-12T23:18:44.955132",
       "pddl_data": {
@@ -3244,7 +3244,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-177.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-177.pddl",
       "instance_name": "instance-177",
       "timestamp": "2026-02-12T23:18:50.104961",
       "pddl_data": {
@@ -3284,7 +3284,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-175.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-175.pddl",
       "instance_name": "instance-175",
       "timestamp": "2026-02-12T23:18:49.034348",
       "pddl_data": {
@@ -3324,7 +3324,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-178.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-178.pddl",
       "instance_name": "instance-178",
       "timestamp": "2026-02-12T23:18:50.487623",
       "pddl_data": {
@@ -3364,7 +3364,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-170.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-170.pddl",
       "instance_name": "instance-170",
       "timestamp": "2026-02-12T23:18:47.047548",
       "pddl_data": {
@@ -3404,7 +3404,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-174.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-174.pddl",
       "instance_name": "instance-174",
       "timestamp": "2026-02-12T23:18:48.573599",
       "pddl_data": {
@@ -3444,7 +3444,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-180.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-180.pddl",
       "instance_name": "instance-180",
       "timestamp": "2026-02-12T23:18:52.233500",
       "pddl_data": {
@@ -3484,7 +3484,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-179.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-179.pddl",
       "instance_name": "instance-179",
       "timestamp": "2026-02-12T23:18:50.678061",
       "pddl_data": {
@@ -3524,7 +3524,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-172.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-172.pddl",
       "instance_name": "instance-172",
       "timestamp": "2026-02-12T23:18:48.259409",
       "pddl_data": {
@@ -3564,7 +3564,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-18.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-18.pddl",
       "instance_name": "instance-18",
       "timestamp": "2026-02-12T23:18:51.848249",
       "pddl_data": {
@@ -3604,7 +3604,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-171.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-171.pddl",
       "instance_name": "instance-171",
       "timestamp": "2026-02-12T23:18:47.694786",
       "pddl_data": {
@@ -3644,7 +3644,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-182.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-182.pddl",
       "instance_name": "instance-182",
       "timestamp": "2026-02-12T23:18:52.925833",
       "pddl_data": {
@@ -3684,7 +3684,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-187.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-187.pddl",
       "instance_name": "instance-187",
       "timestamp": "2026-02-12T23:18:54.414462",
       "pddl_data": {
@@ -3724,7 +3724,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-186.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-186.pddl",
       "instance_name": "instance-186",
       "timestamp": "2026-02-12T23:18:54.139439",
       "pddl_data": {
@@ -3764,7 +3764,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-184.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-184.pddl",
       "instance_name": "instance-184",
       "timestamp": "2026-02-12T23:18:53.838295",
       "pddl_data": {
@@ -3804,7 +3804,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-195.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-195.pddl",
       "instance_name": "instance-195",
       "timestamp": "2026-02-12T23:18:57.565713",
       "pddl_data": {
@@ -3844,7 +3844,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-193.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-193.pddl",
       "instance_name": "instance-193",
       "timestamp": "2026-02-12T23:18:57.348674",
       "pddl_data": {
@@ -3884,7 +3884,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-181.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-181.pddl",
       "instance_name": "instance-181",
       "timestamp": "2026-02-12T23:18:52.774547",
       "pddl_data": {
@@ -3924,7 +3924,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-191.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-191.pddl",
       "instance_name": "instance-191",
       "timestamp": "2026-02-12T23:18:57.123356",
       "pddl_data": {
@@ -3964,7 +3964,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-185.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-185.pddl",
       "instance_name": "instance-185",
       "timestamp": "2026-02-12T23:18:53.868063",
       "pddl_data": {
@@ -4004,7 +4004,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-189.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-189.pddl",
       "instance_name": "instance-189",
       "timestamp": "2026-02-12T23:18:55.891222",
       "pddl_data": {
@@ -4044,7 +4044,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-19.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-19.pddl",
       "instance_name": "instance-19",
       "timestamp": "2026-02-12T23:18:55.919392",
       "pddl_data": {
@@ -4084,7 +4084,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-188.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-188.pddl",
       "instance_name": "instance-188",
       "timestamp": "2026-02-12T23:18:55.509974",
       "pddl_data": {
@@ -4124,7 +4124,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-183.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-183.pddl",
       "instance_name": "instance-183",
       "timestamp": "2026-02-12T23:18:52.927089",
       "pddl_data": {
@@ -4164,7 +4164,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-190.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-190.pddl",
       "instance_name": "instance-190",
       "timestamp": "2026-02-12T23:18:56.448012",
       "pddl_data": {
@@ -4204,7 +4204,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-199.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-199.pddl",
       "instance_name": "instance-199",
       "timestamp": "2026-02-12T23:19:00.466392",
       "pddl_data": {
@@ -4244,7 +4244,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-20.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-20.pddl",
       "instance_name": "instance-20",
       "timestamp": "2026-02-12T23:19:01.154741",
       "pddl_data": {
@@ -4284,7 +4284,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-197.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-197.pddl",
       "instance_name": "instance-197",
       "timestamp": "2026-02-12T23:18:59.658734",
       "pddl_data": {
@@ -4324,7 +4324,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-194.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-194.pddl",
       "instance_name": "instance-194",
       "timestamp": "2026-02-12T23:18:57.386595",
       "pddl_data": {
@@ -4364,7 +4364,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-192.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-192.pddl",
       "instance_name": "instance-192",
       "timestamp": "2026-02-12T23:18:57.125298",
       "pddl_data": {
@@ -4404,7 +4404,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-208.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-208.pddl",
       "instance_name": "instance-208",
       "timestamp": "2026-02-12T23:19:04.442223",
       "pddl_data": {
@@ -4444,7 +4444,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-203.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-203.pddl",
       "instance_name": "instance-203",
       "timestamp": "2026-02-12T23:19:03.263032",
       "pddl_data": {
@@ -4484,7 +4484,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-198.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-198.pddl",
       "instance_name": "instance-198",
       "timestamp": "2026-02-12T23:19:00.360703",
       "pddl_data": {
@@ -4524,7 +4524,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-200.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-200.pddl",
       "instance_name": "instance-200",
       "timestamp": "2026-02-12T23:19:01.460940",
       "pddl_data": {
@@ -4564,7 +4564,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-2.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-2.pddl",
       "instance_name": "instance-2",
       "timestamp": "2026-02-12T23:19:00.690720",
       "pddl_data": {
@@ -4604,7 +4604,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-196.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-196.pddl",
       "instance_name": "instance-196",
       "timestamp": "2026-02-12T23:18:59.221719",
       "pddl_data": {
@@ -4644,7 +4644,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-201.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-201.pddl",
       "instance_name": "instance-201",
       "timestamp": "2026-02-12T23:19:02.015265",
       "pddl_data": {
@@ -4684,7 +4684,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-206.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-206.pddl",
       "instance_name": "instance-206",
       "timestamp": "2026-02-12T23:19:03.581090",
       "pddl_data": {
@@ -4724,7 +4724,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-202.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-202.pddl",
       "instance_name": "instance-202",
       "timestamp": "2026-02-12T23:19:02.081914",
       "pddl_data": {
@@ -4764,7 +4764,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-207.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-207.pddl",
       "instance_name": "instance-207",
       "timestamp": "2026-02-12T23:19:04.091362",
       "pddl_data": {
@@ -4804,7 +4804,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-204.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-204.pddl",
       "instance_name": "instance-204",
       "timestamp": "2026-02-12T23:19:03.373387",
       "pddl_data": {
@@ -4844,7 +4844,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-211.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-211.pddl",
       "instance_name": "instance-211",
       "timestamp": "2026-02-12T23:19:07.363679",
       "pddl_data": {
@@ -4884,7 +4884,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-210.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-210.pddl",
       "instance_name": "instance-210",
       "timestamp": "2026-02-12T23:19:05.693215",
       "pddl_data": {
@@ -4924,7 +4924,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-205.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-205.pddl",
       "instance_name": "instance-205",
       "timestamp": "2026-02-12T23:19:03.425643",
       "pddl_data": {
@@ -4964,7 +4964,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-215.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-215.pddl",
       "instance_name": "instance-215",
       "timestamp": "2026-02-12T23:19:08.323996",
       "pddl_data": {
@@ -5004,7 +5004,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-216.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-216.pddl",
       "instance_name": "instance-216",
       "timestamp": "2026-02-12T23:19:08.411618",
       "pddl_data": {
@@ -5044,7 +5044,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-217.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-217.pddl",
       "instance_name": "instance-217",
       "timestamp": "2026-02-12T23:19:09.196841",
       "pddl_data": {
@@ -5084,7 +5084,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-218.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-218.pddl",
       "instance_name": "instance-218",
       "timestamp": "2026-02-12T23:19:09.799628",
       "pddl_data": {
@@ -5124,7 +5124,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-209.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-209.pddl",
       "instance_name": "instance-209",
       "timestamp": "2026-02-12T23:19:04.605706",
       "pddl_data": {
@@ -5164,7 +5164,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-219.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-219.pddl",
       "instance_name": "instance-219",
       "timestamp": "2026-02-12T23:19:09.982696",
       "pddl_data": {
@@ -5204,7 +5204,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-214.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-214.pddl",
       "instance_name": "instance-214",
       "timestamp": "2026-02-12T23:19:07.859423",
       "pddl_data": {
@@ -5244,7 +5244,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-213.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-213.pddl",
       "instance_name": "instance-213",
       "timestamp": "2026-02-12T23:19:07.771856",
       "pddl_data": {
@@ -5284,7 +5284,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-21.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-21.pddl",
       "instance_name": "instance-21",
       "timestamp": "2026-02-12T23:19:05.544600",
       "pddl_data": {
@@ -5324,7 +5324,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-212.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-212.pddl",
       "instance_name": "instance-212",
       "timestamp": "2026-02-12T23:19:07.656651",
       "pddl_data": {
@@ -5364,7 +5364,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-223.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-223.pddl",
       "instance_name": "instance-223",
       "timestamp": "2026-02-12T23:19:12.587739",
       "pddl_data": {
@@ -5404,7 +5404,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-229.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-229.pddl",
       "instance_name": "instance-229",
       "timestamp": "2026-02-12T23:19:14.039529",
       "pddl_data": {
@@ -5444,7 +5444,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-221.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-221.pddl",
       "instance_name": "instance-221",
       "timestamp": "2026-02-12T23:19:11.960921",
       "pddl_data": {
@@ -5484,7 +5484,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-225.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-225.pddl",
       "instance_name": "instance-225",
       "timestamp": "2026-02-12T23:19:12.836623",
       "pddl_data": {
@@ -5524,7 +5524,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-220.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-220.pddl",
       "instance_name": "instance-220",
       "timestamp": "2026-02-12T23:19:11.222453",
       "pddl_data": {
@@ -5564,7 +5564,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-22.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-22.pddl",
       "instance_name": "instance-22",
       "timestamp": "2026-02-12T23:19:10.755252",
       "pddl_data": {
@@ -5604,7 +5604,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-227.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-227.pddl",
       "instance_name": "instance-227",
       "timestamp": "2026-02-12T23:19:12.908565",
       "pddl_data": {
@@ -5644,7 +5644,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-233.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-233.pddl",
       "instance_name": "instance-233",
       "timestamp": "2026-02-12T23:19:16.725701",
       "pddl_data": {
@@ -5684,7 +5684,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-224.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-224.pddl",
       "instance_name": "instance-224",
       "timestamp": "2026-02-12T23:19:12.762462",
       "pddl_data": {
@@ -5724,7 +5724,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-234.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-234.pddl",
       "instance_name": "instance-234",
       "timestamp": "2026-02-12T23:19:18.755308",
       "pddl_data": {
@@ -5764,7 +5764,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-238.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-238.pddl",
       "instance_name": "instance-238",
       "timestamp": "2026-02-12T23:19:22.068448",
       "pddl_data": {
@@ -5804,7 +5804,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-239.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-239.pddl",
       "instance_name": "instance-239",
       "timestamp": "2026-02-12T23:19:22.985447",
       "pddl_data": {
@@ -5844,7 +5844,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-24.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-24.pddl",
       "instance_name": "instance-24",
       "timestamp": "2026-02-12T23:19:23.206448",
       "pddl_data": {
@@ -5884,7 +5884,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-240.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-240.pddl",
       "instance_name": "instance-240",
       "timestamp": "2026-02-12T23:19:23.337755",
       "pddl_data": {
@@ -5924,7 +5924,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-236.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-236.pddl",
       "instance_name": "instance-236",
       "timestamp": "2026-02-12T23:19:20.348466",
       "pddl_data": {
@@ -5964,7 +5964,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-241.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-241.pddl",
       "instance_name": "instance-241",
       "timestamp": "2026-02-12T23:19:26.693376",
       "pddl_data": {
@@ -6004,7 +6004,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-243.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-243.pddl",
       "instance_name": "instance-243",
       "timestamp": "2026-02-12T23:19:29.723279",
       "pddl_data": {
@@ -6044,7 +6044,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-235.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-235.pddl",
       "instance_name": "instance-235",
       "timestamp": "2026-02-12T23:19:19.897910",
       "pddl_data": {
@@ -6084,7 +6084,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-242.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-242.pddl",
       "instance_name": "instance-242",
       "timestamp": "2026-02-12T23:19:29.720916",
       "pddl_data": {
@@ -6124,7 +6124,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-246.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-246.pddl",
       "instance_name": "instance-246",
       "timestamp": "2026-02-12T23:19:32.567761",
       "pddl_data": {
@@ -6164,7 +6164,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-237.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-237.pddl",
       "instance_name": "instance-237",
       "timestamp": "2026-02-12T23:19:20.644310",
       "pddl_data": {
@@ -6204,7 +6204,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-245.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-245.pddl",
       "instance_name": "instance-245",
       "timestamp": "2026-02-12T23:19:32.556852",
       "pddl_data": {
@@ -6244,7 +6244,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-244.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-244.pddl",
       "instance_name": "instance-244",
       "timestamp": "2026-02-12T23:19:31.215346",
       "pddl_data": {
@@ -6284,7 +6284,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-25.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-25.pddl",
       "instance_name": "instance-25",
       "timestamp": "2026-02-12T23:19:36.754190",
       "pddl_data": {
@@ -6324,7 +6324,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-253.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-253.pddl",
       "instance_name": "instance-253",
       "timestamp": "2026-02-12T23:19:38.619954",
       "pddl_data": {
@@ -6364,7 +6364,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-23.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-23.pddl",
       "instance_name": "instance-23",
       "timestamp": "2026-02-12T23:19:14.432948",
       "pddl_data": {
@@ -6404,7 +6404,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-248.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-248.pddl",
       "instance_name": "instance-248",
       "timestamp": "2026-02-12T23:19:36.198261",
       "pddl_data": {
@@ -6444,7 +6444,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-232.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-232.pddl",
       "instance_name": "instance-232",
       "timestamp": "2026-02-12T23:19:16.250714",
       "pddl_data": {
@@ -6484,7 +6484,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-247.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-247.pddl",
       "instance_name": "instance-247",
       "timestamp": "2026-02-12T23:19:35.279057",
       "pddl_data": {
@@ -6524,7 +6524,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-249.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-249.pddl",
       "instance_name": "instance-249",
       "timestamp": "2026-02-12T23:19:36.724354",
       "pddl_data": {
@@ -6564,7 +6564,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-231.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-231.pddl",
       "instance_name": "instance-231",
       "timestamp": "2026-02-12T23:19:15.633118",
       "pddl_data": {
@@ -6604,7 +6604,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-228.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-228.pddl",
       "instance_name": "instance-228",
       "timestamp": "2026-02-12T23:19:13.942530",
       "pddl_data": {
@@ -6644,7 +6644,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-250.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-250.pddl",
       "instance_name": "instance-250",
       "timestamp": "2026-02-12T23:19:36.999919",
       "pddl_data": {
@@ -6684,7 +6684,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-254.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-254.pddl",
       "instance_name": "instance-254",
       "timestamp": "2026-02-12T23:19:40.083470",
       "pddl_data": {
@@ -6724,7 +6724,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-259.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-259.pddl",
       "instance_name": "instance-259",
       "timestamp": "2026-02-12T23:19:43.983605",
       "pddl_data": {
@@ -6764,7 +6764,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-26.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-26.pddl",
       "instance_name": "instance-26",
       "timestamp": "2026-02-12T23:19:43.993059",
       "pddl_data": {
@@ -6804,7 +6804,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-252.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-252.pddl",
       "instance_name": "instance-252",
       "timestamp": "2026-02-12T23:19:38.507971",
       "pddl_data": {
@@ -6844,7 +6844,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-256.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-256.pddl",
       "instance_name": "instance-256",
       "timestamp": "2026-02-12T23:19:43.420305",
       "pddl_data": {
@@ -6884,7 +6884,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-251.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-251.pddl",
       "instance_name": "instance-251",
       "timestamp": "2026-02-12T23:19:37.148226",
       "pddl_data": {
@@ -6924,7 +6924,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-257.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-257.pddl",
       "instance_name": "instance-257",
       "timestamp": "2026-02-12T23:19:43.968824",
       "pddl_data": {
@@ -6964,7 +6964,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-230.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-230.pddl",
       "instance_name": "instance-230",
       "timestamp": "2026-02-12T23:19:15.306163",
       "pddl_data": {
@@ -7004,7 +7004,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-255.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-255.pddl",
       "instance_name": "instance-255",
       "timestamp": "2026-02-12T23:19:43.386088",
       "pddl_data": {
@@ -7044,7 +7044,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-267.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-267.pddl",
       "instance_name": "instance-267",
       "timestamp": "2026-02-12T23:19:48.240766",
       "pddl_data": {
@@ -7084,7 +7084,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-268.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-268.pddl",
       "instance_name": "instance-268",
       "timestamp": "2026-02-12T23:19:48.498078",
       "pddl_data": {
@@ -7124,7 +7124,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-222.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-222.pddl",
       "instance_name": "instance-222",
       "timestamp": "2026-02-12T23:19:12.196407",
       "pddl_data": {
@@ -7164,7 +7164,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-264.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-264.pddl",
       "instance_name": "instance-264",
       "timestamp": "2026-02-12T23:19:47.276690",
       "pddl_data": {
@@ -7204,7 +7204,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-258.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-258.pddl",
       "instance_name": "instance-258",
       "timestamp": "2026-02-12T23:19:43.973252",
       "pddl_data": {
@@ -7244,7 +7244,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-263.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-263.pddl",
       "instance_name": "instance-263",
       "timestamp": "2026-02-12T23:19:47.233758",
       "pddl_data": {
@@ -7284,7 +7284,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-266.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-266.pddl",
       "instance_name": "instance-266",
       "timestamp": "2026-02-12T23:19:48.050761",
       "pddl_data": {
@@ -7324,7 +7324,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-260.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-260.pddl",
       "instance_name": "instance-260",
       "timestamp": "2026-02-12T23:19:44.949493",
       "pddl_data": {
@@ -7364,7 +7364,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-261.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-261.pddl",
       "instance_name": "instance-261",
       "timestamp": "2026-02-12T23:19:44.977974",
       "pddl_data": {
@@ -7404,7 +7404,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-265.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-265.pddl",
       "instance_name": "instance-265",
       "timestamp": "2026-02-12T23:19:47.339476",
       "pddl_data": {
@@ -7444,7 +7444,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-272.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-272.pddl",
       "instance_name": "instance-272",
       "timestamp": "2026-02-12T23:19:51.432390",
       "pddl_data": {
@@ -7484,7 +7484,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-270.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-270.pddl",
       "instance_name": "instance-270",
       "timestamp": "2026-02-12T23:19:50.966300",
       "pddl_data": {
@@ -7524,7 +7524,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-262.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-262.pddl",
       "instance_name": "instance-262",
       "timestamp": "2026-02-12T23:19:46.156585",
       "pddl_data": {
@@ -7564,7 +7564,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-271.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-271.pddl",
       "instance_name": "instance-271",
       "timestamp": "2026-02-12T23:19:51.258932",
       "pddl_data": {
@@ -7604,7 +7604,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-27.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-27.pddl",
       "instance_name": "instance-27",
       "timestamp": "2026-02-12T23:19:49.218924",
       "pddl_data": {
@@ -7644,7 +7644,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-273.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-273.pddl",
       "instance_name": "instance-273",
       "timestamp": "2026-02-12T23:19:51.642342",
       "pddl_data": {
@@ -7684,7 +7684,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-277.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-277.pddl",
       "instance_name": "instance-277",
       "timestamp": "2026-02-12T23:19:53.308004",
       "pddl_data": {
@@ -7724,7 +7724,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-275.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-275.pddl",
       "instance_name": "instance-275",
       "timestamp": "2026-02-12T23:19:52.649859",
       "pddl_data": {
@@ -7764,7 +7764,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-278.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-278.pddl",
       "instance_name": "instance-278",
       "timestamp": "2026-02-12T23:19:53.388771",
       "pddl_data": {
@@ -7804,7 +7804,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-226.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-226.pddl",
       "instance_name": "instance-226",
       "timestamp": "2026-02-12T23:19:12.906998",
       "pddl_data": {
@@ -7844,7 +7844,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-276.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-276.pddl",
       "instance_name": "instance-276",
       "timestamp": "2026-02-12T23:19:53.118581",
       "pddl_data": {
@@ -7884,7 +7884,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-279.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-279.pddl",
       "instance_name": "instance-279",
       "timestamp": "2026-02-12T23:19:54.047734",
       "pddl_data": {
@@ -7924,7 +7924,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-269.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-269.pddl",
       "instance_name": "instance-269",
       "timestamp": "2026-02-12T23:19:48.498939",
       "pddl_data": {
@@ -7964,7 +7964,7 @@
       "success": true
     },
     {
-      "instance_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-274.pddl",
+      "instance_file": "./planbench_data/plan-bench/instances/blocksworld/generated/instance-274.pddl",
       "instance_name": "instance-274",
       "timestamp": "2026-02-12T23:19:52.185876",
       "pddl_data": {

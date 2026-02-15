@@ -2,16 +2,16 @@
   "snapshot_id": "paper_eval_20260213",
   "source_archive": {
     "file": "planbench_results_archive.tar.gz",
-    "path": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_results_archive.tar.gz"
+    "path": "./planbench_results_archive.tar.gz"
   },
-  "evidence_dir": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/artifacts/paper_eval_20260213",
+  "evidence_dir": "./artifacts/paper_eval_20260213",
   "model": {
-    "env_file": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/.env",
+    "env_file": "./.env",
     "llm_model": "vertex_ai/gemini-3-flash-preview"
   },
   "files": {
     "results_blocksworld_20260212_214230.json": {
-      "path": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/artifacts/paper_eval_20260213/results_blocksworld_20260212_214230.json",
+      "path": "./artifacts/paper_eval_20260213/results_blocksworld_20260212_214230.json",
       "sha256": "f4d5f2a23980888bdd1c70af1fc02ce8d548b468662241196ce20e0a61a8cb18",
       "domain": "blocksworld",
       "total_instances_field": 200,
@@ -22,7 +22,7 @@
       "failed_instance_ids": []
     },
     "results_logistics_20260213_025757.json": {
-      "path": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/artifacts/paper_eval_20260213/results_logistics_20260213_025757.json",
+      "path": "./artifacts/paper_eval_20260213/results_logistics_20260213_025757.json",
       "sha256": "acc899fc5b156c584125fb1ba4cad3ddca2c1f606265b143e2bdc0c52874636c",
       "domain": "logistics",
       "total_instances_field": 572,
@@ -36,7 +36,7 @@
       ]
     },
     "results_depots_20260213_014014.json": {
-      "path": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/artifacts/paper_eval_20260213/results_depots_20260213_014014.json",
+      "path": "./artifacts/paper_eval_20260213/results_depots_20260213_014014.json",
       "sha256": "caabcdd83800ef3ccdb87d274987cda8e7010e3ca485368609a09c30f8e88f47",
       "domain": "depots",
       "total_instances_field": 501,
@@ -51,7 +51,7 @@
       ]
     },
     "checkpoint_blocksworld.json": {
-      "path": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/artifacts/paper_eval_20260213/checkpoint_blocksworld.json",
+      "path": "./artifacts/paper_eval_20260213/checkpoint_blocksworld.json",
       "sha256": "464a56a685043f1a25d75deb2b4f5f20d45332ebba0b82ab45fc592535e43a97",
       "domain": "blocksworld",
       "total_instances_field": 200,
@@ -62,7 +62,7 @@
       "failed_instance_ids": []
     },
     "checkpoint_logistics.json": {
-      "path": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/artifacts/paper_eval_20260213/checkpoint_logistics.json",
+      "path": "./artifacts/paper_eval_20260213/checkpoint_logistics.json",
       "sha256": "24654c62d83f0068ec5d1ad88fe90c89eb47b2f922bd7d05b1afbb662c988681",
       "domain": "logistics",
       "total_instances_field": 572,
@@ -76,7 +76,7 @@
       ]
     },
     "checkpoint_depots.json": {
-      "path": "/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/artifacts/paper_eval_20260213/checkpoint_depots.json",
+      "path": "./artifacts/paper_eval_20260213/checkpoint_depots.json",
       "sha256": "f911a6611c9f7b1af6ecd79764e78706dc31d2745abd94ecf1df9cedc5ae1356",
       "domain": "depots",
       "total_instances_field": 501,

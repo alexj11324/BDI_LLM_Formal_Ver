@@ -11,7 +11,7 @@ Rather than presenting raw PDDL to the LLM, our framework converts each problem 
 \paragraph{BDI Architecture as Structured Output.}
 The Belief-Desire-Intention architecture constrains the LLM's output to a well-defined DAG structure with typed action nodes and explicit dependency edges. This structured output format prevents common LLM failure modes such as generating ambiguous natural language plans, omitting action parameters, or producing plans with implicit ordering assumptions. The DAG representation also enables efficient structural verification (cycle detection, connectivity checks) before the more expensive symbolic verification.
 
-\begin{figure}[t]
+\begin{figure}[!htbp]
 \centering
 \includegraphics[width=\columnwidth]{figures/logistics_improvement.pdf}
 \caption{Incremental improvement in Logistics domain accuracy through successive framework enhancements: domain-specific NL conversion, airport identification warnings, few-shot demonstrations, and the VAL error-driven repair loop.}

@@ -51,6 +51,29 @@ htmlcov/
 .claude/
 .ralph/
 AGENT_RULES.md
+.agents/
+.codex/
+.cursor/
+.gemini/
+.opencode/
+.qwen/
+.orchestra-skills.json
+skills/
+
+# LaTeX build artifacts
+*.aux
+*.out
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+*.bbl
+*.blg
+BDI_Paper/main.pdf
+
+# Binary/large files
+*.zip
+Paper——draft.pdf
+Paper-draft.pdf
 
 # Temporary
 tmp/
