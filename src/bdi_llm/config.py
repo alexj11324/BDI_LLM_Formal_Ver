@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
 # Load environment variables from .env if present
@@ -23,6 +24,14 @@ class Config:
     # Vertex AI Configuration
     VERTEXAI_PROJECT = os.environ.get("VERTEXAI_PROJECT")
     VERTEXAI_LOCATION = os.environ.get("VERTEXAI_LOCATION", "us-central1")
+
+    # Tools Configuration
+    # Auto-detect VAL in PlanBench if not provided in env
+    # Base is repo root: src/bdi_llm/config.py -> src/bdi_llm -> src -> root
+    _base_dir = Path(__file__).parent.parent.parent
+    _default_val_path = _base_dir / "planbench_data/planner_tools/VAL/validate"
+
+    VAL_VALIDATOR_PATH = os.environ.get("VAL_VALIDATOR_PATH") or os.environ.get("VAL") or str(_default_val_path)
 
     @classmethod
     def validate(cls):
