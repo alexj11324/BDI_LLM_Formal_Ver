@@ -1,6 +1,7 @@
 import random
 import argparse
 import os
+import ast
 from prompt_generation import PromptGenerator
 from response_evaluation import ResponseEvaluator
 from response_generation import ResponseGenerator
@@ -44,12 +45,18 @@ if __name__=="__main__":
     task = args.task
     config = args.config
     engine = args.engine
-    verbose = eval(args.verbose)
+    verbose = ast.literal_eval(args.verbose)
+    if not isinstance(verbose, bool):
+        raise ValueError(f"--verbose must be a boolean value (True/False), got: {type(verbose).__name__}")
     specified_instances = args.specific_instances
     seed=args.seed
     ignore_existing = args.ignore_existing
-    random_example = eval(args.random_example)
-    run_till_completion = eval(args.run_till_completion)
+    random_example = ast.literal_eval(args.random_example)
+    if not isinstance(random_example, bool):
+        raise ValueError(f"--random_example must be a boolean value (True/False), got: {type(random_example).__name__}")
+    run_till_completion = ast.literal_eval(args.run_till_completion)
+    if not isinstance(run_till_completion, bool):
+        raise ValueError(f"--run_till_completion must be a boolean value (True/False), got: {type(run_till_completion).__name__}")
     # print(task, config, verbose, specified_instances, random_example)
     config_file = f'./configs/{config}.yaml'
 

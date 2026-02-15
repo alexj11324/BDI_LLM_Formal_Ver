@@ -346,13 +346,15 @@ if __name__=="__main__":
     engine = args.engine
     config = args.config
     verbose = ast.literal_eval(args.verbose)
+    if not isinstance(verbose, bool):
+        raise ValueError(f"--verbose must be a boolean value (True/False), got: {type(verbose).__name__}")
     ignore_existing = args.ignore_existing
     specified_instances = args.specific_instances
 
     print(f"Task: {task}, Engine: {engine}, Config: {config}, Verbose: {verbose}")
 
     # specified_instances = args.specified_instances
-    # random_example = eval(args.random_example)
+    # random_example = ast.literal_eval(args.random_example)
     # print(task, config, verbose, specified_instances, random_example)
     config_file = f'./configs/{config}.yaml'
     response_evaluator = ResponseEvaluator(config_file, engine, specified_instances, verbose, ignore_existing)
