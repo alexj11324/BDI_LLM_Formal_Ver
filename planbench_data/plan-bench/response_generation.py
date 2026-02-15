@@ -146,7 +146,11 @@ if __name__=="__main__":
     config = args.config
     specified_instances = args.specific_instances
     verbose = ast.literal_eval(args.verbose)
+    if not isinstance(verbose, bool):
+        raise ValueError(f"--verbose must be a boolean value (True/False), got: {type(verbose).__name__}")
     run_till_completion = ast.literal_eval(args.run_till_completion)
+    if not isinstance(run_till_completion, bool):
+        raise ValueError(f"--run_till_completion must be a boolean value (True/False), got: {type(run_till_completion).__name__}")
     ignore_existing = args.ignore_existing
     print(f"Task: {task}, Engine: {engine}, Config: {config}, Verbose: {verbose}, Run till completion: {run_till_completion}")
     # specified_instances = args.specified_instances
