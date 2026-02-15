@@ -33,6 +33,19 @@ class PDDLSymbolicVerifier:
     - Type constraints met
     """
 
+    # Compiled regex patterns
+    _re_precond_verbose = re.compile(
+        r"Plan failed because of unsatisfied precondition in:\s*\n\s*(\(.+?\))",
+        re.DOTALL
+    )
+    _re_repair_advice = re.compile(
+        r"Plan Repair Advice:\s*\n(.*?)(?:\n\s*\n|\nFailed plans:|\Z)",
+        re.DOTALL
+    )
+    _re_precond_legacy = re.compile(r"Precondition not satisfied: (.+)")
+    _re_invalid_action = re.compile(r"Invalid action: (.+)")
+    _re_type_error = re.compile(r"Type error: (.+)")
+
     def __init__(self, val_path: str = None):
         """
         Args:
@@ -199,20 +212,14 @@ class PDDLSymbolicVerifier:
 
         # Pattern 1 (verbose): Unsatisfied precondition with specific action
         # "Plan failed because of unsatisfied precondition in:\n(action-name args)"
-        precond_verbose = re.search(
-            r"Plan failed because of unsatisfied precondition in:\s*\n\s*(\(.+?\))",
-            output, re.DOTALL
-        )
+        precond_verbose = self._re_precond_verbose.search(output)
         if precond_verbose:
             failed_action = precond_verbose.group(1).strip()
             errors.append(f"Unsatisfied precondition in action: {failed_action}")
 
         # Pattern 2 (verbose): Plan Repair Advice section
         # Captures the entire repair advice block
-        repair_advice = re.search(
-            r"Plan Repair Advice:\s*\n(.*?)(?:\n\s*\n|\nFailed plans:|\Z)",
-            output, re.DOTALL
-        )
+        repair_advice = self._re_repair_advice.search(output)
         if repair_advice:
             advice_text = repair_advice.group(1).strip()
             errors.append(f"VAL Repair Advice: {advice_text}")
@@ -222,8 +229,7 @@ class PDDLSymbolicVerifier:
             errors.append("Plan executed but goal not satisfied")
 
         # Pattern 4 (legacy): Precondition not satisfied (non-verbose format)
-        precond_pattern = r"Precondition not satisfied: (.+)"
-        for match in re.finditer(precond_pattern, output):
+        for match in self._re_precond_legacy.finditer(output):
             errors.append(f"Precondition violation: {match.group(1)}")
 
         # Pattern 5: Type-checking errors
@@ -231,13 +237,11 @@ class PDDLSymbolicVerifier:
             errors.append("Type-checking error: action parameters have invalid types")
 
         # Pattern 6: Invalid action parameters
-        invalid_action_pattern = r"Invalid action: (.+)"
-        for match in re.finditer(invalid_action_pattern, output):
+        for match in self._re_invalid_action.finditer(output):
             errors.append(f"Invalid action: {match.group(1)}")
 
         # Pattern 7: Type errors
-        type_error_pattern = r"Type error: (.+)"
-        for match in re.finditer(type_error_pattern, output):
+        for match in self._re_type_error.finditer(output):
             errors.append(f"Type error: {match.group(1)}")
 
         # If no specific errors extracted, provide generic message
@@ -263,6 +267,9 @@ class BlocksworldPhysicsValidator:
     - Hand holds at most one block
     - Cannot stack on non-clear blocks
     """
+
+    # Compiled regex pattern for block extraction
+    _re_block = re.compile(r'\b([a-z0-9_-]+)\b')
 
     @staticmethod
     def validate_plan(
@@ -420,7 +427,7 @@ class BlocksworldPhysicsValidator:
             return parts[1]
 
         # Fallback to regex if simple split fails
-        matches = re.findall(r'\b([a-z0-9_-]+)\b', action.lower())
+        matches = BlocksworldPhysicsValidator._re_block.findall(action.lower())
         keywords = {'stack', 'unstack', 'pick-up', 'pickup', 'put-down', 'putdown'}
         for match in matches:
             if match not in keywords:
@@ -442,7 +449,7 @@ class BlocksworldPhysicsValidator:
             return parts[1:3]
 
         # Fallback to regex
-        blocks = re.findall(r'\b([a-z0-9_-]+)\b', action.lower())
+        blocks = BlocksworldPhysicsValidator._re_block.findall(action.lower())
         # Filter out action keywords if caught by regex
         keywords = {'stack', 'unstack', 'pick-up', 'pickup', 'put-down', 'putdown'}
         filtered_blocks = [b for b in blocks if b not in keywords]
