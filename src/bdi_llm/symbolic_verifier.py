@@ -145,12 +145,14 @@ class PDDLSymbolicVerifier:
             prefix='bdi_plan_'
         ) as f:
             # Write plan actions
-            for action in actions:
-                # Ensure action is properly formatted
-                action_str = action.strip()
-                if not action_str.startswith('('):
-                    action_str = f"({action_str})"
-                f.write(f"{action_str}\n")
+            def formatted_actions():
+                for action in actions:
+                    action_str = action.strip()
+                    if not action_str.startswith('('):
+                        action_str = f"({action_str})"
+                    yield f"{action_str}\n"
+
+            f.writelines(formatted_actions())
 
             return f.name
 
