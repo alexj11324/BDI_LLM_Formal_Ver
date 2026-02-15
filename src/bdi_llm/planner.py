@@ -7,8 +7,9 @@ from .verifier import PlanVerifier
 from .config import Config
 
 # 1. Configure DSPy
-# Ensure configuration is valid before proceeding
-Config.validate()
+# Validate configuration in non-strict mode so parser/unit tests can import
+# planner utilities without requiring live API credentials.
+credentials = Config.validate(require_credentials=False)
 
 # Check if model is a reasoning model (gpt-5, o1, etc.)
 is_reasoning_model = any(model_type in Config.MODEL_NAME.lower()
@@ -29,10 +30,10 @@ lm_config = {
 # Vertex AI models use service account credentials via env vars (no api_key needed)
 if is_vertex_ai:
     pass  # litellm reads GOOGLE_APPLICATION_CREDENTIALS, VERTEXAI_PROJECT, VERTEXAI_LOCATION from env
-elif is_gemini_model and Config.GOOGLE_API_KEY:
-    lm_config['api_key'] = Config.GOOGLE_API_KEY
-elif Config.OPENAI_API_KEY:
-    lm_config['api_key'] = Config.OPENAI_API_KEY
+elif is_gemini_model and credentials['google']:
+    lm_config['api_key'] = credentials['google']
+elif credentials['openai']:
+    lm_config['api_key'] = credentials['openai']
     if Config.OPENAI_API_BASE:
         lm_config['api_base'] = Config.OPENAI_API_BASE
 
