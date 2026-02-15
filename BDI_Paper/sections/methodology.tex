@@ -4,10 +4,10 @@
 \section{Framework Architecture}
 \label{sec:method}
 
-\begin{figure*}[t]
+\begin{figure*}[!htbp]
     \centering
     \includegraphics[width=0.85\textwidth]{figures/architecture.pdf}
-    \caption{BDI-LLM system architecture. Natural language problem descriptions are processed through four stages: (1)~LLM plan generation with domain-specific DSPy prompts, (2)~structural verification ensuring valid DAG structure, (3)~symbolic verification via the VAL validator, and (4)~an error-driven LLM repair loop with cumulative error history. Plans passing all layers are output as formally verified PDDL plans.}
+    \caption{BDI-LLM system architecture. Natural language problem descriptions are processed through five stages: (1)~LLM plan generation with domain-specific DSPy prompts, (2)~structural verification ensuring valid DAG structure, (3)~symbolic verification via the VAL validator, (4)~domain-specific physics validation checking physical constraints, and (5)~an error-driven LLM repair loop with cumulative error history. Stages 2--4 form the three-layer verification pipeline. Plans passing all layers are output as formally verified PDDL plans.}
     \label{fig:architecture}
 \end{figure*}
 

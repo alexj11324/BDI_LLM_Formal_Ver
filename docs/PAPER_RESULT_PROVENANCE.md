@@ -5,16 +5,16 @@ This document freezes the evidence chain for paper-reported PlanBench metrics.
 ## Snapshot Location
 
 - Frozen snapshot directory:
-  - `/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/artifacts/paper_eval_20260213/`
+  - `./artifacts/paper_eval_20260213/`
 - Source archive:
-  - `/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_results_archive.tar.gz`
+  - `./planbench_results_archive.tar.gz`
 - Integrity manifest:
-  - `/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/artifacts/paper_eval_20260213/MANIFEST.json`
+  - `./artifacts/paper_eval_20260213/MANIFEST.json`
 
 ## Model Configuration Source
 
 - Config file:
-  - `/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/.env`
+  - `./.env`
 - Model used for this snapshot:
   - `LLM_MODEL=vertex_ai/gemini-3-flash-preview`
 
@@ -22,9 +22,9 @@ This document freezes the evidence chain for paper-reported PlanBench metrics.
 
 Use checkpoint files as the canonical source for paper tables:
 
-- `/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/artifacts/paper_eval_20260213/checkpoint_blocksworld.json`
-- `/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/artifacts/paper_eval_20260213/checkpoint_logistics.json`
-- `/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/artifacts/paper_eval_20260213/checkpoint_depots.json`
+- `./artifacts/paper_eval_20260213/checkpoint_blocksworld.json`
+- `./artifacts/paper_eval_20260213/checkpoint_logistics.json`
+- `./artifacts/paper_eval_20260213/checkpoint_depots.json`
 
 Recomputed from per-instance `success` values:
 
@@ -39,9 +39,9 @@ Recomputed from per-instance `success` values:
 
 The following are retained as upstream run records only:
 
-- `/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/artifacts/paper_eval_20260213/results_blocksworld_20260212_214230.json`
-- `/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/artifacts/paper_eval_20260213/results_logistics_20260213_025757.json`
-- `/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/artifacts/paper_eval_20260213/results_depots_20260213_014014.json`
+- `./artifacts/paper_eval_20260213/results_blocksworld_20260212_214230.json`
+- `./artifacts/paper_eval_20260213/results_logistics_20260213_025757.json`
+- `./artifacts/paper_eval_20260213/results_depots_20260213_014014.json`
 
 Relationship to checkpoint files:
 
@@ -56,7 +56,7 @@ Relationship to checkpoint files:
 Run:
 
 ```bash
-python /Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/scripts/verify_paper_eval_snapshot.py
+python ./scripts/verify_paper_eval_snapshot.py
 ```
 
 Validation includes:
@@ -69,4 +69,4 @@ Validation includes:
 
 ## Why This Prevents Future Drift
 
-Mutable outputs under `/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/runs/` can be overwritten by later experiments. Historical pre-freeze outputs are preserved at `/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/runs/legacy/planbench_results_20260211/`, and some older local runs may still appear under root-level `/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/planbench_results/`; both are non-canonical. The frozen snapshot in `/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/artifacts/paper_eval_20260213/` is the immutable evidence package for publication.
+Mutable outputs under `./runs/` can be overwritten by later experiments. Historical pre-freeze outputs are preserved at `./runs/legacy/planbench_results_20260211/`, and some older local runs may still appear under root-level `./planbench_results/`; both are non-canonical. The frozen snapshot in `./artifacts/paper_eval_20260213/` is the immutable evidence package for publication.
