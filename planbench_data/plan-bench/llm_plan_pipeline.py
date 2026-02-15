@@ -1,5 +1,6 @@
 import random
 import argparse
+import os
 import ast
 from prompt_generation import PromptGenerator
 from response_evaluation import ResponseEvaluator
