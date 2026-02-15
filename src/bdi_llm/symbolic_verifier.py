@@ -18,7 +18,6 @@ import os
 import re
 from pathlib import Path
 from typing import Tuple, List, Dict
-from .config import Config
 
 
 class PDDLSymbolicVerifier:
@@ -53,7 +52,9 @@ class PDDLSymbolicVerifier:
                      Default: planbench_data/planner_tools/VAL/validate
         """
         if val_path is None:
-            val_path = Config.VAL_VALIDATOR_PATH
+            # Auto-detect VAL in PlanBench
+            base = Path(__file__).parent.parent.parent
+            val_path = base / "planbench_data/planner_tools/VAL/validate"
 
         self.val_path = str(val_path)
 
@@ -354,6 +355,33 @@ class BlocksworldPhysicsValidator:
                 state['clear'].add(block)
                 state['holding'] = None
 
+            elif 'stack' in action_lower:
+                blocks = BlocksworldPhysicsValidator._extract_two_blocks(action)
+                if len(blocks) < 2:
+                    errors.append(
+                        f"Step {step_num}: Cannot parse blocks from stack action: {action}"
+                    )
+                    continue
+
+                block_from, block_to = blocks[0], blocks[1]
+
+                if state['holding'] != block_from:
+                    errors.append(
+                        f"Step {step_num}: Cannot stack {block_from} - not holding it "
+                        f"(holding {state['holding']})"
+                    )
+
+                if block_to not in state['clear']:
+                    errors.append(
+                        f"Step {step_num}: Cannot stack on {block_to} - not clear"
+                    )
+
+                state['on'].add((block_from, block_to))
+                state['clear'].add(block_from)
+                if block_to in state['clear']:
+                    state['clear'].remove(block_to)
+                state['holding'] = None
+
             elif 'unstack' in action_lower:
                 blocks = BlocksworldPhysicsValidator._extract_two_blocks(action)
                 if len(blocks) < 2:
@@ -382,33 +410,6 @@ class BlocksworldPhysicsValidator:
                     state['clear'].remove(block_from)
                 state['holding'] = block_from
 
-            elif 'stack' in action_lower:
-                blocks = BlocksworldPhysicsValidator._extract_two_blocks(action)
-                if len(blocks) < 2:
-                    errors.append(
-                        f"Step {step_num}: Cannot parse blocks from stack action: {action}"
-                    )
-                    continue
-
-                block_from, block_to = blocks[0], blocks[1]
-
-                if state['holding'] != block_from:
-                    errors.append(
-                        f"Step {step_num}: Cannot stack {block_from} - not holding it "
-                        f"(holding {state['holding']})"
-                    )
-
-                if block_to not in state['clear']:
-                    errors.append(
-                        f"Step {step_num}: Cannot stack on {block_to} - not clear"
-                    )
-
-                state['on'].add((block_from, block_to))
-                state['clear'].add(block_from)
-                if block_to in state['clear']:
-                    state['clear'].remove(block_to)
-                state['holding'] = None
-
         is_valid = len(errors) == 0
         return is_valid, errors
 
@@ -426,13 +427,9 @@ class BlocksworldPhysicsValidator:
         if len(parts) > 1:
             return parts[1]
 
-        # Fallback to regex if simple split fails
-        matches = BlocksworldPhysicsValidator._re_block.findall(action.lower())
-        keywords = {'stack', 'unstack', 'pick-up', 'pickup', 'put-down', 'putdown'}
-        for match in matches:
-            if match not in keywords:
-                return match
-        return None
+        # Fallback to regex if simple split fails (though split is safer for multi-char)
+        match = BlocksworldPhysicsValidator._re_block.search(action.lower())
+        return match.group(1) if match else None
 
     @staticmethod
     def _extract_two_blocks(action: str) -> List[str]:

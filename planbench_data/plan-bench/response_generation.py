@@ -109,16 +109,6 @@ class ResponseGenerator:
 
 if __name__=="__main__":
     random.seed(10)
-    def str2bool(v):
-        if isinstance(v, bool):
-            return v
-        if v.lower() in ('yes', 'true', 't', 'y', '1'):
-            return True
-        elif v.lower() in ('no', 'false', 'f', 'n', '0'):
-            return False
-        else:
-            raise argparse.ArgumentTypeError('Boolean value expected.')
-
     parser = argparse.ArgumentParser()
     parser.add_argument('--task', type=str, required=True, help='Task to run \
     \n t1 = Plan Generation\
@@ -142,10 +132,10 @@ if __name__=="__main__":
                         \n ada = GPT-3 Ada \
                         ')
                         
-    parser.add_argument('--verbose', type=str2bool, default=False, help='Verbose')
+    parser.add_argument('--verbose', type=str, default="False", help='Verbose')
     #config
     parser.add_argument('--config', type=str, required=True, help='Config file name (no need to add .yaml)')
-    parser.add_argument('--run_till_completion', type=str2bool, default=False, help='Run till completion')
+    parser.add_argument('--run_till_completion', type=str, default="False", help='Run till completion')
     parser.add_argument('--specific_instances', nargs='+', type=int, default=[], help='List of instances to run')
     parser.add_argument('--ignore_existing', action='store_true', help='Ignore existing output')
     # parser.add_argument('--random_example', type=str, default="False", help='Random example')
@@ -154,8 +144,8 @@ if __name__=="__main__":
     engine = args.engine
     config = args.config
     specified_instances = args.specific_instances
-    verbose = args.verbose
-    run_till_completion = args.run_till_completion
+    verbose = eval(args.verbose)
+    run_till_completion = eval(args.run_till_completion)
     ignore_existing = args.ignore_existing
     print(f"Task: {task}, Engine: {engine}, Config: {config}, Verbose: {verbose}, Run till completion: {run_till_completion}")
     # specified_instances = args.specified_instances

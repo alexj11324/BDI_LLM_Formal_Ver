@@ -428,11 +428,11 @@ if __name__ == "__main__":
             output_extra_filename = f"configs/obfuscated_{obf_type}_{args.config}_3.yaml"
 
         with open(input_extra_filename, "r") as f:
-            config = yaml.safe_load(f)
+            config = yaml.load(f)
     
         create_new_config(config, 
                           output_extra_filename, 
                           action_mapping, 
                           predicate_mapping,
                           pddl_path,
-                          new_domain, obf_type)
+                          new_domain)
