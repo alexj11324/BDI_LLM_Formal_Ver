@@ -18,6 +18,19 @@ This project implements a hybrid planning architecture that combines the generat
 *   **Auto-Repair Mechanism**: Automatically fixes common structural errors (like disconnected subgraphs) without re-querying the LLM.
 *   **Benchmarking**: Built-in support for evaluating against the PlanBench dataset.
 
+## PlanBench Results
+
+Evaluated using `vertex_ai/gemini-3-flash-preview` across three planning domains (frozen snapshot: 2026-02-13).
+
+| Domain | Passed | Total | Accuracy |
+|---|---|---|---|
+| Blocksworld | 200 | 200 | **100.0%** |
+| Logistics | 568 | 570 | **99.6%** |
+| Depots | 497 | 500 | **99.4%** |
+| **Overall** | **1265** | **1270** | **99.6%** |
+
+Only 5 instances failed across all domains. Detailed provenance and SHA256 checksums are available in [Paper Result Provenance](docs/PAPER_RESULT_PROVENANCE.md).
+
 ## Installation
 
 1.  Clone the repository:
@@ -71,7 +84,6 @@ BDI_LLM_Formal_Ver/
 │   └── legacy/planbench_results_20260211/  # Historical pre-freeze outputs
 ├── artifacts/paper_eval_20260213/        # Frozen paper evidence snapshot
 ├── planbench_results_archive.tar.gz      # Raw archived experiment bundle
-├── BDI_Paper/                            # Paper source (local authoring)
 └── requirements.txt                      # Project dependencies
 ```
 
