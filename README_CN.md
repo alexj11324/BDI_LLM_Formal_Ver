@@ -18,6 +18,19 @@
 *   **自动修复机制**：自动修复常见的结构错误（如断开的子图），无需重新查询 LLM。
 *   **基准测试**：内置支持在 PlanBench 数据集上进行评估。
 
+## PlanBench 评估结果
+
+使用 `vertex_ai/gemini-3-flash-preview` 模型在三个规划领域上进行评估（冻结快照：2026-02-13）。
+
+| 领域 | 通过 | 总数 | 准确率 |
+|---|---|---|---|
+| Blocksworld | 200 | 200 | **100.0%** |
+| Logistics | 568 | 570 | **99.6%** |
+| Depots | 497 | 500 | **99.4%** |
+| **总计** | **1265** | **1270** | **99.6%** |
+
+所有领域中仅有 5 个实例失败。详细的结果溯源和 SHA256 校验和请参见[论文结果溯源](docs/PAPER_RESULT_PROVENANCE.md)。
+
 ## 安装
 
 1.  克隆仓库：
@@ -62,22 +75,16 @@ python scripts/run_evaluation.py --mode [unit|demo|benchmark]
 
 ```
 BDI_LLM_Formal_Ver/
-├── src/
-│   └── bdi_llm/            # 核心包
-│       ├── planner.py      # 集成 LLM 的 BDI 规划器
-│       ├── verifier.py     # 图和 PDDL 验证逻辑
-│       ├── plan_repair.py  # 自动修复机制
-│       └── config.py       # 配置管理
-├── scripts/
-│   ├── run_evaluation.py   # 演示/测试的主入口
-│   └── run_planbench_*.py  # 基准测试运行器
-├── tests/                  # 单元和集成测试
-├── docs/
-│   ├── USER_GUIDE.md       # 用户指南
-│   ├── ARCHITECTURE.md     # 架构文档
-│   └── BENCHMARKS.md       # 基准测试结果
-├── planbench_data/         # PlanBench 数据集（PDDL 文件）
-└── requirements.txt        # 项目依赖
+├── src/bdi_llm/                          # 核心规划器 + 验证模块
+├── scripts/                              # 评估和工具脚本
+├── tests/                                # 单元测试和集成测试
+├── docs/                                 # 用户/系统/溯源文档
+├── planbench_data/                       # PlanBench 数据集 + VAL 二进制文件
+├── runs/                                 # 可变输出 + 历史运行记录（见 runs/README.md）
+│   └── legacy/planbench_results_20260211/  # 冻结前的历史输出
+├── artifacts/paper_eval_20260213/        # 冻结的论文证据快照
+├── planbench_results_archive.tar.gz      # 原始归档实验包
+└── requirements.txt                      # 项目依赖
 ```
 
 ## 文档
@@ -85,6 +92,8 @@ BDI_LLM_Formal_Ver/
 *   [用户指南](docs/USER_GUIDE.md)：详细的使用和配置指南。
 *   [系统架构](docs/ARCHITECTURE.md)：系统架构和验证层。
 *   [基准测试](docs/BENCHMARKS.md)：评估方法和结果。
+*   [论文结果溯源](docs/PAPER_RESULT_PROVENANCE.md)：冻结的论文结果证据链和验证流程。
+*   [仓库组织](docs/REPO_ORGANIZATION.md)：目录职责和清理规则。
 
 ## 许可证
 
