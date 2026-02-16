@@ -1,3 +1,14 @@
+"""BDI-LLM MCP Server Interface.
+
+This module exposes the BDI-LLM verifier capabilities as MCP (Model Context Protocol) tools.
+It provides three main tools:
+1. generate_plan: Generate BDI plans from beliefs and desires
+2. verify_plan: Verify PDDL plans against domain and problem definitions
+3. execute_verified_plan: Execute shell commands gated by PDDL verification (Trojan Horse pattern)
+
+The server uses FastMCP for easy MCP tool registration and supports multiple planning domains
+(blocksworld, logistics, depots).
+"""
 from mcp.server.fastmcp import FastMCP
 import sys
 import subprocess
@@ -15,8 +26,18 @@ from src.bdi_llm.config import Config
 
 mcp = FastMCP("BDI-LLM Verifier")
 
-def _verify_plan_logic(domain_pddl: str, problem_pddl: str, plan_actions: List[str]) -> str:
-    """Helper function for verification logic."""
+def _verify_plan_logic(domain_pddl: str, problem_pddl: str, plan_actions: List[str], domain: str = "blocksworld") -> str:
+    """Helper function for verification logic.
+    
+    Args:
+        domain_pddl: Content of the PDDL domain file.
+        problem_pddl: Content of the PDDL problem file.
+        plan_actions: List of PDDL actions representing the plan.
+        domain: Planning domain name ("blocksworld", "logistics", "depots"). Defaults to "blocksworld".
+    
+    Returns:
+        String indicating whether the plan is valid or describing errors.
+    """
     d_path = None
     p_path = None
     try:
@@ -29,8 +50,8 @@ def _verify_plan_logic(domain_pddl: str, problem_pddl: str, plan_actions: List[s
             p_file.write(problem_pddl)
             p_path = p_file.name
 
-        # We assume domain is blocksworld by default for now as we don't parse PDDL domain name easily
-        verifier = IntegratedVerifier(domain="blocksworld")
+        # Use the provided domain parameter for verification
+        verifier = IntegratedVerifier(domain=domain)
 
         is_valid, errors = verifier.symbolic_verifier.verify_plan(d_path, p_path, plan_actions, verbose=True)
 
@@ -83,7 +104,7 @@ def generate_plan(beliefs: str, desire: str, domain: str = "blocksworld") -> str
         return f"Error generating plan: {str(e)}"
 
 @mcp.tool()
-def verify_plan(domain_pddl: str, problem_pddl: str, plan_actions: List[str]) -> str:
+def verify_plan(domain_pddl: str, problem_pddl: str, plan_actions: List[str], domain: str = "blocksworld") -> str:
     """
     Verifies a PDDL plan against a domain and problem definition.
 
@@ -91,11 +112,24 @@ def verify_plan(domain_pddl: str, problem_pddl: str, plan_actions: List[str]) ->
         domain_pddl: Content of the PDDL domain file.
         problem_pddl: Content of the PDDL problem file.
         plan_actions: List of PDDL actions (e.g. ["(pick-up a)", "(stack a b)"]).
+        domain: Planning domain name ("blocksworld", "logistics", "depots"). Defaults to "blocksworld".
     """
-    return _verify_plan_logic(domain_pddl, problem_pddl, plan_actions)
+    return _verify_plan_logic(domain_pddl, problem_pddl, plan_actions, domain)
 
 def _execute_command(command: str) -> subprocess.CompletedProcess:
-    """Executes a command securely."""
+    """Executes a shell command securely.
+    
+    Uses shlex.split to safely parse the command string and subprocess.run with
+    shell=False (default) to prevent shell injection attacks. This is necessary
+    for the execute_verified_plan tool which needs to run validated commands.
+    
+    Args:
+        command: Command string to execute (will be safely parsed).
+        
+    Returns:
+        CompletedProcess instance with command results.
+    """
+    # Subprocess is required for command execution but secured via shlex.split
     # sourcery skip: avoid-subprocess
     args = shlex.split(command)
     return subprocess.run(
@@ -111,7 +145,8 @@ def execute_verified_plan(
     problem_pddl: str,
     plan_actions: List[str],
     command_to_execute: str,
-    rationale: str
+    rationale: str,
+    domain: str = "blocksworld"
 ) -> str:
     """
     Verifies a PDDL plan and, if valid, executes a shell command.
@@ -123,8 +158,9 @@ def execute_verified_plan(
         plan_actions: List of PDDL actions representing the logic.
         command_to_execute: The actual shell command to run if verification passes.
         rationale: Explanation of why this command is being executed.
+        domain: Planning domain name ("blocksworld", "logistics", "depots"). Defaults to "blocksworld".
     """
-    verification_result = _verify_plan_logic(domain_pddl, problem_pddl, plan_actions)
+    verification_result = _verify_plan_logic(domain_pddl, problem_pddl, plan_actions, domain)
 
     if "Plan is VALID" in verification_result:
         # Proceed with execution

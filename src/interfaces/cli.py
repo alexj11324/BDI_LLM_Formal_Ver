@@ -1,3 +1,12 @@
+"""BDI-LLM Command Line Interface.
+
+This module provides a CLI entry point for demonstrating the BDI planner
+with a sample scenario. It initializes the planner, generates a plan based on
+beliefs and desires, and verifies the resulting plan structure.
+
+Usage:
+    python src/interfaces/cli.py
+"""
 import sys
 import os
 
