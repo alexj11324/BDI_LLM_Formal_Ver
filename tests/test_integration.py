@@ -20,7 +20,7 @@ from bdi_llm.verifier import PlanVerifier
 HAS_API_KEY = bool(os.environ.get("OPENAI_API_KEY") or os.environ.get("ANTHROPIC_API_KEY"))
 
 
-class TestMetrics:
+class MetricsCollector:
     """Metrics collection for evaluation."""
 
     def __init__(self):
@@ -30,7 +30,7 @@ class TestMetrics:
         self.retry_counts: List[int] = []
         self.semantic_scores: List[float] = []
 
-    def record(self, is_valid: bool, retries: int, semantic_score: float = None):
+    def record(self, is_valid: bool, retries: int, semantic_score: float | None = None):
         self.total_runs += 1
         if is_valid:
             self.valid_plans += 1
@@ -244,7 +244,7 @@ def run_benchmark(output_file: str = "benchmark_results.json"):
     Run full benchmark suite and save results.
     Call this function to generate evaluation metrics.
     """
-    metrics = TestMetrics()
+    metrics = MetricsCollector()
     results = []
 
     if not HAS_API_KEY:

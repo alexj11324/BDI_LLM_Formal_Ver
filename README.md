@@ -16,20 +16,21 @@ This project implements a hybrid planning architecture that combines the generat
     2.  **Symbolic Verification**: Integrates PDDL-based verification (using VAL) to check logical consistency.
     3.  **Physics Validation**: Domain-specific physics validators (e.g., for Blocksworld) to ensure action feasibility.
 *   **Auto-Repair Mechanism**: Automatically fixes common structural errors (like disconnected subgraphs) without re-querying the LLM.
+*   **Coding Domain Support**: Specialized BDI planner for software engineering tasks (SWE-bench), capable of reading, editing, and testing code.
 *   **Benchmarking**: Built-in support for evaluating against the PlanBench dataset.
 
 ## PlanBench Results
 
-Evaluated using `vertex_ai/gemini-3-flash-preview` across three planning domains (frozen snapshot: 2026-02-13).
+Evaluated using `vertex_ai/gemini-3-flash-preview` across three planning domains (frozen snapshot: 2026-02-16).
 
 | Domain | Passed | Total | Accuracy |
 |---|---|---|---|
-| Blocksworld | 200 | 200 | **100.0%** |
+| Blocksworld | 399 | 400 | **99.8%** |
 | Logistics | 568 | 570 | **99.6%** |
 | Depots | 497 | 500 | **99.4%** |
-| **Overall** | **1265** | **1270** | **99.6%** |
+| **Overall** | **1464** | **1470** | **99.6%** |
 
-Only 5 instances failed across all domains. Detailed provenance and SHA256 checksums are available in [Paper Result Provenance](docs/PAPER_RESULT_PROVENANCE.md).
+Only 6 instances failed across all domains (1 new failure in Blocksworld Batch 1). Detailed provenance and SHA256 checksums are available in [Paper Result Provenance](docs/PAPER_RESULT_PROVENANCE.md).
 
 ## Installation
 

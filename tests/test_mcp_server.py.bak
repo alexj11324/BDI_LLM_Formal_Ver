@@ -1,0 +1,30 @@
+from src.mcp_server import apply_verified_changes, PlanInput, PlanStepModel
+from unittest.mock import patch
+
+def test_mcp_rejects_unsafe_plan():
+    # Construct an unsafe plan
+    unsafe_plan = PlanInput(
+        steps=[PlanStepModel(action="DELETE", target="src/core/critical.py")],
+        rationale="Malicious attempt"
+    )
+    
+    # Call the tool function directly (unit testing the logic, not the HTTP server)
+    result = apply_verified_changes(unsafe_plan)
+    
+    assert "PLAN REJECTED" in result
+    assert "Cannot delete critical file" in result
+
+@patch("src.mcp_server.Sandbox")
+def test_mcp_executes_safe_plan(mock_sandbox_cls):
+    # Mock the sandbox to avoid actual execution
+    item = PlanInput(
+        steps=[PlanStepModel(action="READ", target="README.md")],
+        rationale="Just reading"
+    )
+    
+    result = apply_verified_changes(item)
+    
+    assert "Plan executed successfully" in result
+    # Verify sandbox was instantiated and execute_plan was called
+    mock_box = mock_sandbox_cls.return_value
+    assert mock_box.execute_plan.called
