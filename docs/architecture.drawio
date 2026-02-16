@@ -1,0 +1,171 @@
+<mxfile host="app.diagrams.net" modified="2026-02-16" agent="Antigravity" version="24.0">
+  <diagram name="BDI Verification Architecture" id="bdi-arch">
+    <mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <!-- Title -->
+        <mxCell id="title" value="&lt;b&gt;BDI-LLM Formal Verification Architecture&lt;/b&gt;&lt;br&gt;验证 + 自修复闭环" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=18;" vertex="1" parent="1">
+          <mxGeometry x="500" y="20" width="400" height="50" as="geometry"/>
+        </mxCell>
+
+        <!-- ==================== External Agent (Left) ==================== -->
+        <mxCell id="agent-box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;arcSize=12;dashed=1;dashPattern=8 8;" vertex="1" parent="1">
+          <mxGeometry x="40" y="100" width="200" height="200" as="geometry"/>
+        </mxCell>
+        <mxCell id="agent-label" value="&lt;b&gt;外部 Agent&lt;/b&gt;&lt;br&gt;(Antigravity / Claude Code / Cursor)" style="text;html=1;align=center;verticalAlign=top;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="45" y="105" width="190" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="agent-task" value="🎯 编码任务:&lt;br&gt;&quot;把 block A 放到 B 上面&quot;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="60" y="155" width="160" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="agent-exec" value="✅ 执行已验证的 Plan" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="60" y="230" width="160" height="40" as="geometry"/>
+        </mxCell>
+
+        <!-- Arrow: Agent -> MCP -->
+        <mxCell id="arrow-agent-mcp" value="MCP 调用&lt;br&gt;generate_verified_plan()" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.2;entryDx=0;entryDy=0;fontSize=9;strokeWidth=2;strokeColor=#6c8ebf;" edge="1" parent="1" source="agent-task" target="mcp-box">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Arrow: MCP -> Agent (return) -->
+        <mxCell id="arrow-mcp-agent" value="返回验证结果" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=0;exitY=0.8;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;fontSize=9;strokeWidth=2;strokeColor=#82b366;dashed=1;" edge="1" parent="1" source="mcp-box" target="agent-exec">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- ==================== MCP Server (Center) ==================== -->
+        <mxCell id="mcp-box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;arcSize=8;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="320" y="90" width="960" height="560" as="geometry"/>
+        </mxCell>
+        <mxCell id="mcp-label" value="&lt;b&gt;你的系统: Native-BDI-Verifier (MCP Server)&lt;/b&gt;&lt;br&gt;mcp_server_bdi.py" style="text;html=1;align=center;verticalAlign=top;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="520" y="95" width="310" height="40" as="geometry"/>
+        </mxCell>
+
+        <!-- ===== Step 1: Plan Generation ===== -->
+        <mxCell id="gen-box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="350" y="150" width="300" height="200" as="geometry"/>
+        </mxCell>
+        <mxCell id="gen-title" value="&lt;b&gt;① 计划生成 (Plan Generation)&lt;/b&gt;&lt;br&gt;planner.py / BDIPlanner" style="text;html=1;align=center;verticalAlign=top;strokeColor=none;fillColor=none;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="360" y="155" width="280" height="35" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="dspy" value="&lt;b&gt;DSPy&lt;/b&gt;&lt;br&gt;结构化 LLM 调用框架" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="370" y="200" width="120" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="llm" value="&lt;b&gt;LLM&lt;/b&gt;&lt;br&gt;Gemini / GPT / ..." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="510" y="200" width="120" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="arrow-dspy-llm" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeWidth=1;" edge="1" parent="1" source="dspy" target="llm">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="gen-sigs" value="&lt;b&gt;DSPy Signatures:&lt;/b&gt;&lt;br&gt;• GeneratePlan (blocksworld)&lt;br&gt;• GeneratePlanLogistics&lt;br&gt;• GeneratePlanDepots" style="text;html=1;align=left;verticalAlign=top;strokeColor=none;fillColor=none;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="370" y="255" width="170" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="bdi-plan" value="&lt;b&gt;输出: BDIPlan&lt;/b&gt;&lt;br&gt;nodes: [ActionNode]&lt;br&gt;edges: [DependencyEdge]&lt;br&gt;(DAG 有向无环图)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="540" y="260" width="100" height="75" as="geometry"/>
+        </mxCell>
+
+        <!-- Arrow: Gen -> Verify -->
+        <mxCell id="arrow-gen-verify" value="Plan + PDDL Actions" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.3;entryDx=0;entryDy=0;fontSize=9;strokeWidth=2;strokeColor=#9673a6;" edge="1" parent="1" source="gen-box" target="verify-box">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- ===== Step 2: Three-Layer Verification ===== -->
+        <mxCell id="verify-box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="720" y="150" width="280" height="310" as="geometry"/>
+        </mxCell>
+        <mxCell id="verify-title" value="&lt;b&gt;② 三层验证 (3-Layer Verification)&lt;/b&gt;&lt;br&gt;symbolic_verifier.py / IntegratedVerifier" style="text;html=1;align=center;verticalAlign=top;strokeColor=none;fillColor=none;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="730" y="155" width="260" height="35" as="geometry"/>
+        </mxCell>
+
+        <!-- Layer 1 -->
+        <mxCell id="layer1" value="&lt;b&gt;Layer 1: 结构验证&lt;/b&gt;&lt;br&gt;DAG 检查 (无环、连通)&lt;br&gt;NetworkX" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff;strokeColor=#b85450;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="740" y="200" width="240" height="50" as="geometry"/>
+        </mxCell>
+        <!-- Layer 2 -->
+        <mxCell id="layer2" value="&lt;b&gt;Layer 2: 符号验证 (PDDL/VAL)&lt;/b&gt;&lt;br&gt;前置条件是否满足?&lt;br&gt;效果是否正确? 目标可达?" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff;strokeColor=#b85450;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="740" y="260" width="240" height="55" as="geometry"/>
+        </mxCell>
+        <!-- Layer 3 -->
+        <mxCell id="layer3" value="&lt;b&gt;Layer 3: 领域物理验证&lt;/b&gt;&lt;br&gt;BlocksworldPhysicsValidator&lt;br&gt;一次只能拿一个 block" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff;strokeColor=#b85450;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="740" y="325" width="240" height="55" as="geometry"/>
+        </mxCell>
+
+        <!-- VAL binary -->
+        <mxCell id="val" value="&lt;b&gt;VAL 二进制&lt;/b&gt;&lt;br&gt;planbench_data/&lt;br&gt;planner_tools/VAL/validate" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="750" y="390" width="120" height="55" as="geometry"/>
+        </mxCell>
+        <!-- PDDL files -->
+        <mxCell id="pddl" value="&lt;b&gt;PDDL 文件&lt;/b&gt;&lt;br&gt;domain.pddl&lt;br&gt;problem.pddl" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="880" y="390" width="100" height="55" as="geometry"/>
+        </mxCell>
+
+        <!-- Decision diamond -->
+        <mxCell id="decision" value="验证&lt;br&gt;通过?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="810" y="490" width="90" height="70" as="geometry"/>
+        </mxCell>
+
+        <!-- Arrow: verify -> decision -->
+        <mxCell id="arrow-verify-decision" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#b85450;" edge="1" parent="1" source="verify-box" target="decision">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- ===== Step 3: Self-Repair ===== -->
+        <mxCell id="repair-box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="350" y="420" width="300" height="150" as="geometry"/>
+        </mxCell>
+        <mxCell id="repair-title" value="&lt;b&gt;③ 自修复 (Self-Repair)&lt;/b&gt;&lt;br&gt;planner.py / RepairPlan" style="text;html=1;align=center;verticalAlign=top;strokeColor=none;fillColor=none;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="360" y="425" width="280" height="35" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="repair-steps" value="1. 接收 VAL 错误信息&lt;br&gt;2. 诊断: 哪个动作的前置条件不满足?&lt;br&gt;3. LLM 重新生成修复后的 Plan&lt;br&gt;4. 累积修复历史 (repair_history)&lt;br&gt;5. 最多 max_retries 次 (默认 3 次)" style="text;html=1;align=left;verticalAlign=top;strokeColor=none;fillColor=none;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="370" y="465" width="260" height="90" as="geometry"/>
+        </mxCell>
+
+        <!-- Arrow: decision -> repair (FAIL) -->
+        <mxCell id="arrow-fail" value="❌ FAIL&lt;br&gt;+ VAL 错误详情" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;fontSize=10;strokeWidth=2;strokeColor=#b85450;fontColor=#b85450;" edge="1" parent="1" source="decision" target="repair-box">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Arrow: repair -> gen (loop back) -->
+        <mxCell id="arrow-repair-gen" value="修复后的 Plan&lt;br&gt;重新验证" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=0;exitY=0;exitDx=0;exitDy=0;entryX=0;entryY=1;entryDx=0;entryDy=0;fontSize=9;strokeWidth=2;strokeColor=#d6b656;curved=1;" edge="1" parent="1" source="repair-box" target="gen-box">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="340" y="420"/>
+              <mxPoint x="340" y="350"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Arrow: decision -> return (PASS) -->
+        <mxCell id="arrow-pass" value="✅ PASS" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;exitDx=0;exitDy=0;fontSize=11;strokeWidth=3;strokeColor=#82b366;fontColor=#82b366;" edge="1" parent="1" source="decision">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1100" y="525" as="targetPoint"/>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Return result box -->
+        <mxCell id="return-box" value="&lt;b&gt;返回给 Agent&lt;/b&gt;&lt;br&gt;✅ 已验证的安全 Plan&lt;br&gt;或&lt;br&gt;❌ 修复失败 + 错误信息" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1060" y="490" width="180" height="70" as="geometry"/>
+        </mxCell>
+
+        <!-- ===== Data Schemas (Bottom) ===== -->
+        <mxCell id="schema-box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0f0f0;strokeColor=#999;arcSize=10;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="350" y="600" width="650" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="schema-label" value="&lt;b&gt;schemas.py:&lt;/b&gt;  ActionNode {id, action_type, params, description}  →  DependencyEdge {source, target}  →  BDIPlan {goal, nodes[], edges[]}  →  NetworkX DAG" style="text;html=1;align=center;verticalAlign=middle;strokeColor=none;fillColor=none;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="355" y="605" width="640" height="30" as="geometry"/>
+        </mxCell>
+
+        <!-- ===== PDDL Domains (Bottom Right) ===== -->
+        <mxCell id="domains" value="&lt;b&gt;支持的领域 (planbench_data/)&lt;/b&gt;&lt;br&gt;🧱 blocksworld  🚚 logistics  🏭 depots  💻 coding (计划中)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1060" y="150" width="200" height="70" as="geometry"/>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

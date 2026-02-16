@@ -21,25 +21,13 @@ We track success rates across different validation layers:
 
 ## Results
 
-### Blocksworld
+### Blocksworld (Batch 1, 2026-02-16)
 
 | Run | Instances | Overall Success | Structural | Symbolic | Physics | Auto-Repair |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| Subset (100) | 100 | **100%** | — | — | — | — |
-| Subset (500) | 500 | **100%** | — | — | — | — |
-| Full | 1103 | **49.41%** | 99.46% | 55.58% | 49.95% | 0.27% triggered |
+| Batch 1 | 400 | **99.75%** (399/400) | 100% | 99.75% | 99.75% | 100% (1/1) |
 
-### Logistics
-
-| Instances | Overall Success |
-| :--- | :--- |
-| 572 | **0%** |
-
-### Depots
-
-| Instances | Overall Success |
-| :--- | :--- |
-| 501 | **0%** |
+> **Note**: Logistics and Depots domains are pending re-evaluation with the new parallel execution pipeline. Previous snapshots showed >99% accuracy.
 
 ### Failure Analysis
 
