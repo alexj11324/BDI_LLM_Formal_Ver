@@ -94,6 +94,17 @@ def verify_plan(domain_pddl: str, problem_pddl: str, plan_actions: List[str]) ->
     """
     return _verify_plan_logic(domain_pddl, problem_pddl, plan_actions)
 
+def _execute_command(command: str) -> subprocess.CompletedProcess:
+    """Executes a command securely."""
+    # sourcery skip: avoid-subprocess
+    args = shlex.split(command)
+    return subprocess.run(
+        args,
+        check=True,
+        capture_output=True,
+        text=True
+    )
+
 @mcp.tool()
 def execute_verified_plan(
     domain_pddl: str,
@@ -121,15 +132,7 @@ def execute_verified_plan(
             # Execute command
             # Security warning: executing arbitrary commands.
             # In a real environment this should be sandboxed or restricted.
-            # We use shlex.split to avoid shell injection when shell=False (default).
-            args = shlex.split(command_to_execute)
-            # sourcery skip: avoid-subprocess
-            result = subprocess.run(
-                args,
-                check=True,
-                capture_output=True,
-                text=True
-            )
+            result = _execute_command(command_to_execute)
             return f"Verification PASSED. Command Executed Successfully.\nOutput:\n{result.stdout}\nRationale: {rationale}"
         except subprocess.CalledProcessError as e:
             return f"Verification PASSED, but Command Execution Failed.\nError:\n{e.stderr}"
