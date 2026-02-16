@@ -94,9 +94,9 @@ def verify_plan(domain_pddl: str, problem_pddl: str, plan_actions: List[str]) ->
     """
     return _verify_plan_logic(domain_pddl, problem_pddl, plan_actions)
 
+# sourcery skip: avoid-subprocess
 def _execute_command(command: str) -> subprocess.CompletedProcess:
     """Executes a command securely."""
-    # sourcery skip: avoid-subprocess
     args = shlex.split(command)
     return subprocess.run(
         args,
