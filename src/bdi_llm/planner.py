@@ -6,57 +6,58 @@ from .verifier import PlanVerifier
 
 from .config import Config
 
-# 1. Configure DSPy
-# Validate configuration in non-strict mode so parser/unit tests can import
-# planner utilities without requiring live API credentials.
-credentials = Config.validate(require_credentials=False)
+def configure_dspy():
+    # 1. Configure DSPy
+    # Validate configuration in non-strict mode so parser/unit tests can import
+    # planner utilities without requiring live API credentials.
+    credentials = Config.validate(require_credentials=False)
 
-# Check if model is a reasoning model (gpt-5, o1, etc.)
-is_reasoning_model = any(model_type in Config.MODEL_NAME.lower()
-                         for model_type in ['gpt-5', 'o1', 'o3'])
+    # Check if model is a reasoning model (gpt-5, o1, etc.)
+    is_reasoning_model = any(model_type in Config.MODEL_NAME.lower()
+                             for model_type in ['gpt-5', 'o1', 'o3'])
 
-# Check if model is a Gemini model
-is_gemini_model = 'gemini' in Config.MODEL_NAME.lower()
+    # Check if model is a Gemini model
+    is_gemini_model = 'gemini' in Config.MODEL_NAME.lower()
 
-# Check if model uses Vertex AI (vertex_ai/ prefix)
-is_vertex_ai = Config.MODEL_NAME.lower().startswith('vertex_ai/')
+    # Check if model uses Vertex AI (vertex_ai/ prefix)
+    is_vertex_ai = Config.MODEL_NAME.lower().startswith('vertex_ai/')
 
-# Prepare LM configuration based on model type
-lm_config = {
-    'model': Config.MODEL_NAME,
-}
+    # Prepare LM configuration based on model type
+    lm_config = {
+        'model': Config.MODEL_NAME,
+    }
 
-# Add API key based on model type
-# Vertex AI models use service account credentials via env vars (no api_key needed)
-if is_vertex_ai:
-    pass  # litellm reads GOOGLE_APPLICATION_CREDENTIALS, VERTEXAI_PROJECT, VERTEXAI_LOCATION from env
-elif is_gemini_model and credentials['google']:
-    lm_config['api_key'] = credentials['google']
-elif credentials['openai']:
-    lm_config['api_key'] = credentials['openai']
-    if Config.OPENAI_API_BASE:
-        lm_config['api_base'] = Config.OPENAI_API_BASE
+    # Add API key based on model type
+    # Vertex AI models use service account credentials via env vars (no api_key needed)
+    if is_vertex_ai:
+        pass  # litellm reads GOOGLE_APPLICATION_CREDENTIALS, VERTEXAI_PROJECT, VERTEXAI_LOCATION from env
+    elif is_gemini_model and credentials['google']:
+        lm_config['api_key'] = credentials['google']
+    elif credentials['openai']:
+        lm_config['api_key'] = credentials['openai']
+        if Config.OPENAI_API_BASE:
+            lm_config['api_base'] = Config.OPENAI_API_BASE
 
-# Add model-specific parameters
-if is_reasoning_model:
-    # Reasoning models require temperature=1.0 and max_tokens >= 16000
-    lm_config['temperature'] = 1.0
-    lm_config['max_tokens'] = 16000
-else:
-    # Standard models use configured temperature for deterministic output
-    lm_config['temperature'] = Config.TEMPERATURE
-    lm_config['max_tokens'] = Config.MAX_TOKENS
+    # Add model-specific parameters
+    if is_reasoning_model:
+        # Reasoning models require temperature=1.0 and max_tokens >= 16000
+        lm_config['temperature'] = 1.0
+        lm_config['max_tokens'] = 16000
+    else:
+        # Standard models use configured temperature for deterministic output
+        lm_config['temperature'] = Config.TEMPERATURE
+        lm_config['max_tokens'] = Config.MAX_TOKENS
 
-# Add max_tokens for gemini models
-if 'gemini' in Config.MODEL_NAME.lower() or 'vertex_ai' in Config.MODEL_NAME.lower():
-    lm_config['max_tokens'] = 16000
+    # Add max_tokens for gemini models
+    if 'gemini' in Config.MODEL_NAME.lower() or 'vertex_ai' in Config.MODEL_NAME.lower():
+        lm_config['max_tokens'] = 16000
 
-# Add timeout and retry settings for rate limiting and reliability
-lm_config['timeout'] = 120  # 2 minute timeout per API call
-lm_config['num_retries'] = 5  # more retries for rate limiting
+    # Add timeout and retry settings for rate limiting and reliability
+    lm_config['timeout'] = 120  # 2 minute timeout per API call
+    lm_config['num_retries'] = 5  # more retries for rate limiting
 
-lm = dspy.LM(**lm_config)
-dspy.configure(lm=lm)
+    lm = dspy.LM(**lm_config)
+    dspy.configure(lm=lm)
 
 # 2. Define the Signature
 
@@ -674,6 +675,7 @@ class BDIPlanner(dspy.Module):
             domain: Planning domain - selects domain-specific Signature
                     ("blocksworld", "logistics", or "depots")
         """
+        configure_dspy()
         super().__init__()
         self.domain = domain
 
@@ -1145,54 +1147,3 @@ class BDIPlanner(dspy.Module):
 
         return pred
 
-# 4. Demonstration Function
-def main():
-    print("Initializing BDI Planner with DSPy...")
-
-    # Define a scenario
-    beliefs = """
-    Location: Living Room.
-    Inventory: None.
-    Environment:
-    - Door to Kitchen is closed.
-    - Keys are on the Table in the Living Room.
-    - Robot is at coordinate (0,0).
-    Available Skills: [PickUp, MoveTo, OpenDoor, UnlockDoor]
-    """
-    desire = "Go to the Kitchen."
-
-    planner = BDIPlanner()
-
-    print(f"\nGoal: {desire}")
-    print("Generating Plan...")
-
-    try:
-        # Run the planner
-        # dspy.Suggest/Assert will automatically retry if validation fails
-        response = planner(beliefs=beliefs, desire=desire)
-        final_plan = response.plan
-
-        print("\n✅ Plan Generated Successfully!")
-        print(f"Goal Description: {final_plan.goal_description}")
-
-        print("\n--- Actions (Nodes) ---")
-        for node in final_plan.nodes:
-            print(f"[{node.id}] {node.action_type}: {node.description}")
-
-        print("\n--- Dependencies (Edges) ---")
-        for edge in final_plan.edges:
-            print(f"{edge.source} -> {edge.target}")
-
-        # Verify final result
-        G = final_plan.to_networkx()
-        print(f"\nFinal Graph Valid? {PlanVerifier.verify(G)[0]}")
-
-        if PlanVerifier.verify(G)[0]:
-            print("\nExecution Order:")
-            print(" -> ".join(PlanVerifier.topological_sort(G)))
-
-    except ValueError as e:
-        print(f"\n❌ Planning Failed: {e}")
-
-if __name__ == "__main__":
-    main()
