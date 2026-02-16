@@ -1,23 +1,22 @@
-"""
-Integration Tests for BDI-LLM Planner.
-Tests the full pipeline: LLM Generation -> Verification -> Self-Correction.
-
-NOTE: These tests require an LLM API key to run.
-Set OPENAI_API_KEY or ANTHROPIC_API_KEY environment variable.
-"""
 import pytest
 import os
-import sys
 import json
-from typing import List, Tuple
-
-sys.path.append(os.path.join(os.path.dirname(__file__), '../src'))
-
+from typing import List
 from bdi_llm.schemas import BDIPlan
 from bdi_llm.verifier import PlanVerifier
 
-# Check if we can run LLM tests
-HAS_API_KEY = bool(os.environ.get("OPENAI_API_KEY") or os.environ.get("ANTHROPIC_API_KEY"))
+# Only run LLM tests if we have a REAL API key
+# CI/Test environments might use placeholder keys like "test-key-for-imports"
+# We should treat those as missing keys for the purpose of integration tests.
+def _has_valid_api_key():
+    key = os.environ.get("OPENAI_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
+    if not key:
+        return False
+    if "test-key" in key or "placeholder" in key or "*" in key:
+        return False
+    return True
+
+HAS_API_KEY = _has_valid_api_key()
 
 
 class MetricsCollector:
@@ -104,7 +103,7 @@ TEST_SCENARIOS = [
 ]
 
 
-@pytest.mark.skipif(not HAS_API_KEY, reason="No API key available")
+@pytest.mark.skipif(not HAS_API_KEY, reason="No valid API key available (found placeholder or None)")
 class TestLLMIntegration:
     """Tests that require actual LLM inference."""
 
@@ -126,10 +125,8 @@ class TestLLMIntegration:
             is_valid, errors = PlanVerifier.verify(G)
 
             assert is_valid, f"Plan failed validation: {errors}"
-            assert len(plan.nodes) >= scenario["expected_min_nodes"], \
-                f"Too few nodes: {len(plan.nodes)} < {scenario['expected_min_nodes']}"
-            assert len(plan.nodes) <= scenario["expected_max_nodes"], \
-                f"Too many nodes: {len(plan.nodes)} > {scenario['expected_max_nodes']}"
+            assert len(plan.nodes) >= scenario["expected_min_nodes"],                 f"Too few nodes: {len(plan.nodes)} < {scenario['expected_min_nodes']}"
+            assert len(plan.nodes) <= scenario["expected_max_nodes"],                 f"Too many nodes: {len(plan.nodes)} > {scenario['expected_max_nodes']}"
 
         except Exception as e:
             pytest.fail(f"Planning failed: {str(e)}")
