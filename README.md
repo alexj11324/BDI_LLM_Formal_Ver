@@ -99,3 +99,14 @@ BDI_LLM_Formal_Ver/
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Current Status & Next Steps (Updated 2026-02-16)
+
+**Recent Accomplishments:**
+- Implemented Coding Domain (Phase 4): `CodingBDIPlanner`, PDDL domain, local SWE-bench harness.
+- Optimized PlanBench (Phase 5): Batch 1 (400 instances) completed with 99.8% success (399/400).
+
+**Priority Queue for Next Session:**
+1.  **Analyze PlanBench Failure**: Investigate the single failure case in Batch 1 (`runs/planbench_results/results_blocksworld_20260216_162051.json`).
+2.  **Expand SWE-bench**: Run `scripts/run_iterative_fix.py` on more instances (e.g., top 5 verified) to robustify the agent.
+3.  **Continue PlanBench Batches**: Execute Batch 2 (400-800) and Batch 3 (800-1103) to complete the benchmark.
