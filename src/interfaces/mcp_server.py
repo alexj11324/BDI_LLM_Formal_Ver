@@ -123,6 +123,7 @@ def execute_verified_plan(
             # In a real environment this should be sandboxed or restricted.
             # We use shlex.split to avoid shell injection when shell=False (default).
             args = shlex.split(command_to_execute)
+            # sourcery skip: avoid-subprocess
             result = subprocess.run(
                 args,
                 check=True,
