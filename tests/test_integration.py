@@ -1,23 +1,22 @@
-"""
-Integration Tests for BDI-LLM Planner.
-Tests the full pipeline: LLM Generation -> Verification -> Self-Correction.
-
-NOTE: These tests require an LLM API key to run.
-Set OPENAI_API_KEY or ANTHROPIC_API_KEY environment variable.
-"""
 import pytest
 import os
-import sys
 import json
-from typing import List, Tuple
+from typing import List
+from src.bdi_llm.schemas import BDIPlan
+from src.bdi_llm.verifier import PlanVerifier
 
-sys.path.append(os.path.join(os.path.dirname(__file__), '../src'))
+# Check if we have a valid API key (not a dummy/placeholder)
+def _is_valid_api_key(key):
+    if not key:
+        return False
+    key_lower = key.lower()
+    # Check for dummy keys often used in CI/testing
+    if "test" in key_lower or "placeholder" in key_lower or "dummy" in key_lower:
+        return False
+    return True
 
-from bdi_llm.schemas import BDIPlan
-from bdi_llm.verifier import PlanVerifier
-
-# Check if we can run LLM tests
-HAS_API_KEY = bool(os.environ.get("OPENAI_API_KEY") or os.environ.get("ANTHROPIC_API_KEY"))
+api_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
+HAS_API_KEY = _is_valid_api_key(api_key)
 
 
 class MetricsCollector:
@@ -104,14 +103,14 @@ TEST_SCENARIOS = [
 ]
 
 
-@pytest.mark.skipif(not HAS_API_KEY, reason="No API key available")
+@pytest.mark.skipif(not HAS_API_KEY, reason="No valid API key available")
 class TestLLMIntegration:
     """Tests that require actual LLM inference."""
 
     @pytest.fixture
     def planner(self):
         """Initialize the BDI Planner."""
-        from bdi_llm.planner import BDIPlanner
+        from src.bdi_llm.planner import BDIPlanner
         return BDIPlanner(domain="testing")
 
     @pytest.mark.parametrize("scenario", TEST_SCENARIOS, ids=[s["name"] for s in TEST_SCENARIOS])
@@ -126,10 +125,8 @@ class TestLLMIntegration:
             is_valid, errors = PlanVerifier.verify(G)
 
             assert is_valid, f"Plan failed validation: {errors}"
-            assert len(plan.nodes) >= scenario["expected_min_nodes"], \
-                f"Too few nodes: {len(plan.nodes)} < {scenario['expected_min_nodes']}"
-            assert len(plan.nodes) <= scenario["expected_max_nodes"], \
-                f"Too many nodes: {len(plan.nodes)} > {scenario['expected_max_nodes']}"
+            assert len(plan.nodes) >= scenario["expected_min_nodes"],                 f"Too few nodes: {len(plan.nodes)} < {scenario['expected_min_nodes']}"
+            assert len(plan.nodes) <= scenario["expected_max_nodes"],                 f"Too many nodes: {len(plan.nodes)} > {scenario['expected_max_nodes']}"
 
         except Exception as e:
             pytest.fail(f"Planning failed: {str(e)}")
@@ -251,7 +248,7 @@ def run_benchmark(output_file: str = "benchmark_results.json"):
         print("No API key found. Running offline tests only.")
         return
 
-    from planner import BDIPlanner
+    from src.bdi_llm.planner import BDIPlanner
     planner = BDIPlanner()
 
     for scenario in TEST_SCENARIOS:
