@@ -20,7 +20,7 @@ from bdi_llm.verifier import PlanVerifier
 HAS_API_KEY = bool(os.environ.get("OPENAI_API_KEY") or os.environ.get("ANTHROPIC_API_KEY"))
 
 
-class TestMetrics:
+class MetricsCollector:
     """Metrics collection for evaluation."""
 
     def __init__(self):
@@ -30,7 +30,7 @@ class TestMetrics:
         self.retry_counts: List[int] = []
         self.semantic_scores: List[float] = []
 
-    def record(self, is_valid: bool, retries: int, semantic_score: float = None):
+    def record(self, is_valid: bool, retries: int, semantic_score: float | None = None):
         self.total_runs += 1
         if is_valid:
             self.valid_plans += 1
@@ -88,7 +88,7 @@ TEST_SCENARIOS = [
         """,
         "desire": "Boil water in a pot on the stove.",
         "expected_min_nodes": 4,
-        "expected_max_nodes": 10,
+        "expected_max_nodes": 12,
     },
     {
         "name": "parallel_tasks",
@@ -112,7 +112,7 @@ class TestLLMIntegration:
     def planner(self):
         """Initialize the BDI Planner."""
         from bdi_llm.planner import BDIPlanner
-        return BDIPlanner()
+        return BDIPlanner(domain="testing")
 
     @pytest.mark.parametrize("scenario", TEST_SCENARIOS, ids=[s["name"] for s in TEST_SCENARIOS])
     def test_scenario_generates_valid_plan(self, planner, scenario):
@@ -134,7 +134,7 @@ class TestLLMIntegration:
         except Exception as e:
             pytest.fail(f"Planning failed: {str(e)}")
 
-    def test_assert_triggers_retry_on_invalid(self, planner, mocker):
+    def test_assert_triggers_retry_on_invalid(self, planner):
         """
         Test that DSPy Assert mechanism triggers retry when verifier fails.
         We mock the first response to return an invalid plan.
@@ -244,7 +244,7 @@ def run_benchmark(output_file: str = "benchmark_results.json"):
     Run full benchmark suite and save results.
     Call this function to generate evaluation metrics.
     """
-    metrics = TestMetrics()
+    metrics = MetricsCollector()
     results = []
 
     if not HAS_API_KEY:

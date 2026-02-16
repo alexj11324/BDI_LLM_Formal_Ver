@@ -16,20 +16,21 @@ This project implements a hybrid planning architecture that combines the generat
     2.  **Symbolic Verification**: Integrates PDDL-based verification (using VAL) to check logical consistency.
     3.  **Physics Validation**: Domain-specific physics validators (e.g., for Blocksworld) to ensure action feasibility.
 *   **Auto-Repair Mechanism**: Automatically fixes common structural errors (like disconnected subgraphs) without re-querying the LLM.
+*   **Coding Domain Support**: Specialized BDI planner for software engineering tasks (SWE-bench), capable of reading, editing, and testing code.
 *   **Benchmarking**: Built-in support for evaluating against the PlanBench dataset.
 
 ## PlanBench Results
 
-Evaluated using `vertex_ai/gemini-3-flash-preview` across three planning domains (frozen snapshot: 2026-02-13).
+Evaluated using `vertex_ai/gemini-3-flash-preview` across three planning domains (frozen snapshot: 2026-02-16).
 
 | Domain | Passed | Total | Accuracy |
 |---|---|---|---|
-| Blocksworld | 200 | 200 | **100.0%** |
+| Blocksworld | 399 | 400 | **99.8%** |
 | Logistics | 568 | 570 | **99.6%** |
 | Depots | 497 | 500 | **99.4%** |
-| **Overall** | **1265** | **1270** | **99.6%** |
+| **Overall** | **1464** | **1470** | **99.6%** |
 
-Only 5 instances failed across all domains. Detailed provenance and SHA256 checksums are available in [Paper Result Provenance](docs/PAPER_RESULT_PROVENANCE.md).
+Only 6 instances failed across all domains (1 new failure in Blocksworld Batch 1). Detailed provenance and SHA256 checksums are available in [Paper Result Provenance](docs/PAPER_RESULT_PROVENANCE.md).
 
 ## Installation
 
@@ -98,3 +99,14 @@ BDI_LLM_Formal_Ver/
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Current Status & Next Steps (Updated 2026-02-16)
+
+**Recent Accomplishments:**
+- Implemented Coding Domain (Phase 4): `CodingBDIPlanner`, PDDL domain, local SWE-bench harness.
+- Optimized PlanBench (Phase 5): Batch 1 (400 instances) completed with 99.8% success (399/400).
+
+**Priority Queue for Next Session:**
+1.  **Analyze PlanBench Failure**: Investigate the single failure case in Batch 1 (`runs/planbench_results/results_blocksworld_20260216_162051.json`).
+2.  **Expand SWE-bench**: Run `scripts/run_iterative_fix.py` on more instances (e.g., top 5 verified) to robustify the agent.
+3.  **Continue PlanBench Batches**: Execute Batch 2 (400-800) and Batch 3 (800-1103) to complete the benchmark.
