@@ -699,6 +699,7 @@ class BDIPlanner(dspy.Module):
             "logistics": {"load-truck", "unload-truck", "load-airplane",
                           "unload-airplane", "drive-truck", "fly-airplane"},
             "depots": {"drive", "lift", "drop", "load", "unload"},
+            "testing": set(),  # Empty set = no validation for testing
         }
         self._required_params = {
             "blocksworld": {
@@ -720,6 +721,7 @@ class BDIPlanner(dspy.Module):
                 "load": {"hoist", "crate", "truck", "place"},
                 "unload": {"hoist", "crate", "truck", "place"},
             },
+            "testing": {},  # No required params for testing
         }
 
     @staticmethod

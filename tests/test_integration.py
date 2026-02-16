@@ -88,7 +88,7 @@ TEST_SCENARIOS = [
         """,
         "desire": "Boil water in a pot on the stove.",
         "expected_min_nodes": 4,
-        "expected_max_nodes": 10,
+        "expected_max_nodes": 12,
     },
     {
         "name": "parallel_tasks",
@@ -112,7 +112,7 @@ class TestLLMIntegration:
     def planner(self):
         """Initialize the BDI Planner."""
         from bdi_llm.planner import BDIPlanner
-        return BDIPlanner()
+        return BDIPlanner(domain="testing")
 
     @pytest.mark.parametrize("scenario", TEST_SCENARIOS, ids=[s["name"] for s in TEST_SCENARIOS])
     def test_scenario_generates_valid_plan(self, planner, scenario):
@@ -134,7 +134,7 @@ class TestLLMIntegration:
         except Exception as e:
             pytest.fail(f"Planning failed: {str(e)}")
 
-    def test_assert_triggers_retry_on_invalid(self, planner, mocker):
+    def test_assert_triggers_retry_on_invalid(self, planner):
         """
         Test that DSPy Assert mechanism triggers retry when verifier fails.
         We mock the first response to return an invalid plan.

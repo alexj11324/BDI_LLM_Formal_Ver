@@ -20,6 +20,7 @@ from pathlib import Path
 os.environ['OPENAI_API_KEY'] = 'test-key-for-imports'
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
+sys.path.append(str(Path(__file__).parents[1] / "scripts"))
 
 from src.bdi_llm.schemas import BDIPlan, ActionNode
 from src.bdi_llm.symbolic_verifier import BlocksworldPhysicsValidator
