@@ -3,6 +3,7 @@ import sys
 import subprocess
 import os
 import tempfile
+import shlex
 from typing import List, Optional
 
 # Add src to python path to allow imports
@@ -120,9 +121,10 @@ def execute_verified_plan(
             # Execute command
             # Security warning: executing arbitrary commands.
             # In a real environment this should be sandboxed or restricted.
+            # We use shlex.split to avoid shell injection when shell=False (default).
+            args = shlex.split(command_to_execute)
             result = subprocess.run(
-                command_to_execute,
-                shell=True,
+                args,
                 check=True,
                 capture_output=True,
                 text=True
