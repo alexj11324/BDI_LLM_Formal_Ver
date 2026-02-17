@@ -169,14 +169,26 @@ class Executor:
         :return:
         """
         fd_path = os.getenv("FAST_DOWNWARD")
-        # Remove > /dev/null to see the output of fast-downward
-        # CMD_FD = f"{fd_path}/fast-downward.py {domain} {problem} --search \"astar(lmcut())\" >/dev/null 2>&1"
-        # os.system(CMD_FD)
-        subprocess.run(
-            [f"{fd_path}/fast-downward.py", domain, problem, "--search", "astar(lmcut())"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.STDOUT
-        )
+        if not fd_path:
+            raise ValueError("FAST_DOWNWARD environment variable not set")
+
+        # Use absolute paths to prevent argument injection
+        abs_domain = os.path.abspath(domain)
+        abs_problem = os.path.abspath(problem)
+
+        try:
+            subprocess.run(
+                [os.path.join(fd_path, "fast-downward.py"), abs_domain, abs_problem, "--search", "astar(lmcut())"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.STDOUT,
+                check=True
+            )
+        except subprocess.CalledProcessError:
+            # If fast-downward fails, we assume no plan or error occurred.
+            # We can log this if needed, but for now we proceed to check for sas_plan
+            # consistent with original logic (which ignored errors).
+            pass
+
         # USE SAS PLAN to get actions
         plan = []
         cost = 0
@@ -214,14 +226,24 @@ class Executor:
 
     def ground_domain(self, domain, problem):
         pr2_path = os.getenv("PR2")
-        # Remove > /dev/null to see the output of PR2
-        # CMD_PR2 = f"{pr2_path}/pr2plan -d {domain}  -i {problem} -o blank_obs.dat >/dev/null 2>&1"
-        # os.system(CMD_PR2)
-        subprocess.run(
-            [f"{pr2_path}/pr2plan", "-d", domain, "-i", problem, "-o", "blank_obs.dat"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.STDOUT
-        )
+        if not pr2_path:
+            raise ValueError("PR2 environment variable not set")
+
+        abs_domain = os.path.abspath(domain)
+        abs_problem = os.path.abspath(problem)
+
+        try:
+            subprocess.run(
+                [os.path.join(pr2_path, "pr2plan"), "-d", abs_domain, "-i", abs_problem, "-o", "blank_obs.dat"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.STDOUT,
+                check=True
+            )
+        except subprocess.CalledProcessError:
+            # Handle failure gracefully if possible, or propagate exception.
+            # Original code ignored failure.
+            pass
+
         pr_domain = 'pr-domain.pddl'
         pr_problem = 'pr-problem.pddl'
         self.remove_explain(pr_domain, pr_problem)
