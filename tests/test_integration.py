@@ -1,24 +1,25 @@
-"""
-Integration Tests for BDI-LLM Planner.
-Tests the full pipeline: LLM Generation -> Verification -> Self-Correction.
-
-NOTE: These tests require an LLM API key to run.
-Set OPENAI_API_KEY or ANTHROPIC_API_KEY environment variable.
-"""
 import pytest
 import os
-import sys
 import json
-from typing import List, Tuple
-
-sys.path.append(os.path.join(os.path.dirname(__file__), '../src'))
-
+from typing import List
 from bdi_llm.schemas import BDIPlan
 from bdi_llm.verifier import PlanVerifier
 
-# Check if we can run LLM tests
-HAS_API_KEY = bool(os.environ.get("OPENAI_API_KEY") or os.environ.get("ANTHROPIC_API_KEY"))
+def _has_valid_api_key():
+    key = os.environ.get("OPENAI_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
+    if not key:
+        print("DEBUG: No API key found.")
+        return False
+    # Check for placeholder values often used in CI
+    if "test-key" in key or "placeholder" in key or "*" in key:
+        masked = key[:4] + "*" * (len(key) - 8) + key[-4:] if len(key) > 8 else "****"
+        print(f"DEBUG: Found placeholder key: {masked}")
+        return False
+    print("DEBUG: Found apparently valid API key.")
+    return True
 
+# We remove the module-level skipif because it can be flaky if env vars change
+# or if execution order matters. We'll use dynamic skipping in the fixture.
 
 class MetricsCollector:
     """Metrics collection for evaluation."""
@@ -104,13 +105,15 @@ TEST_SCENARIOS = [
 ]
 
 
-@pytest.mark.skipif(not HAS_API_KEY, reason="No API key available")
 class TestLLMIntegration:
     """Tests that require actual LLM inference."""
 
     @pytest.fixture
     def planner(self):
         """Initialize the BDI Planner."""
+        if not _has_valid_api_key():
+            pytest.skip("No valid API key available (found placeholder or None)")
+
         from bdi_llm.planner import BDIPlanner
         return BDIPlanner(domain="testing")
 
@@ -126,10 +129,8 @@ class TestLLMIntegration:
             is_valid, errors = PlanVerifier.verify(G)
 
             assert is_valid, f"Plan failed validation: {errors}"
-            assert len(plan.nodes) >= scenario["expected_min_nodes"], \
-                f"Too few nodes: {len(plan.nodes)} < {scenario['expected_min_nodes']}"
-            assert len(plan.nodes) <= scenario["expected_max_nodes"], \
-                f"Too many nodes: {len(plan.nodes)} > {scenario['expected_max_nodes']}"
+            assert len(plan.nodes) >= scenario["expected_min_nodes"],                 f"Too few nodes: {len(plan.nodes)} < {scenario['expected_min_nodes']}"
+            assert len(plan.nodes) <= scenario["expected_max_nodes"],                 f"Too many nodes: {len(plan.nodes)} > {scenario['expected_max_nodes']}"
 
         except Exception as e:
             pytest.fail(f"Planning failed: {str(e)}")
@@ -247,8 +248,8 @@ def run_benchmark(output_file: str = "benchmark_results.json"):
     metrics = MetricsCollector()
     results = []
 
-    if not HAS_API_KEY:
-        print("No API key found. Running offline tests only.")
+    if not _has_valid_api_key():
+        print("No valid API key found. Running offline tests only.")
         return
 
     from planner import BDIPlanner
