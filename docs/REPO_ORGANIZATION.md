@@ -5,6 +5,7 @@ This document defines the storage and maintenance boundaries for this repository
 ## Directory Responsibilities
 
 - `src/bdi_llm/`: core framework code (planner, verifiers, repair logic, schemas).
+- `src/interfaces/`: entry points for external consumption (CLI, MCP Server).
 - `scripts/`: runnable utilities and benchmark entrypoints.
 - `tests/`: unit/integration tests.
 - `planbench_data/`: benchmark inputs and validator tooling.

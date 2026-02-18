@@ -72,6 +72,25 @@ python scripts/run_evaluation.py --mode [unit|demo|benchmark]
 *   `demo`: Run a live LLM demo with auto-repair.
 *   `benchmark`: Run evaluations on the PlanBench dataset.
 
+### MCP Server (Model Context Protocol)
+
+The verifier can be run as an MCP Server, allowing AI agents (like Claude Desktop) to use it as a tool.
+
+1.  **Build Docker Image**:
+    ```bash
+    docker build -t bdi-verifier .
+    ```
+
+2.  **Run Server**:
+    ```bash
+    docker run -i --rm -e OPENAI_API_KEY=$OPENAI_API_KEY bdi-verifier
+    ```
+
+The server exposes:
+*   `generate_plan`: Generate BDI plans.
+*   `verify_plan`: Verify PDDL plans (Structural + Symbolic).
+*   `execute_verified_plan`: Execute commands ONLY if verification passes ("Trojan Horse" pattern).
+
 ### Project Structure
 
 ```
