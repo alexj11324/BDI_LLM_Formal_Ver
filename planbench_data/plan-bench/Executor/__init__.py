@@ -11,7 +11,6 @@ import os
 import subprocess
 import random
 import re
-import shlex
 from copy import deepcopy
 
 
@@ -173,25 +172,21 @@ class Executor:
         if not fd_path:
             raise ValueError("FAST_DOWNWARD environment variable not set")
 
-        # Use absolute paths
+        # Use absolute paths to prevent argument injection
         abs_domain = os.path.abspath(domain)
         abs_problem = os.path.abspath(problem)
-        fd_script = os.path.join(fd_path, "fast-downward.py")
-
-        # Use shlex.quote for shell safety, satisfying linter requirements
-        cmd = f"{shlex.quote(fd_script)} {shlex.quote(abs_domain)} {shlex.quote(abs_problem)} --search 'astar(lmcut())'"
 
         try:
-            # shell=True required for command string execution
+            # Revert to list-based subprocess execution (shell=False)
+            # This is safer than shell=True + shlex.quote
+            # # sourcery skip: use-shlex-quote
             subprocess.run(
-                cmd,
-                shell=True,
+                [os.path.join(fd_path, "fast-downward.py"), abs_domain, abs_problem, "--search", "astar(lmcut())"],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.STDOUT,
                 check=True
             )
         except subprocess.CalledProcessError:
-            # If fast-downward fails, we assume no plan or error occurred.
             pass
 
         # USE SAS PLAN to get actions
@@ -236,16 +231,12 @@ class Executor:
 
         abs_domain = os.path.abspath(domain)
         abs_problem = os.path.abspath(problem)
-        pr2_script = os.path.join(pr2_path, "pr2plan")
-
-        # Use shlex.quote for shell safety
-        cmd = f"{shlex.quote(pr2_script)} -d {shlex.quote(abs_domain)} -i {shlex.quote(abs_problem)} -o blank_obs.dat"
 
         try:
-            # shell=True required for command string execution
+            # Revert to list-based subprocess execution (shell=False)
+            # # sourcery skip: use-shlex-quote
             subprocess.run(
-                cmd,
-                shell=True,
+                [os.path.join(pr2_path, "pr2plan"), "-d", abs_domain, "-i", abs_problem, "-o", "blank_obs.dat"],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.STDOUT,
                 check=True
