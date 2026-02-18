@@ -1,0 +1,259 @@
+demos:
+- beliefs: "LOGISTICS DOMAIN\n\n=== WORLD STRUCTURE ===\nCities: c0\n  c0: AIRPORT(s)=['l0-3'], other locations=['l0-0', 'l0-1', 'l0-2']\n\n\u26A0\uFE0F  AIRPORTS (airplanes can ONLY fly between these): ['l0-3']\n   Non-airport locations CANNOT be used with fly-airplane!\n\n=== VEHICLE POSITIONS ===\nAirplanes (fly between AIRPORTS only):\n  a0 is at l0-3 (\u2713 AIRPORT, c0)\nTrucks (drive within ONE city only):\n  t0 is at l0-2 (c0)\n\n=== PACKAGE POSITIONS ===\n  p0 is at l0-2 (c0)\n  p1 is at l0-0 (c0)\n  p2 is at l0-1 (c0)\n  p3 is at l0-3 (c0)"
+  desire: "Goal: deliver 3 package(s):\n  - p0 \u2192 l0-0 (c0) [same city, truck only]\n  - p1 \u2192 l0-1 (c0) [same city, truck only]\n  - p2 \u2192 l0-3 (c0) [same city, truck only]\n\n\u26A0\uFE0F  AIRPORTS: ['l0-3'] \u2014 fly-airplane ONLY between these!\nTrack vehicle positions after EVERY action.\nGenerate a SEQUENTIAL plan with CONNECTED actions."
+  plan:
+    goal_description: "Deliver p0\u2192l0-0, p1\u2192l0-1, p2\u2192l0-3 (all in city c0)"
+    nodes:
+    - id: s1
+      action_type: load-truck
+      params:
+        obj: p0
+        truck: t0
+        loc: l0-2
+      description: Load p0 onto t0 at l0-2 (both start here)
+    - id: s2
+      action_type: drive-truck
+      params:
+        truck: t0
+        from: l0-2
+        to: l0-0
+        city: c0
+      description: Drive t0 to l0-0. t0 is now at l0-0
+    - id: s3
+      action_type: unload-truck
+      params:
+        obj: p0
+        truck: t0
+        loc: l0-0
+      description: "Unload p0 at l0-0 \u2014 p0 goal achieved"
+    - id: s4
+      action_type: load-truck
+      params:
+        obj: p1
+        truck: t0
+        loc: l0-0
+      description: Load p1 onto t0 at l0-0 (p1 is here, t0 is here after s2)
+    - id: s5
+      action_type: drive-truck
+      params:
+        truck: t0
+        from: l0-0
+        to: l0-1
+        city: c0
+      description: Drive t0 to l0-1. t0 is now at l0-1
+    - id: s6
+      action_type: unload-truck
+      params:
+        obj: p1
+        truck: t0
+        loc: l0-1
+      description: "Unload p1 at l0-1 \u2014 p1 goal achieved"
+    - id: s7
+      action_type: load-truck
+      params:
+        obj: p2
+        truck: t0
+        loc: l0-1
+      description: Load p2 onto t0 at l0-1 (p2 is here, t0 is here after s5)
+    - id: s8
+      action_type: drive-truck
+      params:
+        truck: t0
+        from: l0-1
+        to: l0-3
+        city: c0
+      description: Drive t0 to l0-3. t0 is now at l0-3
+    - id: s9
+      action_type: unload-truck
+      params:
+        obj: p2
+        truck: t0
+        loc: l0-3
+      description: "Unload p2 at l0-3 \u2014 p2 goal achieved"
+    edges:
+    - source: s1
+      target: s2
+    - source: s2
+      target: s3
+    - source: s3
+      target: s4
+    - source: s4
+      target: s5
+    - source: s5
+      target: s6
+    - source: s6
+      target: s7
+    - source: s7
+      target: s8
+    - source: s8
+      target: s9
+- beliefs: "LOGISTICS DOMAIN\n\n=== WORLD STRUCTURE ===\nCities: c0, c1\n  c0: AIRPORT(s)=['l0-0'], other locations=['l0-1', 'l0-2']\n  c1: AIRPORT(s)=['l1-0'], other locations=['l1-1', 'l1-2']\n\n\u26A0\uFE0F  AIRPORTS (airplanes can ONLY fly between these): ['l0-0', 'l1-0']\n   Non-airport locations CANNOT be used with fly-airplane!\n\n=== VEHICLE POSITIONS ===\nAirplanes (fly between AIRPORTS only):\n  a0 is at l0-0 (\u2713 AIRPORT, c0)\n  a1 is at l1-0 (\u2713 AIRPORT, c1)\nTrucks (drive within ONE city only):\n  t0 is at l0-2 (c0)\n  t1 is at l1-2 (c1)\n\n=== PACKAGE POSITIONS ===\n  p0 is at l0-2 (c0)\n  p1 is at l0-0 (c0)\n  p2 is at l0-1 (c0)\n  p3 is at l1-2 (c1)\n  p4 is at l1-0 (c1)\n  p5 is at l1-1 (c1)"
+  desire: "Goal: deliver 6 package(s):\n  - p3 \u2192 l1-1 (c1) [same city, truck only]\n  - p5 \u2192 l1-0 (c1) [same city, truck only]\n  - p0 \u2192 l0-1 (c0) [same city, truck only]\n  - p2 \u2192 l0-0 (c0) [same city, truck only]\n  - p4 \u2192 l0-0 (c0) [CROSS-CITY c1\u2192c0, needs airplane]\n  - p1 \u2192 l1-0 (c1) [CROSS-CITY c0\u2192c1, needs airplane]\n\n\u26A0\uFE0F  AIRPORTS: ['l0-0', 'l1-0'] \u2014 fly-airplane ONLY between these!\nTrack vehicle positions after EVERY action.\nGenerate a SEQUENTIAL plan with CONNECTED actions."
+  plan:
+    goal_description: Deliver 6 packages across 2 cities (c0, c1) with truck+airplane
+    nodes:
+    - id: a1
+      action_type: load-truck
+      params:
+        obj: p3
+        truck: t1
+        loc: l1-2
+      description: Load p3 onto t1 at l1-2 (both start here)
+    - id: a2
+      action_type: drive-truck
+      params:
+        truck: t1
+        from: l1-2
+        to: l1-1
+        city: c1
+      description: Drive t1 to l1-1. t1 is now at l1-1
+    - id: a3
+      action_type: unload-truck
+      params:
+        obj: p3
+        truck: t1
+        loc: l1-1
+      description: "Unload p3 at l1-1 \u2014 p3 goal achieved"
+    - id: a4
+      action_type: load-truck
+      params:
+        obj: p5
+        truck: t1
+        loc: l1-1
+      description: Load p5 onto t1 at l1-1 (p5 is here, t1 is here after a2)
+    - id: a5
+      action_type: drive-truck
+      params:
+        truck: t1
+        from: l1-1
+        to: l1-0
+        city: c1
+      description: Drive t1 to airport l1-0. t1 is now at l1-0
+    - id: a6
+      action_type: unload-truck
+      params:
+        obj: p5
+        truck: t1
+        loc: l1-0
+      description: "Unload p5 at l1-0 \u2014 p5 goal achieved"
+    - id: a7
+      action_type: load-airplane
+      params:
+        obj: p4
+        airplane: a1
+        loc: l1-0
+      description: Load p4 onto a1 at airport l1-0 (a1 starts here)
+    - id: a8
+      action_type: load-truck
+      params:
+        obj: p0
+        truck: t0
+        loc: l0-2
+      description: Load p0 onto t0 at l0-2 (both start here)
+    - id: a9
+      action_type: drive-truck
+      params:
+        truck: t0
+        from: l0-2
+        to: l0-1
+        city: c0
+      description: Drive t0 to l0-1. t0 is now at l0-1
+    - id: a10
+      action_type: unload-truck
+      params:
+        obj: p0
+        truck: t0
+        loc: l0-1
+      description: "Unload p0 at l0-1 \u2014 p0 goal achieved"
+    - id: a11
+      action_type: load-truck
+      params:
+        obj: p2
+        truck: t0
+        loc: l0-1
+      description: Load p2 onto t0 at l0-1 (p2 is here, t0 is here after a9)
+    - id: a12
+      action_type: drive-truck
+      params:
+        truck: t0
+        from: l0-1
+        to: l0-0
+        city: c0
+      description: Drive t0 to airport l0-0. t0 is now at l0-0
+    - id: a13
+      action_type: unload-truck
+      params:
+        obj: p2
+        truck: t0
+        loc: l0-0
+      description: "Unload p2 at l0-0 \u2014 p2 goal achieved"
+    - id: a14
+      action_type: load-airplane
+      params:
+        obj: p1
+        airplane: a0
+        loc: l0-0
+      description: Load p1 onto a0 at airport l0-0 (a0 starts here)
+    - id: a15
+      action_type: fly-airplane
+      params:
+        airplane: a1
+        from: l1-0
+        to: l0-0
+      description: Fly a1 from l1-0 to l0-0 (both AIRPORTS). a1 is now at l0-0
+    - id: a16
+      action_type: unload-airplane
+      params:
+        obj: p4
+        airplane: a1
+        loc: l0-0
+      description: "Unload p4 at l0-0 (a1 is NOW at l0-0) \u2014 p4 goal achieved"
+    - id: a17
+      action_type: fly-airplane
+      params:
+        airplane: a0
+        from: l0-0
+        to: l1-0
+      description: Fly a0 from l0-0 to l1-0 (both AIRPORTS). a0 is now at l1-0
+    - id: a18
+      action_type: unload-airplane
+      params:
+        obj: p1
+        airplane: a0
+        loc: l1-0
+      description: "Unload p1 at l1-0 (a0 is NOW at l1-0) \u2014 p1 goal achieved"
+    edges:
+    - source: a1
+      target: a2
+    - source: a2
+      target: a3
+    - source: a3
+      target: a4
+    - source: a4
+      target: a5
+    - source: a5
+      target: a6
+    - source: a6
+      target: a7
+    - source: a7
+      target: a8
+    - source: a8
+      target: a9
+    - source: a9
+      target: a10
+    - source: a10
+      target: a11
+    - source: a11
+      target: a12
+    - source: a12
+      target: a13
+    - source: a13
+      target: a14
+    - source: a14
+      target: a15
+    - source: a15
+      target: a16
+    - source: a16
+      target: a17
+    - source: a17
+      target: a18

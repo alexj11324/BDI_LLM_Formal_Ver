@@ -194,7 +194,7 @@ class TestComplexDAG:
     """Test more realistic planning scenarios."""
 
     def test_parallel_branches_valid(self):
-        """
+        r"""
         Diamond pattern (parallel execution):
            A
           / \
