@@ -64,7 +64,6 @@ def test_bdi_to_pddl_conversion():
     assert "(stack a b)" in pddl_actions[1].lower(), f"Expected stack action, got {pddl_actions[1]}"
 
     print("  ✅ PASS\n")
-    return True
 
 
 def test_physics_validation_valid_plan():
@@ -92,7 +91,6 @@ def test_physics_validation_valid_plan():
     assert len(errors) == 0, f"Expected no errors, got: {errors}"
 
     print("  ✅ PASS\n")
-    return True
 
 
 def test_physics_validation_invalid_plan():
@@ -122,7 +120,6 @@ def test_physics_validation_invalid_plan():
     assert any("not clear" in e.lower() for e in errors), f"Expected 'not clear' error, got: {errors}"
 
     print("  ✅ PASS\n")
-    return True
 
 
 def test_metrics_structure():
@@ -134,7 +131,7 @@ def test_metrics_structure():
 
     if not Path(test_file).exists():
         print(f"Test 4: Metrics Structure - SKIPPED (test file not found)")
-        return True
+        return
 
     pddl_data = parse_pddl_problem(test_file)
 
@@ -153,7 +150,6 @@ def test_metrics_structure():
         assert key in init_state, f"Expected '{key}' in init_state"
 
     print("  ✅ PASS\n")
-    return True
 
 
 def main():
@@ -175,8 +171,8 @@ def main():
 
     for test in tests:
         try:
-            if test():
-                passed += 1
+            test()
+            passed += 1
         except Exception as e:
             print(f"  ❌ FAILED: {e}\n")
             failed += 1
