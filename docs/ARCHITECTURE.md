@@ -60,6 +60,13 @@ A heuristic-based module that automatically fixes common structural errors witho
 ### 3. Integrated Verifier
 Orchestrates the three verification layers and provides detailed error feedback.
 
+### 4. MCP Server & Trojan Horse Pattern
+The system is exposed via the Model Context Protocol (MCP) to allow agents to safely execute plans.
+
+*   **Pattern**: "Trojan Horse" / Gated Execution.
+*   **Mechanism**: The `execute_verified_plan` tool acts as a secure gatekeeper. It accepts a PDDL plan and a shell command. The command is *only* executed if the PDDL plan passes full verification.
+*   **Goal**: Prevents agents from executing dangerous or hallucinatory commands by enforcing formal correctness first.
+
 ## Data Flow
 
 1.  **Input**: Natural language goal + Initial state.
