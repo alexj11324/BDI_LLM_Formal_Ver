@@ -2,24 +2,22 @@ import pytest
 import os
 import json
 from typing import List
-from bdi_llm.schemas import BDIPlan
-from bdi_llm.verifier import PlanVerifier
+from src.bdi_llm.schemas import BDIPlan
+from src.bdi_llm.verifier import PlanVerifier
 
-def _has_valid_api_key():
-    key = os.environ.get("OPENAI_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
+# Check if we have a valid API key (not a dummy/placeholder)
+def _is_valid_api_key(key):
     if not key:
-        print("DEBUG: No API key found.")
         return False
-    # Check for placeholder values often used in CI
-    if "test-key" in key or "placeholder" in key or "*" in key:
-        masked = key[:4] + "*" * (len(key) - 8) + key[-4:] if len(key) > 8 else "****"
-        print(f"DEBUG: Found placeholder key: {masked}")
+    key_lower = key.lower()
+    # Check for dummy keys often used in CI/testing
+    if "test" in key_lower or "placeholder" in key_lower or "dummy" in key_lower:
         return False
-    print("DEBUG: Found apparently valid API key.")
     return True
 
-# We remove the module-level skipif because it can be flaky if env vars change
-# or if execution order matters. We'll use dynamic skipping in the fixture.
+api_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
+HAS_API_KEY = _is_valid_api_key(api_key)
+
 
 class MetricsCollector:
     """Metrics collection for evaluation."""
@@ -105,16 +103,14 @@ TEST_SCENARIOS = [
 ]
 
 
+@pytest.mark.skipif(not HAS_API_KEY, reason="No valid API key available")
 class TestLLMIntegration:
     """Tests that require actual LLM inference."""
 
     @pytest.fixture
     def planner(self):
         """Initialize the BDI Planner."""
-        if not _has_valid_api_key():
-            pytest.skip("No valid API key available (found placeholder or None)")
-
-        from bdi_llm.planner import BDIPlanner
+        from src.bdi_llm.planner import BDIPlanner
         return BDIPlanner(domain="testing")
 
     @pytest.mark.parametrize("scenario", TEST_SCENARIOS, ids=[s["name"] for s in TEST_SCENARIOS])
@@ -248,11 +244,11 @@ def run_benchmark(output_file: str = "benchmark_results.json"):
     metrics = MetricsCollector()
     results = []
 
-    if not _has_valid_api_key():
-        print("No valid API key found. Running offline tests only.")
+    if not HAS_API_KEY:
+        print("No API key found. Running offline tests only.")
         return
 
-    from planner import BDIPlanner
+    from src.bdi_llm.planner import BDIPlanner
     planner = BDIPlanner()
 
     for scenario in TEST_SCENARIOS:
