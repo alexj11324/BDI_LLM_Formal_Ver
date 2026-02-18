@@ -10,37 +10,36 @@ RUN apt-get update && apt-get install -y \
     git \
     && rm -rf /var/lib/apt/lists/*
 
+# Create non-root user
+RUN groupadd -r app && useradd -r -g app app
+
 # Set working directory
 WORKDIR /app
 
 # Copy requirements and install python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-RUN pip install --no-cache-dir mcp
 
 # Copy planbench_data (contains VAL source)
-COPY planbench_data /app/planbench_data
+COPY --chown=app:app planbench_data /app/planbench_data
 
 # Compile VAL
 WORKDIR /app/planbench_data/planner_tools/VAL
-# Clean any existing artifacts and build validate
-# We ignore errors in make clean just in case
 RUN make clean || true
-RUN make validate
-
-# Verify VAL compilation
-RUN ls -l validate && ./validate --help || echo "VAL help check failed (expected if no args)"
+RUN make validate && chmod +x validate && chown app:app validate
 
 # Return to app root
 WORKDIR /app
 
 # Copy source code
-COPY src /app/src
+COPY --chown=app:app src /app/src
 
 # Set environment variables
 ENV PYTHONPATH=/app
-# Set VAL path explicitly to the compiled binary
 ENV VAL_VALIDATOR_PATH=/app/planbench_data/planner_tools/VAL/validate
+
+# Run as non-root
+USER app
 
 # Entrypoint for the MCP server
 CMD ["python", "src/interfaces/mcp_server.py"]
