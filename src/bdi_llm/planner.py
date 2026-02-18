@@ -1,4 +1,6 @@
 import dspy
+import yaml
+from pathlib import Path
 from typing import List
 import networkx as nx
 from .schemas import BDIPlan, ActionNode, DependencyEdge
@@ -6,7 +8,21 @@ from .verifier import PlanVerifier
 
 from .config import Config
 
+# Module-level flag to ensure DSPy is configured only once
+_dspy_configured: bool = False
+
 def configure_dspy():
+    """
+    Idempotently configure DSPy for use by BDIPlanner.
+
+    Subsequent calls are effectively no-ops once configuration has been
+    successfully completed in this process.
+    """
+    global _dspy_configured
+    if _dspy_configured:
+        # DSPy already configured in this process; reuse existing configuration
+        return
+
     # 1. Configure DSPy
     # Validate configuration in non-strict mode so parser/unit tests can import
     # planner utilities without requiring live API credentials.
@@ -58,6 +74,9 @@ def configure_dspy():
 
     lm = dspy.LM(**lm_config)
     dspy.configure(lm=lm)
+
+    # Mark as configured after successful configuration
+    _dspy_configured = True
 
 # 2. Define the Signature
 
@@ -675,8 +694,11 @@ class BDIPlanner(dspy.Module):
             domain: Planning domain - selects domain-specific Signature
                     ("blocksworld", "logistics", or "depots")
         """
-        configure_dspy()
         super().__init__()
+
+        # Configure DSPy (idempotent - only runs once per process)
+        configure_dspy()
+
         self.domain = domain
 
         # Select domain-specific Signature
@@ -701,6 +723,7 @@ class BDIPlanner(dspy.Module):
             "logistics": {"load-truck", "unload-truck", "load-airplane",
                           "unload-airplane", "drive-truck", "fly-airplane"},
             "depots": {"drive", "lift", "drop", "load", "unload"},
+            "testing": set(),  # Empty set = no validation for testing
         }
         self._required_params = {
             "blocksworld": {
@@ -722,229 +745,49 @@ class BDIPlanner(dspy.Module):
                 "load": {"hoist", "crate", "truck", "place"},
                 "unload": {"hoist", "crate", "truck", "place"},
             },
+            "testing": {},  # No required params for testing
         }
 
     @staticmethod
     def _build_logistics_demos():
         """Build few-shot demonstrations for the Logistics domain.
 
-        Uses VAL-verified gold-standard plans from real PlanBench instances:
-        - Instance-10: 3 goals, single city (basic truck routing)
-        - Instance-116: 6 goals, 2 cities (cross-city transport with airplanes)
-
-        These demonstrate:
-        1. Correct sequential truck routing within a city
-        2. AIRPORT identification (only airports for fly/load/unload-airplane)
-        3. Airplane position tracking after fly-airplane
-        4. Multi-vehicle coordination across cities
+        Loads demonstrations from 'src/bdi_llm/data/logistics_demos.yaml'.
         """
-        # ── Demo 1: PlanBench instance-10 (3 goals, single city c0) ──
-        # VAL-verified: 9-step plan, all intra-city truck deliveries
-        demo1_beliefs = (
-            "LOGISTICS DOMAIN\n"
-            "\n=== WORLD STRUCTURE ===\n"
-            "Cities: c0\n"
-            "  c0: AIRPORT(s)=['l0-3'], other locations=['l0-0', 'l0-1', 'l0-2']\n"
-            "\n"
-            "⚠️  AIRPORTS (airplanes can ONLY fly between these): ['l0-3']\n"
-            "   Non-airport locations CANNOT be used with fly-airplane!\n"
-            "\n=== VEHICLE POSITIONS ===\n"
-            "Airplanes (fly between AIRPORTS only):\n"
-            "  a0 is at l0-3 (✓ AIRPORT, c0)\n"
-            "Trucks (drive within ONE city only):\n"
-            "  t0 is at l0-2 (c0)\n"
-            "\n=== PACKAGE POSITIONS ===\n"
-            "  p0 is at l0-2 (c0)\n"
-            "  p1 is at l0-0 (c0)\n"
-            "  p2 is at l0-1 (c0)\n"
-            "  p3 is at l0-3 (c0)"
-        )
-        demo1_desire = (
-            "Goal: deliver 3 package(s):\n"
-            "  - p0 → l0-0 (c0) [same city, truck only]\n"
-            "  - p1 → l0-1 (c0) [same city, truck only]\n"
-            "  - p2 → l0-3 (c0) [same city, truck only]\n"
-            "\n⚠️  AIRPORTS: ['l0-3'] — fly-airplane ONLY between these!\n"
-            "Track vehicle positions after EVERY action.\n"
-            "Generate a SEQUENTIAL plan with CONNECTED actions."
-        )
-        demo1_plan = BDIPlan(
-            goal_description="Deliver p0→l0-0, p1→l0-1, p2→l0-3 (all in city c0)",
-            nodes=[
-                ActionNode(id="s1", action_type="load-truck",
-                           params={"obj": "p0", "truck": "t0", "loc": "l0-2"},
-                           description="Load p0 onto t0 at l0-2 (both start here)"),
-                ActionNode(id="s2", action_type="drive-truck",
-                           params={"truck": "t0", "from": "l0-2", "to": "l0-0", "city": "c0"},
-                           description="Drive t0 to l0-0. t0 is now at l0-0"),
-                ActionNode(id="s3", action_type="unload-truck",
-                           params={"obj": "p0", "truck": "t0", "loc": "l0-0"},
-                           description="Unload p0 at l0-0 — p0 goal achieved"),
-                ActionNode(id="s4", action_type="load-truck",
-                           params={"obj": "p1", "truck": "t0", "loc": "l0-0"},
-                           description="Load p1 onto t0 at l0-0 (p1 is here, t0 is here after s2)"),
-                ActionNode(id="s5", action_type="drive-truck",
-                           params={"truck": "t0", "from": "l0-0", "to": "l0-1", "city": "c0"},
-                           description="Drive t0 to l0-1. t0 is now at l0-1"),
-                ActionNode(id="s6", action_type="unload-truck",
-                           params={"obj": "p1", "truck": "t0", "loc": "l0-1"},
-                           description="Unload p1 at l0-1 — p1 goal achieved"),
-                ActionNode(id="s7", action_type="load-truck",
-                           params={"obj": "p2", "truck": "t0", "loc": "l0-1"},
-                           description="Load p2 onto t0 at l0-1 (p2 is here, t0 is here after s5)"),
-                ActionNode(id="s8", action_type="drive-truck",
-                           params={"truck": "t0", "from": "l0-1", "to": "l0-3", "city": "c0"},
-                           description="Drive t0 to l0-3. t0 is now at l0-3"),
-                ActionNode(id="s9", action_type="unload-truck",
-                           params={"obj": "p2", "truck": "t0", "loc": "l0-3"},
-                           description="Unload p2 at l0-3 — p2 goal achieved"),
-            ],
-            edges=[
-                DependencyEdge(source="s1", target="s2"),
-                DependencyEdge(source="s2", target="s3"),
-                DependencyEdge(source="s3", target="s4"),
-                DependencyEdge(source="s4", target="s5"),
-                DependencyEdge(source="s5", target="s6"),
-                DependencyEdge(source="s6", target="s7"),
-                DependencyEdge(source="s7", target="s8"),
-                DependencyEdge(source="s8", target="s9"),
-            ],
-        )
+        # Resolve the path to the data file relative to this module
+        data_path = Path(__file__).parent / "data" / "logistics_demos.yaml"
 
-        # ── Demo 2: PlanBench instance-116 (6 goals, 2 cities c0+c1) ──
-        # VAL-verified: 18-step plan, cross-city transport with airplanes
-        demo2_beliefs = (
-            "LOGISTICS DOMAIN\n"
-            "\n=== WORLD STRUCTURE ===\n"
-            "Cities: c0, c1\n"
-            "  c0: AIRPORT(s)=['l0-0'], other locations=['l0-1', 'l0-2']\n"
-            "  c1: AIRPORT(s)=['l1-0'], other locations=['l1-1', 'l1-2']\n"
-            "\n"
-            "⚠️  AIRPORTS (airplanes can ONLY fly between these): ['l0-0', 'l1-0']\n"
-            "   Non-airport locations CANNOT be used with fly-airplane!\n"
-            "\n=== VEHICLE POSITIONS ===\n"
-            "Airplanes (fly between AIRPORTS only):\n"
-            "  a0 is at l0-0 (✓ AIRPORT, c0)\n"
-            "  a1 is at l1-0 (✓ AIRPORT, c1)\n"
-            "Trucks (drive within ONE city only):\n"
-            "  t0 is at l0-2 (c0)\n"
-            "  t1 is at l1-2 (c1)\n"
-            "\n=== PACKAGE POSITIONS ===\n"
-            "  p0 is at l0-2 (c0)\n"
-            "  p1 is at l0-0 (c0)\n"
-            "  p2 is at l0-1 (c0)\n"
-            "  p3 is at l1-2 (c1)\n"
-            "  p4 is at l1-0 (c1)\n"
-            "  p5 is at l1-1 (c1)"
-        )
-        demo2_desire = (
-            "Goal: deliver 6 package(s):\n"
-            "  - p3 → l1-1 (c1) [same city, truck only]\n"
-            "  - p5 → l1-0 (c1) [same city, truck only]\n"
-            "  - p0 → l0-1 (c0) [same city, truck only]\n"
-            "  - p2 → l0-0 (c0) [same city, truck only]\n"
-            "  - p4 → l0-0 (c0) [CROSS-CITY c1→c0, needs airplane]\n"
-            "  - p1 → l1-0 (c1) [CROSS-CITY c0→c1, needs airplane]\n"
-            "\n⚠️  AIRPORTS: ['l0-0', 'l1-0'] — fly-airplane ONLY between these!\n"
-            "Track vehicle positions after EVERY action.\n"
-            "Generate a SEQUENTIAL plan with CONNECTED actions."
-        )
-        demo2_plan = BDIPlan(
-            goal_description="Deliver 6 packages across 2 cities (c0, c1) with truck+airplane",
-            nodes=[
-                # c1 local deliveries: t1 delivers p3, p5
-                ActionNode(id="a1", action_type="load-truck",
-                           params={"obj": "p3", "truck": "t1", "loc": "l1-2"},
-                           description="Load p3 onto t1 at l1-2 (both start here)"),
-                ActionNode(id="a2", action_type="drive-truck",
-                           params={"truck": "t1", "from": "l1-2", "to": "l1-1", "city": "c1"},
-                           description="Drive t1 to l1-1. t1 is now at l1-1"),
-                ActionNode(id="a3", action_type="unload-truck",
-                           params={"obj": "p3", "truck": "t1", "loc": "l1-1"},
-                           description="Unload p3 at l1-1 — p3 goal achieved"),
-                ActionNode(id="a4", action_type="load-truck",
-                           params={"obj": "p5", "truck": "t1", "loc": "l1-1"},
-                           description="Load p5 onto t1 at l1-1 (p5 is here, t1 is here after a2)"),
-                ActionNode(id="a5", action_type="drive-truck",
-                           params={"truck": "t1", "from": "l1-1", "to": "l1-0", "city": "c1"},
-                           description="Drive t1 to airport l1-0. t1 is now at l1-0"),
-                ActionNode(id="a6", action_type="unload-truck",
-                           params={"obj": "p5", "truck": "t1", "loc": "l1-0"},
-                           description="Unload p5 at l1-0 — p5 goal achieved"),
-                # Cross-city prep: load p4 onto airplane a1
-                ActionNode(id="a7", action_type="load-airplane",
-                           params={"obj": "p4", "airplane": "a1", "loc": "l1-0"},
-                           description="Load p4 onto a1 at airport l1-0 (a1 starts here)"),
-                # c0 local deliveries: t0 delivers p0, p2
-                ActionNode(id="a8", action_type="load-truck",
-                           params={"obj": "p0", "truck": "t0", "loc": "l0-2"},
-                           description="Load p0 onto t0 at l0-2 (both start here)"),
-                ActionNode(id="a9", action_type="drive-truck",
-                           params={"truck": "t0", "from": "l0-2", "to": "l0-1", "city": "c0"},
-                           description="Drive t0 to l0-1. t0 is now at l0-1"),
-                ActionNode(id="a10", action_type="unload-truck",
-                           params={"obj": "p0", "truck": "t0", "loc": "l0-1"},
-                           description="Unload p0 at l0-1 — p0 goal achieved"),
-                ActionNode(id="a11", action_type="load-truck",
-                           params={"obj": "p2", "truck": "t0", "loc": "l0-1"},
-                           description="Load p2 onto t0 at l0-1 (p2 is here, t0 is here after a9)"),
-                ActionNode(id="a12", action_type="drive-truck",
-                           params={"truck": "t0", "from": "l0-1", "to": "l0-0", "city": "c0"},
-                           description="Drive t0 to airport l0-0. t0 is now at l0-0"),
-                ActionNode(id="a13", action_type="unload-truck",
-                           params={"obj": "p2", "truck": "t0", "loc": "l0-0"},
-                           description="Unload p2 at l0-0 — p2 goal achieved"),
-                # Cross-city prep: load p1 onto airplane a0
-                ActionNode(id="a14", action_type="load-airplane",
-                           params={"obj": "p1", "airplane": "a0", "loc": "l0-0"},
-                           description="Load p1 onto a0 at airport l0-0 (a0 starts here)"),
-                # Cross-city flights
-                ActionNode(id="a15", action_type="fly-airplane",
-                           params={"airplane": "a1", "from": "l1-0", "to": "l0-0"},
-                           description="Fly a1 from l1-0 to l0-0 (both AIRPORTS). a1 is now at l0-0"),
-                ActionNode(id="a16", action_type="unload-airplane",
-                           params={"obj": "p4", "airplane": "a1", "loc": "l0-0"},
-                           description="Unload p4 at l0-0 (a1 is NOW at l0-0) — p4 goal achieved"),
-                ActionNode(id="a17", action_type="fly-airplane",
-                           params={"airplane": "a0", "from": "l0-0", "to": "l1-0"},
-                           description="Fly a0 from l0-0 to l1-0 (both AIRPORTS). a0 is now at l1-0"),
-                ActionNode(id="a18", action_type="unload-airplane",
-                           params={"obj": "p1", "airplane": "a0", "loc": "l1-0"},
-                           description="Unload p1 at l1-0 (a0 is NOW at l1-0) — p1 goal achieved"),
-            ],
-            edges=[
-                DependencyEdge(source="a1", target="a2"),
-                DependencyEdge(source="a2", target="a3"),
-                DependencyEdge(source="a3", target="a4"),
-                DependencyEdge(source="a4", target="a5"),
-                DependencyEdge(source="a5", target="a6"),
-                DependencyEdge(source="a6", target="a7"),
-                DependencyEdge(source="a7", target="a8"),
-                DependencyEdge(source="a8", target="a9"),
-                DependencyEdge(source="a9", target="a10"),
-                DependencyEdge(source="a10", target="a11"),
-                DependencyEdge(source="a11", target="a12"),
-                DependencyEdge(source="a12", target="a13"),
-                DependencyEdge(source="a13", target="a14"),
-                DependencyEdge(source="a14", target="a15"),
-                DependencyEdge(source="a15", target="a16"),
-                DependencyEdge(source="a16", target="a17"),
-                DependencyEdge(source="a17", target="a18"),
-            ],
-        )
+        if not data_path.exists():
+            print(f"Warning: logistics_demos.yaml not found at {data_path}")
+            return []
 
-        return [
-            dspy.Example(
-                beliefs=demo1_beliefs,
-                desire=demo1_desire,
-                plan=demo1_plan,
-            ).with_inputs("beliefs", "desire"),
-            dspy.Example(
-                beliefs=demo2_beliefs,
-                desire=demo2_desire,
-                plan=demo2_plan,
-            ).with_inputs("beliefs", "desire"),
-        ]
+        with open(data_path, "r") as f:
+            data = yaml.safe_load(f)
+
+        demos = []
+        for demo_data in data.get("demos", []):
+            # Reconstruct nodes and edges from dicts
+            nodes_data = demo_data["plan"]["nodes"]
+            edges_data = demo_data["plan"]["edges"]
+
+            nodes = [ActionNode(**n) for n in nodes_data]
+            edges = [DependencyEdge(**e) for e in edges_data]
+
+            plan = BDIPlan(
+                goal_description=demo_data["plan"]["goal_description"],
+                nodes=nodes,
+                edges=edges
+            )
+
+            demos.append(
+                dspy.Example(
+                    beliefs=demo_data["beliefs"],
+                    desire=demo_data["desire"],
+                    plan=plan,
+                ).with_inputs("beliefs", "desire")
+            )
+
+        return demos
 
     def _validate_action_constraints(self, plan_obj) -> tuple:
         """Validate action_type and params against domain constraints.
@@ -1147,3 +990,54 @@ class BDIPlanner(dspy.Module):
 
         return pred
 
+# 4. Demonstration Function
+def main():
+    print("Initializing BDI Planner with DSPy...")
+
+    # Define a scenario
+    beliefs = """
+    Location: Living Room.
+    Inventory: None.
+    Environment:
+    - Door to Kitchen is closed.
+    - Keys are on the Table in the Living Room.
+    - Robot is at coordinate (0,0).
+    Available Skills: [PickUp, MoveTo, OpenDoor, UnlockDoor]
+    """
+    desire = "Go to the Kitchen."
+
+    planner = BDIPlanner()
+
+    print(f"\nGoal: {desire}")
+    print("Generating Plan...")
+
+    try:
+        # Run the planner
+        # dspy.Suggest/Assert will automatically retry if validation fails
+        response = planner(beliefs=beliefs, desire=desire)
+        final_plan = response.plan
+
+        print("\n✅ Plan Generated Successfully!")
+        print(f"Goal Description: {final_plan.goal_description}")
+
+        print("\n--- Actions (Nodes) ---")
+        for node in final_plan.nodes:
+            print(f"[{node.id}] {node.action_type}: {node.description}")
+
+        print("\n--- Dependencies (Edges) ---")
+        for edge in final_plan.edges:
+            print(f"{edge.source} -> {edge.target}")
+
+        # Verify final result
+        G = final_plan.to_networkx()
+        print(f"\nFinal Graph Valid? {PlanVerifier.verify(G)[0]}")
+
+        if PlanVerifier.verify(G)[0]:
+            print("\nExecution Order:")
+            print(" -> ".join(PlanVerifier.topological_sort(G)))
+
+    except ValueError as e:
+        print(f"\n❌ Planning Failed: {e}")
+
+if __name__ == "__main__":
+    main()
