@@ -8,57 +8,75 @@ from .verifier import PlanVerifier
 
 from .config import Config
 
-# 1. Configure DSPy
-# Validate configuration in non-strict mode so parser/unit tests can import
-# planner utilities without requiring live API credentials.
-credentials = Config.validate(require_credentials=False)
+# Module-level flag to ensure DSPy is configured only once
+_dspy_configured: bool = False
 
-# Check if model is a reasoning model (gpt-5, o1, etc.)
-is_reasoning_model = any(model_type in Config.MODEL_NAME.lower()
-                         for model_type in ['gpt-5', 'o1', 'o3'])
+def configure_dspy():
+    """
+    Idempotently configure DSPy for use by BDIPlanner.
 
-# Check if model is a Gemini model
-is_gemini_model = 'gemini' in Config.MODEL_NAME.lower()
+    Subsequent calls are effectively no-ops once configuration has been
+    successfully completed in this process.
+    """
+    global _dspy_configured
+    if _dspy_configured:
+        # DSPy already configured in this process; reuse existing configuration
+        return
 
-# Check if model uses Vertex AI (vertex_ai/ prefix)
-is_vertex_ai = Config.MODEL_NAME.lower().startswith('vertex_ai/')
+    # 1. Configure DSPy
+    # Validate configuration in non-strict mode so parser/unit tests can import
+    # planner utilities without requiring live API credentials.
+    credentials = Config.validate(require_credentials=False)
 
-# Prepare LM configuration based on model type
-lm_config = {
-    'model': Config.MODEL_NAME,
-}
+    # Check if model is a reasoning model (gpt-5, o1, etc.)
+    is_reasoning_model = any(model_type in Config.MODEL_NAME.lower()
+                             for model_type in ['gpt-5', 'o1', 'o3'])
 
-# Add API key based on model type
-# Vertex AI models use service account credentials via env vars (no api_key needed)
-if is_vertex_ai:
-    pass  # litellm reads GOOGLE_APPLICATION_CREDENTIALS, VERTEXAI_PROJECT, VERTEXAI_LOCATION from env
-elif is_gemini_model and credentials['google']:
-    lm_config['api_key'] = credentials['google']
-elif credentials['openai']:
-    lm_config['api_key'] = credentials['openai']
-    if Config.OPENAI_API_BASE:
-        lm_config['api_base'] = Config.OPENAI_API_BASE
+    # Check if model is a Gemini model
+    is_gemini_model = 'gemini' in Config.MODEL_NAME.lower()
 
-# Add model-specific parameters
-if is_reasoning_model:
-    # Reasoning models require temperature=1.0 and max_tokens >= 16000
-    lm_config['temperature'] = 1.0
-    lm_config['max_tokens'] = 16000
-else:
-    # Standard models use configured temperature for deterministic output
-    lm_config['temperature'] = Config.TEMPERATURE
-    lm_config['max_tokens'] = Config.MAX_TOKENS
+    # Check if model uses Vertex AI (vertex_ai/ prefix)
+    is_vertex_ai = Config.MODEL_NAME.lower().startswith('vertex_ai/')
 
-# Add max_tokens for gemini models
-if 'gemini' in Config.MODEL_NAME.lower() or 'vertex_ai' in Config.MODEL_NAME.lower():
-    lm_config['max_tokens'] = 16000
+    # Prepare LM configuration based on model type
+    lm_config = {
+        'model': Config.MODEL_NAME,
+    }
 
-# Add timeout and retry settings for rate limiting and reliability
-lm_config['timeout'] = 120  # 2 minute timeout per API call
-lm_config['num_retries'] = 5  # more retries for rate limiting
+    # Add API key based on model type
+    # Vertex AI models use service account credentials via env vars (no api_key needed)
+    if is_vertex_ai:
+        pass  # litellm reads GOOGLE_APPLICATION_CREDENTIALS, VERTEXAI_PROJECT, VERTEXAI_LOCATION from env
+    elif is_gemini_model and credentials['google']:
+        lm_config['api_key'] = credentials['google']
+    elif credentials['openai']:
+        lm_config['api_key'] = credentials['openai']
+        if Config.OPENAI_API_BASE:
+            lm_config['api_base'] = Config.OPENAI_API_BASE
 
-lm = dspy.LM(**lm_config)
-dspy.configure(lm=lm)
+    # Add model-specific parameters
+    if is_reasoning_model:
+        # Reasoning models require temperature=1.0 and max_tokens >= 16000
+        lm_config['temperature'] = 1.0
+        lm_config['max_tokens'] = 16000
+    else:
+        # Standard models use configured temperature for deterministic output
+        lm_config['temperature'] = Config.TEMPERATURE
+        lm_config['max_tokens'] = Config.MAX_TOKENS
+
+    # Add max_tokens for gemini models
+    if 'gemini' in Config.MODEL_NAME.lower() or 'vertex_ai' in Config.MODEL_NAME.lower():
+        lm_config['max_tokens'] = 16000
+
+    # Add timeout and retry settings for rate limiting and reliability
+    lm_config['timeout'] = 120  # 2 minute timeout per API call
+    lm_config['num_retries'] = 5  # more retries for rate limiting
+
+    lm = dspy.LM(**lm_config)
+    dspy.configure(lm=lm)
+
+    # Mark as configured after successful configuration
+    _dspy_configured = True
 
 # 2. Define the Signature
 
@@ -677,6 +695,10 @@ class BDIPlanner(dspy.Module):
                     ("blocksworld", "logistics", or "depots")
         """
         super().__init__()
+
+        # Configure DSPy (idempotent - only runs once per process)
+        configure_dspy()
+
         self.domain = domain
 
         # Select domain-specific Signature
