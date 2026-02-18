@@ -18,6 +18,7 @@ import os
 import re
 from pathlib import Path
 from typing import Tuple, List, Dict
+from .config import Config
 
 
 class PDDLSymbolicVerifier:
@@ -32,6 +33,19 @@ class PDDLSymbolicVerifier:
     - Type constraints met
     """
 
+    # Compiled regex patterns
+    _re_precond_verbose = re.compile(
+        r"Plan failed because of unsatisfied precondition in:\s*\n\s*(\(.+?\))",
+        re.DOTALL
+    )
+    _re_repair_advice = re.compile(
+        r"Plan Repair Advice:\s*\n(.*?)(?:\n\s*\n|\nFailed plans:|\Z)",
+        re.DOTALL
+    )
+    _re_precond_legacy = re.compile(r"Precondition not satisfied: (.+)")
+    _re_invalid_action = re.compile(r"Invalid action: (.+)")
+    _re_type_error = re.compile(r"Type error: (.+)")
+
     def __init__(self, val_path: str = None):
         """
         Args:
@@ -39,9 +53,7 @@ class PDDLSymbolicVerifier:
                      Default: planbench_data/planner_tools/VAL/validate
         """
         if val_path is None:
-            # Auto-detect VAL in PlanBench
-            base = Path(__file__).parent.parent.parent
-            val_path = base / "planbench_data/planner_tools/VAL/validate"
+            val_path = Config.VAL_VALIDATOR_PATH
 
         self.val_path = str(val_path)
 
@@ -200,20 +212,14 @@ class PDDLSymbolicVerifier:
 
         # Pattern 1 (verbose): Unsatisfied precondition with specific action
         # "Plan failed because of unsatisfied precondition in:\n(action-name args)"
-        precond_verbose = re.search(
-            r"Plan failed because of unsatisfied precondition in:\s*\n\s*(\(.+?\))",
-            output, re.DOTALL
-        )
+        precond_verbose = self._re_precond_verbose.search(output)
         if precond_verbose:
             failed_action = precond_verbose.group(1).strip()
             errors.append(f"Unsatisfied precondition in action: {failed_action}")
 
         # Pattern 2 (verbose): Plan Repair Advice section
         # Captures the entire repair advice block
-        repair_advice = re.search(
-            r"Plan Repair Advice:\s*\n(.*?)(?:\n\s*\n|\nFailed plans:|\Z)",
-            output, re.DOTALL
-        )
+        repair_advice = self._re_repair_advice.search(output)
         if repair_advice:
             advice_text = repair_advice.group(1).strip()
             errors.append(f"VAL Repair Advice: {advice_text}")
@@ -223,8 +229,7 @@ class PDDLSymbolicVerifier:
             errors.append("Plan executed but goal not satisfied")
 
         # Pattern 4 (legacy): Precondition not satisfied (non-verbose format)
-        precond_pattern = r"Precondition not satisfied: (.+)"
-        for match in re.finditer(precond_pattern, output):
+        for match in self._re_precond_legacy.finditer(output):
             errors.append(f"Precondition violation: {match.group(1)}")
 
         # Pattern 5: Type-checking errors
@@ -232,13 +237,11 @@ class PDDLSymbolicVerifier:
             errors.append("Type-checking error: action parameters have invalid types")
 
         # Pattern 6: Invalid action parameters
-        invalid_action_pattern = r"Invalid action: (.+)"
-        for match in re.finditer(invalid_action_pattern, output):
+        for match in self._re_invalid_action.finditer(output):
             errors.append(f"Invalid action: {match.group(1)}")
 
         # Pattern 7: Type errors
-        type_error_pattern = r"Type error: (.+)"
-        for match in re.finditer(type_error_pattern, output):
+        for match in self._re_type_error.finditer(output):
             errors.append(f"Type error: {match.group(1)}")
 
         # If no specific errors extracted, provide generic message
@@ -264,6 +267,9 @@ class BlocksworldPhysicsValidator:
     - Hand holds at most one block
     - Cannot stack on non-clear blocks
     """
+
+    # Compiled regex pattern for block extraction
+    _re_block = re.compile(r'\b([a-z0-9_-]+)\b')
 
     @staticmethod
     def validate_plan(
@@ -348,33 +354,6 @@ class BlocksworldPhysicsValidator:
                 state['clear'].add(block)
                 state['holding'] = None
 
-            elif 'stack' in action_lower:
-                blocks = BlocksworldPhysicsValidator._extract_two_blocks(action)
-                if len(blocks) < 2:
-                    errors.append(
-                        f"Step {step_num}: Cannot parse blocks from stack action: {action}"
-                    )
-                    continue
-
-                block_from, block_to = blocks[0], blocks[1]
-
-                if state['holding'] != block_from:
-                    errors.append(
-                        f"Step {step_num}: Cannot stack {block_from} - not holding it "
-                        f"(holding {state['holding']})"
-                    )
-
-                if block_to not in state['clear']:
-                    errors.append(
-                        f"Step {step_num}: Cannot stack on {block_to} - not clear"
-                    )
-
-                state['on'].add((block_from, block_to))
-                state['clear'].add(block_from)
-                if block_to in state['clear']:
-                    state['clear'].remove(block_to)
-                state['holding'] = None
-
             elif 'unstack' in action_lower:
                 blocks = BlocksworldPhysicsValidator._extract_two_blocks(action)
                 if len(blocks) < 2:
@@ -403,6 +382,33 @@ class BlocksworldPhysicsValidator:
                     state['clear'].remove(block_from)
                 state['holding'] = block_from
 
+            elif 'stack' in action_lower:
+                blocks = BlocksworldPhysicsValidator._extract_two_blocks(action)
+                if len(blocks) < 2:
+                    errors.append(
+                        f"Step {step_num}: Cannot parse blocks from stack action: {action}"
+                    )
+                    continue
+
+                block_from, block_to = blocks[0], blocks[1]
+
+                if state['holding'] != block_from:
+                    errors.append(
+                        f"Step {step_num}: Cannot stack {block_from} - not holding it "
+                        f"(holding {state['holding']})"
+                    )
+
+                if block_to not in state['clear']:
+                    errors.append(
+                        f"Step {step_num}: Cannot stack on {block_to} - not clear"
+                    )
+
+                state['on'].add((block_from, block_to))
+                state['clear'].add(block_from)
+                if block_to in state['clear']:
+                    state['clear'].remove(block_to)
+                state['holding'] = None
+
         is_valid = len(errors) == 0
         return is_valid, errors
 
@@ -420,9 +426,13 @@ class BlocksworldPhysicsValidator:
         if len(parts) > 1:
             return parts[1]
 
-        # Fallback to regex if simple split fails (though split is safer for multi-char)
-        match = re.search(r'\b([a-z0-9_-]+)\b', action.lower())
-        return match.group(1) if match else None
+        # Fallback to regex if simple split fails
+        matches = BlocksworldPhysicsValidator._re_block.findall(action.lower())
+        keywords = {'stack', 'unstack', 'pick-up', 'pickup', 'put-down', 'putdown'}
+        for match in matches:
+            if match not in keywords:
+                return match
+        return None
 
     @staticmethod
     def _extract_two_blocks(action: str) -> List[str]:
@@ -439,7 +449,7 @@ class BlocksworldPhysicsValidator:
             return parts[1:3]
 
         # Fallback to regex
-        blocks = re.findall(r'\b([a-z0-9_-]+)\b', action.lower())
+        blocks = BlocksworldPhysicsValidator._re_block.findall(action.lower())
         # Filter out action keywords if caught by regex
         keywords = {'stack', 'unstack', 'pick-up', 'pickup', 'put-down', 'putdown'}
         filtered_blocks = [b for b in blocks if b not in keywords]

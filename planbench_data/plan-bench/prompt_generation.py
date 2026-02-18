@@ -10,6 +10,7 @@ from tarski.io import PDDLReader
 import argparse
 import time
 import json
+import ast
 
 from tqdm import tqdm
 

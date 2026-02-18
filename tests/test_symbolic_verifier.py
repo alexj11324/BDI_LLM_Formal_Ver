@@ -20,7 +20,7 @@ class TestPDDLSymbolicVerifier:
 
         # Mock successful VAL output
         mock_process = MagicMock()
-        mock_process.stdout = "Plan valid\nFinal value: 10 \n"
+        mock_process.stdout = "Plan executed successfully - checking goal\nPlan valid\nFinal value: 10 \n"
         mock_process.stderr = ""
         mock_run.return_value = mock_process
 
@@ -67,3 +67,19 @@ class TestPDDLSymbolicVerifier:
         )
         assert is_valid is False
         assert "Empty plan" in errors[0]
+
+    @patch("os.path.exists")
+    def test_val_path_configuration(self, mock_exists):
+        """Test that VAL path is correctly loaded from Config"""
+        mock_exists.return_value = True
+
+        # Test with explicit path
+        verifier = PDDLSymbolicVerifier(val_path="/custom/val")
+        assert verifier.val_path == "/custom/val"
+
+        # Test with Config (mocking Config.VAL_VALIDATOR_PATH)
+        # We need to mock Config in the module where it is used
+        with patch("src.bdi_llm.symbolic_verifier.Config") as MockConfig:
+            MockConfig.VAL_VALIDATOR_PATH = "/env/val"
+            verifier = PDDLSymbolicVerifier()
+            assert verifier.val_path == "/env/val"
