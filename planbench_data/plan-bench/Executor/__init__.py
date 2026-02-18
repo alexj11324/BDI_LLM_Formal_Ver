@@ -11,7 +11,6 @@ import os
 import subprocess
 import random
 import re
-import shlex
 from copy import deepcopy
 
 
@@ -20,35 +19,232 @@ class Executor:
     def __init__(self, domain, problem, ground=True, seed=10):
         self.is_pr_grounded = ground
         if ground:
-            self.model = parse_model(domain, problem)
+            self.pr_domain, self.pr_problem = self.ground_domain(domain, problem)
         else:
-            pr_domain, pr_problem = self.ground_domain(domain, problem)
-            self.model = parse_model(pr_domain, pr_problem)
-
-        self.is_upper = True
+            self.pr_domain, self.pr_problem = domain, problem
+        self.model = parse_model(self.pr_domain, self.pr_problem)
+        # why do they all have different capitalizations?
         self.is_capitalized = False
-
-        # Check if actions are upper case or capitalized
-        with open(domain) as f:
-            file_content = f.read()
-            if '(:action' in file_content:
-                self.is_upper = False
-            elif '(:Action' in file_content:
-                self.is_capitalized = True
-
-        self.plan, cost = self.get_plan(domain, problem, grounded=ground)
-        self.prefix = random.randint(0, len(self.plan))
-        # self.prefix = 1
-
+        if any([i.islower() for i in self.model[DOMAIN]]):
+            self.is_upper = False
+        elif any([i.isupper() for i in self.model[DOMAIN]]):
+            self.is_upper = True
+        else:
+            self.is_upper = False
+            self.is_capitalized = True
+        self.plan, self.cost = self.get_plan(self.pr_domain, self.pr_problem)
+        if not self.is_pr_grounded:
+            self.plan = [i.replace(" ", "_") for i in self.plan]
         self.init_state = self.get_sets(self.model[INSTANCE][INIT][PREDICATES])
         self.goal_state = self.get_sets(self.model[INSTANCE][GOAL])
-        self.new_goal_state = deepcopy(self.init_state)
-        # self.new_goal_state = self.new_goal_state.union(self.goal_state)
-        self.replanning_init = deepcopy(self.goal_state)
-        # self.replanning_init = self.replanning_init.union(self.init_state)
+        
+        self.new_goal_state = set()
+        self.final_state, self.all_preds, self.not_true_preds, self.prefix, self.replanning_init = [None] * 5
+        self.final_state_dict = {}
+        self._set_seed(seed)
+
+    def _set_seed(self, seed):
+        random.seed(seed)
 
 
-        # self.final_state = self.get_final_state(self.init_state, self.plan)
+    def replanning_domain_specific(self, harder=0, domain='blocksworld'):
+        if domain == 'blocksworld' or domain == 'blocksworld_3':
+            self.random_prefix_execution()
+            while not any(['holding' in i for i in self.final_state]):
+                self.random_prefix_execution()
+            # make that block stack onto a random block
+            self.replanning_init = self.final_state.copy()
+            all_blocks = set()
+            to_remove = set()
+            for i in self.replanning_init:
+                if 'handempty' in i:
+                    continue
+                if 'clear' in i:
+                    all_blocks.add(i.split('_')[-1])
+                if 'holding' in i:
+                    current_block = i.split('_')[1]
+                    to_remove.add(i)
+                       
+            selected_block = random.choice(sorted(list(all_blocks)))
+            to_remove.add('clear_' + selected_block)
+            to_add = {'on_' + current_block + '_' + selected_block, 'handempty', 'clear_' + current_block}
+            
+            
+                    
+            self.replanning_init = self.replanning_init.union(to_add)
+            self.replanning_init = self.replanning_init.difference(to_remove)
+            dict_to_send = {'to_add': to_add, 'to_remove': to_remove}
+            # print("REPLANNING INIT", self.replanning_init)
+            # print("REPLANNING DICT", dict_to_send)
+            return dict_to_send
+
+        elif domain == 'mystery_blocksworld' or domain == 'mystery_blocksworld_3':
+            self.random_prefix_execution()
+            while not any(['pain' in i for i in self.final_state]):
+                self.random_prefix_execution()
+            # make that block stack onto a random block
+            self.replanning_init = self.final_state.copy()
+            all_blocks = set()
+            to_remove = set()
+            for i in self.replanning_init:
+                if 'harmony' in i:
+                    continue
+                if 'province' in i:
+                    all_blocks.add(i.split('_')[-1])
+                if 'pain' in i:
+                    current_block = i.split('_')[1]
+                    to_remove.add(i)
+            
+            selected_block = random.choice(sorted(list(all_blocks)))
+            to_remove.add('province_' + selected_block)
+            to_add = {'craves_' + current_block + '_' + selected_block, 'harmony', 'province_' + current_block}
+            self.replanning_init = self.replanning_init.union(to_add)
+            self.replanning_init = self.replanning_init.difference(to_remove)
+            dict_to_send = {'to_add': to_add, 'to_remove': to_remove}
+            print("REPLANNING INIT", self.replanning_init)
+            print("REPLANNING DICT", dict_to_send)
+            return dict_to_send
+        elif domain =='logistics':
+            self.random_prefix_execution()
+            while not any(['in_' in i for i in self.final_state]):
+                self.random_prefix_execution()
+            self.replanning_init = self.final_state.copy()
+            all_locations = set()
+            all_packages = set()
+            to_remove = set()
+            for i in self.replanning_init:
+                if 'in' in i and 'in-city' not in i:
+                    to_remove.add(i)
+                    all_packages.add(i.split('_')[1])
+                elif 'location' in i.lower():
+                    all_locations.add(i.split('_')[-1])
+            to_add = set()
+            print(all_packages, all_locations)
+            for p in all_packages:
+                goal_location = [l for l in self.goal_state if 'at' in l and p in l][0].split('_')[-1]
+                selected_location = random.choice(sorted(list(all_locations)))                
+                while selected_location == goal_location:
+                    selected_location = random.choice(sorted(list(all_locations)))
+                to_add.add('at_' + p + '_' + selected_location)
+
+            if len(to_add) == 0 or len(to_remove) == 0:
+                print()
+            self.replanning_init = self.replanning_init.union(to_add)
+            self.replanning_init = self.replanning_init.difference(to_remove)
+            dict_to_send = {'to_add': to_add, 'to_remove': to_remove}
+            print("REPLANNING INIT", self.replanning_init)
+            print("REPLANNING DICT", dict_to_send)
+            return dict_to_send
+                
+        else:
+            print("[-] Domain not supported...Running arbitrary replanning")
+            
+            to_add_or_remove =  self.replanning(harder=harder)
+            if harder:
+                return {'to_add': set(), 'to_remove': to_add_or_remove}
+            else:
+                return {'to_add': to_add_or_remove, 'to_remove': set()}
+
+
+
+
+    def replanning(self, harder=0):
+        """
+        1. Execute a random prefix of a plan and get the resulting state
+        2. Regress the suffix of the plan from the goal and get the resulting (partial) state
+        3. Two ways
+            i. Make the problem harder by removing some of the preds from the prefix-state
+            ii. Make the problem easier by adding some of the preds in the suffix-state into the prefix-state
+        :return:
+        """
+        self.random_prefix_execution(replan=True)
+        regress_state = self.regress(harder)
+        if harder:
+            this_much_harder = random.choice(range(1, len(regress_state) + 1))
+            to_remove = set(random.choices(list(regress_state), k=this_much_harder))
+            self.replanning_init = self.final_state.difference(to_remove)
+            return to_remove
+        else:
+            this_much_easier = random.choice(range(1, len(regress_state) + 1))
+            # print("-----------------", self.final_state, regress_state, this_much_easier, self.prefix)
+            to_add = set(random.choices(list(regress_state), k=this_much_easier))
+            self.replanning_init = self.final_state.union(to_add)
+            return to_add
+
+    def regress(self, harder):
+        curr_state = self.goal_state
+        suffix = self.plan[self.prefix:][::-1]
+        if harder:
+            for act in suffix:
+                act = act.upper()
+                # goal - effects u precond
+                if self.is_pr_grounded:
+                    act_adds = self.get_sets(self.model[DOMAIN][act][ADDS])
+                    act_dels = self.get_sets(self.model[DOMAIN][act][DELS])
+                    act_pos_precs = self.get_sets(self.model[DOMAIN][act][POS_PREC])
+                    try:
+                        act_neg_precs = self.get_sets(self.model[DOMAIN][act][NEG_PREC])
+                    except Exception as e:
+                        act_neg_precs = set([])
+                else:
+                    act_pos_precs, act_adds, act_dels = self.ground_strips_action(act)
+                    act_pos_precs, act_adds, act_dels = set(act_pos_precs), set(act_adds), set(act_dels)
+                    try:
+                        act_neg_precs = self.get_sets(self.model[DOMAIN][act][NEG_PREC])
+                    except Exception as e:
+                        act_neg_precs = set([])
+                curr_state = curr_state.difference(act_adds.union(act_dels))
+                curr_state = curr_state.union(act_neg_precs.union(act_pos_precs))
+        else:
+            rand_suff = random.choice(range(len(suffix)))
+            print("SUFFIX", rand_suff, len(suffix))
+            for act in suffix[:rand_suff]:
+                act = act.upper()
+                if self.is_pr_grounded:
+                    act_adds = self.get_sets(self.model[DOMAIN][act][ADDS])
+                    act_dels = self.get_sets(self.model[DOMAIN][act][DELS])
+                    act_pos_precs = self.get_sets(self.model[DOMAIN][act][POS_PREC])
+                    try:
+                        act_neg_precs = self.get_sets(self.model[DOMAIN][act][NEG_PREC])
+                    except Exception as e:
+                        act_neg_precs = set([])
+                else:
+                    act_pos_precs, act_adds, act_dels = self.ground_strips_action(act)
+                    act_pos_precs, act_adds, act_dels = set(act_pos_precs), set(act_adds), set(act_dels)
+                    try:
+                        act_neg_precs = self.get_sets(self.model[DOMAIN][act][NEG_PREC])
+                    except Exception as e:
+                        act_neg_precs = set([])
+
+                curr_state = curr_state.difference(act_adds.union(act_dels))
+                curr_state = curr_state.union(act_neg_precs.union(act_pos_precs))
+        regress_state = set()
+        # print(curr_state)
+        # # DOMAIN DEPENDENCY
+        for i in curr_state:
+            # if 'clear' not in i:
+            #     regress_state.add(i)
+            regress_state.add(i)
+        # print(regress_state)
+        return regress_state
+
+    def random_prefix_execution(self, replan=False):
+        # print("PLAN", self.plan)
+        if len(self.plan)<2:
+            self.prefix = 1
+        else:
+            self.prefix = random.choice(range(1, len(self.plan)))
+        self.final_state = self.get_final_state(self.init_state, self.plan[0:self.prefix])
+        self.new_goal_state = self.final_state.difference(self.init_state)
+        # self.all_preds = self.get_sets(self.model[PREDICATES])
+        # self.not_true_preds = self.all_preds.difference(self.final_state)
+        # for i in self.final_state:
+        #     self.final_state_dict[i] = "Yes"
+        # for i in self.not_true_preds:
+        #     self.final_state_dict[i] = "No"
+
+    def complete_plan_execution(self):
+        self.prefix = len(self.plan)
         self.final_state = self.get_final_state(self.init_state, self.plan[0:self.prefix])
         # self.all_preds = self.get_sets(self.model[PREDICATES])
         # self.not_true_preds = self.all_preds.difference(self.final_state)
@@ -173,27 +369,16 @@ class Executor:
         if not fd_path:
             raise ValueError("FAST_DOWNWARD environment variable not set")
 
-        # Use absolute paths
-        abs_domain = os.path.abspath(domain)
-        abs_problem = os.path.abspath(problem)
         fd_script = os.path.join(fd_path, "fast-downward.py")
-
-        # Use shlex.quote for shell safety, satisfying linter requirements
-        cmd = f"{shlex.quote(fd_script)} {shlex.quote(abs_domain)} {shlex.quote(abs_problem)} --search 'astar(lmcut())'"
-
         try:
-            # shell=True required for command string execution
             subprocess.run(
-                cmd,
-                shell=True,
+                [fd_script, domain, problem, "--search", "astar(lmcut())"],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.STDOUT,
-                check=True
+                check=True,
             )
         except subprocess.CalledProcessError:
-            # If fast-downward fails, we assume no plan or error occurred.
             pass
-
         # USE SAS PLAN to get actions
         plan = []
         cost = 0
@@ -234,25 +419,16 @@ class Executor:
         if not pr2_path:
             raise ValueError("PR2 environment variable not set")
 
-        abs_domain = os.path.abspath(domain)
-        abs_problem = os.path.abspath(problem)
-        pr2_script = os.path.join(pr2_path, "pr2plan")
-
-        # Use shlex.quote for shell safety
-        cmd = f"{shlex.quote(pr2_script)} -d {shlex.quote(abs_domain)} -i {shlex.quote(abs_problem)} -o blank_obs.dat"
-
+        pr2_bin = os.path.join(pr2_path, "pr2plan")
         try:
-            # shell=True required for command string execution
             subprocess.run(
-                cmd,
-                shell=True,
+                [pr2_bin, "-d", domain, "-i", problem, "-o", "blank_obs.dat"],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.STDOUT,
-                check=True
+                check=True,
             )
         except subprocess.CalledProcessError:
             pass
-
         pr_domain = 'pr-domain.pddl'
         pr_problem = 'pr-problem.pddl'
         self.remove_explain(pr_domain, pr_problem)
@@ -260,15 +436,13 @@ class Executor:
 
     def remove_explain(self, domain, problem):
         try:
-            for file_path in [domain, problem]:
-                # Read all lines
-                with open(file_path, 'r') as f:
-                    lines = f.readlines()
-                # Write back only lines that do not contain "EXPLAIN"
-                with open(file_path, 'w') as f:
+            for file_path in [problem, domain]:
+                with open(file_path, "r") as handle:
+                    lines = handle.readlines()
+                with open(file_path, "w") as handle:
                     for line in lines:
                         if "EXPLAIN" not in line:
-                            f.write(line)
+                            handle.write(line)
         except FileNotFoundError:
             raise Exception('[ERROR] Removing "EXPLAIN" from pr-domain and pr-problem files.')
 
