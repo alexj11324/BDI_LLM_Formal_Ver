@@ -42,5 +42,10 @@ ENV PYTHONPATH=/app
 # Set VAL path explicitly to the compiled binary
 ENV VAL_VALIDATOR_PATH=/app/planbench_data/planner_tools/VAL/validate
 
+# Create a non-root user and switch to it
+RUN useradd -m -u 1000 appuser
+RUN chown -R appuser:appuser /app
+USER appuser
+
 # Entrypoint for the MCP server
 CMD ["python", "src/interfaces/mcp_server.py"]

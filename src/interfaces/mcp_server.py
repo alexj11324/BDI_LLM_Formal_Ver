@@ -15,8 +15,18 @@ from src.bdi_llm.config import Config
 
 mcp = FastMCP("BDI-LLM Verifier")
 
-def _verify_plan_logic(domain_pddl: str, problem_pddl: str, plan_actions: List[str]) -> str:
-    """Helper function for verification logic."""
+from typing import Tuple
+
+def _verify_plan_logic(
+    domain_pddl: str,
+    problem_pddl: str,
+    plan_actions: List[str],
+    domain_name: str = "blocksworld"
+) -> Tuple[bool, str]:
+    """
+    Helper function for verification logic.
+    Returns: (is_valid, message)
+    """
     d_path = None
     p_path = None
     try:
@@ -29,18 +39,17 @@ def _verify_plan_logic(domain_pddl: str, problem_pddl: str, plan_actions: List[s
             p_file.write(problem_pddl)
             p_path = p_file.name
 
-        # We assume domain is blocksworld by default for now as we don't parse PDDL domain name easily
-        verifier = IntegratedVerifier(domain="blocksworld")
+        verifier = IntegratedVerifier(domain=domain_name)
 
         is_valid, errors = verifier.symbolic_verifier.verify_plan(d_path, p_path, plan_actions, verbose=True)
 
         if is_valid:
-            return "Plan is VALID."
+            return True, "Plan is VALID."
         else:
-            return "Plan is INVALID.\nErrors:\n" + "\n".join(errors)
+            return False, "Plan is INVALID.\nErrors:\n" + "\n".join(errors)
 
     except Exception as e:
-        return f"Error during verification: {str(e)}"
+        return False, f"Error during verification: {str(e)}"
     finally:
         if d_path and os.path.exists(d_path):
             os.unlink(d_path)
@@ -83,7 +92,12 @@ def generate_plan(beliefs: str, desire: str, domain: str = "blocksworld") -> str
         return f"Error generating plan: {str(e)}"
 
 @mcp.tool()
-def verify_plan(domain_pddl: str, problem_pddl: str, plan_actions: List[str]) -> str:
+def verify_plan(
+    domain_pddl: str,
+    problem_pddl: str,
+    plan_actions: List[str],
+    domain_name: str = "blocksworld"
+) -> str:
     """
     Verifies a PDDL plan against a domain and problem definition.
 
@@ -91,8 +105,10 @@ def verify_plan(domain_pddl: str, problem_pddl: str, plan_actions: List[str]) ->
         domain_pddl: Content of the PDDL domain file.
         problem_pddl: Content of the PDDL problem file.
         plan_actions: List of PDDL actions (e.g. ["(pick-up a)", "(stack a b)"]).
+        domain_name: Name of the planning domain (default: "blocksworld").
     """
-    return _verify_plan_logic(domain_pddl, problem_pddl, plan_actions)
+    _, message = _verify_plan_logic(domain_pddl, problem_pddl, plan_actions, domain_name)
+    return message
 
 # sourcery skip: avoid-subprocess
 def _execute_command(command: str) -> subprocess.CompletedProcess:
@@ -111,7 +127,8 @@ def execute_verified_plan(
     problem_pddl: str,
     plan_actions: List[str],
     command_to_execute: str,
-    rationale: str
+    rationale: str,
+    domain_name: str = "blocksworld"
 ) -> str:
     """
     Verifies a PDDL plan and, if valid, executes a shell command.
@@ -123,10 +140,11 @@ def execute_verified_plan(
         plan_actions: List of PDDL actions representing the logic.
         command_to_execute: The actual shell command to run if verification passes.
         rationale: Explanation of why this command is being executed.
+        domain_name: Name of the planning domain (default: "blocksworld").
     """
-    verification_result = _verify_plan_logic(domain_pddl, problem_pddl, plan_actions)
+    is_valid, verification_message = _verify_plan_logic(domain_pddl, problem_pddl, plan_actions, domain_name)
 
-    if "Plan is VALID" in verification_result:
+    if is_valid:
         # Proceed with execution
         try:
             # Execute command
@@ -139,7 +157,7 @@ def execute_verified_plan(
         except Exception as e:
             return f"Verification PASSED, but Command Execution Error: {str(e)}"
     else:
-        return f"Verification FAILED. Command NOT Executed.\nRationale: {rationale}\nVerification Output:\n{verification_result}"
+        return f"Verification FAILED. Command NOT Executed.\nRationale: {rationale}\nVerification Output:\n{verification_message}"
 
 if __name__ == "__main__":
     mcp.run()
