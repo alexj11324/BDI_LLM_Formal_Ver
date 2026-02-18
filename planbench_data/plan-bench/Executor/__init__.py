@@ -8,6 +8,7 @@ from model_parser.parser_new import parse_model
 from model_parser.writer_new import ModelWriter
 from model_parser.constants import *
 import os
+import subprocess
 import random
 import re
 from copy import deepcopy
@@ -365,9 +366,19 @@ class Executor:
         :return:
         """
         fd_path = os.getenv("FAST_DOWNWARD")
-        # Remove > /dev/null to see the output of fast-downward
-        CMD_FD = f"{fd_path}/fast-downward.py {domain} {problem} --search \"astar(lmcut())\" >/dev/null 2>&1"
-        os.system(CMD_FD)
+        if not fd_path:
+            raise ValueError("FAST_DOWNWARD environment variable not set")
+
+        fd_script = os.path.join(fd_path, "fast-downward.py")
+        try:
+            subprocess.run(
+                [fd_script, domain, problem, "--search", "astar(lmcut())"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.STDOUT,
+                check=True,
+            )
+        except subprocess.CalledProcessError:
+            pass
         # USE SAS PLAN to get actions
         plan = []
         cost = 0
@@ -405,9 +416,19 @@ class Executor:
 
     def ground_domain(self, domain, problem):
         pr2_path = os.getenv("PR2")
-        # Remove > /dev/null to see the output of PR2
-        CMD_PR2 = f"{pr2_path}/pr2plan -d {domain}  -i {problem} -o blank_obs.dat >/dev/null 2>&1"
-        os.system(CMD_PR2)
+        if not pr2_path:
+            raise ValueError("PR2 environment variable not set")
+
+        pr2_bin = os.path.join(pr2_path, "pr2plan")
+        try:
+            subprocess.run(
+                [pr2_bin, "-d", domain, "-i", problem, "-o", "blank_obs.dat"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.STDOUT,
+                check=True,
+            )
+        except subprocess.CalledProcessError:
+            pass
         pr_domain = 'pr-domain.pddl'
         pr_problem = 'pr-problem.pddl'
         self.remove_explain(pr_domain, pr_problem)
@@ -415,10 +436,13 @@ class Executor:
 
     def remove_explain(self, domain, problem):
         try:
-            cmd = 'cat {0} | grep -v "EXPLAIN" > pr-problem.pddl.tmp && mv pr-problem.pddl.tmp {0}'.format(problem)
-            os.system(cmd)
-            cmd = 'cat {0} | grep -v "EXPLAIN" > pr-domain.pddl.tmp && mv pr-domain.pddl.tmp {0}'.format(domain)
-            os.system(cmd)
+            for file_path in [problem, domain]:
+                with open(file_path, "r") as handle:
+                    lines = handle.readlines()
+                with open(file_path, "w") as handle:
+                    for line in lines:
+                        if "EXPLAIN" not in line:
+                            handle.write(line)
         except FileNotFoundError:
             raise Exception('[ERROR] Removing "EXPLAIN" from pr-domain and pr-problem files.')
 
