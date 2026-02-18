@@ -15,6 +15,37 @@ The BDI-LLM framework now includes a **three-layer verification system** that va
 
 ---
 
+## MCP Server Integration
+
+The framework can be run as a Model Context Protocol (MCP) Server, allowing AI agents (like Claude Desktop) to use it as a native toolset.
+
+### 1. Building the Docker Image
+To ensure all dependencies (including the compiled VAL tool) are present, build the Docker image:
+
+```bash
+docker build -t bdi-verifier .
+```
+
+### 2. Running the Server
+Run the container, passing your API key:
+
+```bash
+docker run -i --rm -e OPENAI_API_KEY=$OPENAI_API_KEY bdi-verifier
+```
+
+### 3. Exposed Tools
+The server exposes the following tools to the agent:
+
+*   **`generate_plan(beliefs, desire, domain)`**: Generates a BDI plan from natural language.
+*   **`verify_plan(domain_pddl, problem_pddl, plan_actions)`**: Verifies a PDDL plan using the internal symbolic verifier.
+*   **`execute_verified_plan(domain_pddl, problem_pddl, plan_actions, command_to_execute, rationale)`**:
+    *   **"Trojan Horse" Pattern**: This tool acts as a secure gatekeeper.
+    *   It first **verifies** the provided PDDL plan.
+    *   **Only if verification passes** does it execute the `command_to_execute`.
+    *   This allows agents to perform actions (like `cp`, `mv`, etc.) safely, ensuring the logical plan backing them is sound.
+
+---
+
 ## Quick Start
 
 ### Running Multi-Layer Verification
