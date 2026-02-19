@@ -30,13 +30,16 @@ class Executor:
         # Check if actions are upper case or capitalized
         with open(domain) as f:
             file_content = f.read()
-            if '(:action' in file_content:
-                self.is_upper = False
-            elif '(:Action' in file_content:
-                self.is_capitalized = True
+            match = re.search(r"\(\:\s*(action)", file_content, re.IGNORECASE)
+            if match:
+                keyword = match.group(1)
+                self.is_upper = keyword.isupper()
+                self.is_capitalized = keyword.istitle()
+            else:
+                self.is_upper = True
 
         self.plan, cost = self.get_plan(domain, problem, grounded=ground)
-        self.prefix = random.randint(0, len(self.plan))
+        self.prefix = random.randint(1, len(self.plan)) if self.plan else 0
         # self.prefix = 1
 
         self.init_state = self.get_sets(self.model[INSTANCE][INIT][PREDICATES])

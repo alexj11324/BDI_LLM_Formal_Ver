@@ -260,26 +260,18 @@ class PDDLSymbolicVerifier:
         return errors
 
 
-class PhysicsValidatorRegistry:
-    """Registry for domain-specific physics validators."""
-    _validators = {}
+PHYSICS_VALIDATORS = {}
 
-    @classmethod
-    def register(cls, domain_name: str):
-        def decorator(validator_cls):
-            cls._validators[domain_name] = validator_cls
-            return validator_cls
-        return decorator
+def register_physics_validator(domain_name: str, validator_cls):
+    """Register a domain-specific physics validator."""
+    PHYSICS_VALIDATORS[domain_name] = validator_cls
 
-    @classmethod
-    def get_validator(cls, domain_name: str):
-        validator_cls = cls._validators.get(domain_name)
-        if validator_cls:
-            return validator_cls()
-        return None
+def get_physics_validator(domain_name: str):
+    """Get a domain-specific physics validator instance."""
+    cls = PHYSICS_VALIDATORS.get(domain_name)
+    return cls() if cls is not None else None
 
 
-@PhysicsValidatorRegistry.register("blocksworld")
 class BlocksworldPhysicsValidator:
     """
     Domain-specific validator for Blocksworld
@@ -479,6 +471,10 @@ class BlocksworldPhysicsValidator:
         return filtered_blocks[:2] if len(filtered_blocks) >= 2 else []
 
 
+# Register domain-specific validators
+register_physics_validator("blocksworld", BlocksworldPhysicsValidator)
+
+
 # ============================================================================
 # Integrated Multi-Layer Verifier
 # ============================================================================
@@ -503,7 +499,7 @@ class IntegratedVerifier:
         self.symbolic_verifier = PDDLSymbolicVerifier(val_path)
 
         # Domain-specific validators (loaded via robust registry)
-        self.physics_validator = PhysicsValidatorRegistry.get_validator(domain)
+        self.physics_validator = get_physics_validator(domain)
 
     def verify_full(
         self,
