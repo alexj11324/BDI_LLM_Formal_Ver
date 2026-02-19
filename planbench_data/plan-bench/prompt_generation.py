@@ -11,17 +11,7 @@ import time
 import json
 
 from tqdm import tqdm
-
-
-def str2bool(v):
-    if isinstance(v, bool):
-        return v
-    if v.lower() in ('yes', 'true', 't', 'y', '1'):
-        return True
-    if v.lower() in ('no', 'false', 'f', 'n', '0'):
-        return False
-    raise argparse.ArgumentTypeError('Boolean value expected.')
-
+from shared_utils import str2bool
 
 class PromptGenerator:
     def __init__(self,config_file, verbose, ignore_existing, seed) -> None:
