@@ -17,7 +17,7 @@ import tempfile
 import os
 import re
 from pathlib import Path
-from typing import Tuple, List, Dict
+from typing import Any, Tuple, List, Dict
 from .config import Config
 
 
@@ -501,6 +501,92 @@ class IntegratedVerifier:
         # Domain-specific validators (loaded via robust registry)
         self.physics_validator = get_physics_validator(domain)
 
+    @staticmethod
+    def _truncate_errors(errors: List[str], limit: int) -> List[str]:
+        """Return a compact, de-blanked error list."""
+        if not errors:
+            return []
+        compact = [str(err).strip() for err in errors if str(err).strip()]
+        return compact[:limit]
+
+    @staticmethod
+    def build_planner_feedback(
+        verification_result: Dict[str, Any],
+        max_errors_per_layer: int = 3,
+    ) -> Dict[str, Any]:
+        """
+        Convert verifier output into planner-oriented repair feedback.
+
+        This keeps verifier internals encapsulated while exposing concise,
+        cross-layer diagnostics for repair prompting.
+        """
+        layers = verification_result.get('layers', {}) or {}
+        failed_layers: List[str] = []
+        layer_status: Dict[str, str] = {}
+        key_errors: Dict[str, List[str]] = {}
+
+        for layer_name in ('structural', 'symbolic', 'physics'):
+            layer = layers.get(layer_name)
+            if layer is None:
+                layer_status[layer_name] = 'unknown'
+                key_errors[layer_name] = []
+                continue
+
+            is_valid = bool(layer.get('valid', False))
+            layer_status[layer_name] = 'pass' if is_valid else 'fail'
+            key_errors[layer_name] = IntegratedVerifier._truncate_errors(
+                layer.get('errors', []),
+                max_errors_per_layer,
+            )
+            if not is_valid:
+                failed_layers.append(layer_name)
+
+        symbolic_errors = key_errors.get('symbolic', [])
+        val_repair_advice: List[str] = []
+        for err in symbolic_errors:
+            if err.startswith("VAL Repair Advice:"):
+                advice = err.split("VAL Repair Advice:", 1)[1].strip()
+                if advice:
+                    val_repair_advice.append(advice)
+
+        repair_focus: List[str] = []
+        if 'structural' in failed_layers:
+            repair_focus.append(
+                "Fix graph structure first: produce one weakly connected DAG with no cycles."
+            )
+        if 'symbolic' in failed_layers:
+            if val_repair_advice:
+                repair_focus.append(
+                    "Prioritize VAL repair advice and add prerequisite actions before failing steps."
+                )
+            else:
+                repair_focus.append(
+                    "Fix symbolic precondition/goal failures before optimizing the plan."
+                )
+        if 'physics' in failed_layers:
+            repair_focus.append(
+                "Respect domain physics constraints when ordering and parameterizing actions."
+            )
+        if not repair_focus and verification_result.get('overall_valid', False):
+            repair_focus.append("No verifier failures detected.")
+
+        error_summary = verification_result.get('error_summary')
+        if not error_summary:
+            if failed_layers:
+                error_summary = f"Failed layers: {', '.join(failed_layers)}"
+            else:
+                error_summary = "All layers passed"
+
+        return {
+            'error_summary': error_summary,
+            'overall_valid': bool(verification_result.get('overall_valid', False)),
+            'failed_layers': failed_layers,
+            'layer_status': layer_status,
+            'key_errors': key_errors,
+            'val_repair_advice': val_repair_advice,
+            'repair_focus': repair_focus,
+        }
+
     def verify_full(
         self,
         bdi_plan,
@@ -527,7 +613,14 @@ class IntegratedVerifier:
                     'physics': {'valid': bool, 'errors': [...]}
                 },
                 'overall_valid': bool,
-                'error_summary': str
+                'error_summary': str,
+                'planner_feedback': {
+                    'failed_layers': [...],
+                    'layer_status': {...},
+                    'key_errors': {...},
+                    'val_repair_advice': [...],
+                    'repair_focus': [...]
+                }
             }
         """
         from src.bdi_llm.verifier import PlanVerifier
@@ -535,7 +628,8 @@ class IntegratedVerifier:
         results = {
             'layers': {},
             'overall_valid': False,
-            'error_summary': ''
+            'error_summary': '',
+            'planner_feedback': {}
         }
 
         # Layer 1: Structural verification (Graph)
@@ -590,5 +684,7 @@ class IntegratedVerifier:
             results['error_summary'] = f"Failed layers: {', '.join(failed_layers)}"
         else:
             results['error_summary'] = "All layers passed"
+
+        results['planner_feedback'] = self.build_planner_feedback(results)
 
         return results
