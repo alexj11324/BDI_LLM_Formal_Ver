@@ -46,6 +46,23 @@ class PlanRepairer:
     VIRTUAL_END = "__END__"
 
     @classmethod
+    def _append_virtual_node_once(
+        cls,
+        nodes: List[ActionNode],
+        node_id: str,
+        description: str,
+    ) -> None:
+        """Append a virtual node only when the ID does not already exist."""
+        if any(node.id == node_id for node in nodes):
+            return
+        nodes.append(ActionNode(
+            id=node_id,
+            action_type="Virtual",
+            params={},
+            description=description,
+        ))
+
+    @classmethod
     def repair(cls, plan: BDIPlan) -> RepairResult:
         """
         Attempt to repair an invalid plan
@@ -139,23 +156,19 @@ class PlanRepairer:
         new_nodes = list(plan.nodes)
         new_edges = list(plan.edges)
 
-        # Add virtual START
-        start_node = ActionNode(
-            id=cls.VIRTUAL_START,
-            action_type="Virtual",
-            params={},
-            description="Virtual start node (plan initialization)"
+        # Add virtual START only once
+        cls._append_virtual_node_once(
+            new_nodes,
+            cls.VIRTUAL_START,
+            "Virtual start node (plan initialization)",
         )
-        new_nodes.append(start_node)
 
-        # Add virtual END
-        end_node = ActionNode(
-            id=cls.VIRTUAL_END,
-            action_type="Virtual",
-            params={},
-            description="Virtual end node (plan completion)"
+        # Add virtual END only once
+        cls._append_virtual_node_once(
+            new_nodes,
+            cls.VIRTUAL_END,
+            "Virtual end node (plan completion)",
         )
-        new_nodes.append(end_node)
 
         # For each component, connect START to roots and terminals to END
         for component in components:
@@ -167,6 +180,8 @@ class PlanRepairer:
 
             # Connect START to each root
             for root_id in roots_in_component:
+                if root_id == cls.VIRTUAL_START:
+                    continue
                 new_edges.append(DependencyEdge(
                     source=cls.VIRTUAL_START,
                     target=root_id
@@ -180,6 +195,8 @@ class PlanRepairer:
 
             # Connect each terminal to END
             for terminal_id in terminals_in_component:
+                if terminal_id == cls.VIRTUAL_END:
+                    continue
                 new_edges.append(DependencyEdge(
                     source=terminal_id,
                     target=cls.VIRTUAL_END
@@ -207,14 +224,12 @@ class PlanRepairer:
         new_nodes = list(plan.nodes)
         new_edges = list(plan.edges)
 
-        # Add virtual START
-        start_node = ActionNode(
-            id=cls.VIRTUAL_START,
-            action_type="Virtual",
-            params={},
-            description="Virtual start node"
+        # Add virtual START only if missing
+        cls._append_virtual_node_once(
+            new_nodes,
+            cls.VIRTUAL_START,
+            "Virtual start node",
         )
-        new_nodes.append(start_node)
 
         # Connect START to each root
         for root_id in roots:
@@ -236,14 +251,12 @@ class PlanRepairer:
         new_nodes = list(plan.nodes)
         new_edges = list(plan.edges)
 
-        # Add virtual END
-        end_node = ActionNode(
-            id=cls.VIRTUAL_END,
-            action_type="Virtual",
-            params={},
-            description="Virtual end node"
+        # Add virtual END only if missing
+        cls._append_virtual_node_once(
+            new_nodes,
+            cls.VIRTUAL_END,
+            "Virtual end node",
         )
-        new_nodes.append(end_node)
 
         # Connect each terminal to END
         for terminal_id in terminals:
