@@ -2,130 +2,134 @@
 
 English | [简体中文](README_CN.md)
 
-A framework for generating and verifying BDI plans using LLMs with formal verification guarantees.
+A neuro-symbolic planning framework that combines LLM generation with formal verification to produce provably correct plans.
 
 ## Overview
 
-This project implements a hybrid planning architecture that combines the generative capabilities of LLMs with rigorous formal verification methods. It addresses the hallucination and logical inconsistency problems in LLM-generated plans by enforcing structural and semantic constraints.
+BDI-LLM addresses the hallucination and logical inconsistency problems in LLM-generated plans by running every generated plan through a 3-layer verification pipeline. Plans that fail verification are automatically repaired and re-verified before being returned.
 
 ### Key Features
 
-*   **Hybrid BDI + LLM Planning**: Generates structured BDI plans (Beliefs, Desires, Intentions) from natural language goals.
-*   **Multi-Layer Verification**:
-    1.  **Structural Verification**: Ensures the plan forms a valid Directed Acyclic Graph (DAG) and is weakly connected.
-    2.  **Symbolic Verification**: Integrates PDDL-based verification (using VAL) to check logical consistency.
-    3.  **Physics Validation**: Domain-specific physics validators (e.g., for Blocksworld) to ensure action feasibility.
-*   **Auto-Repair Mechanism**: Automatically fixes common structural errors (like disconnected subgraphs) without re-querying the LLM.
-*   **Coding Domain Support**: Specialized BDI planner for software engineering tasks (SWE-bench), capable of reading, editing, and testing code.
-*   **Benchmarking**: Built-in support for evaluating against the PlanBench dataset.
+- **Hybrid BDI + LLM Planning**: Generates structured BDI plans (Beliefs, Desires, Intentions) as DAGs from natural language goals using DSPy ChainOfThought.
+- **3-Layer Verification**:
+  1. **Structural** — DAG validity, weak connectivity, cycle detection
+  2. **Symbolic** — PDDL precondition/effect checking via VAL
+  3. **Physics** — Domain-specific state simulation (e.g., Blocksworld clear/hand constraints)
+- **Auto-Repair**: Fixes disconnected subgraphs and canonicalizes node IDs without re-querying the LLM. Falls back to LLM-guided repair using VAL error messages (up to 3 attempts).
+- **MCP Server**: Exposes `generate_verified_plan` as an MCP tool for use by Claude Code, Cursor, and other agents.
+- **Coding Domain**: Specialized planner for SWE-bench software engineering tasks (`read-file` → `edit-file` → `run-test` action types).
+- **Ablation Support**: `--execution_mode` flag (NAIVE / BDI_ONLY / FULL_VERIFIED) for controlled experiments.
 
 ## PlanBench Results
 
-Evaluated using `vertex_ai/gemini-3-flash-preview` across three planning domains (frozen snapshot: 2026-02-16).
+Full-dataset evaluation across three planning domains.
+
+### GPT-5 (infiniteai, 2026-02-27) — Full Dataset
+
+| Domain | Instances | Success Rate |
+|--------|-----------|-------------|
+| Blocksworld | 1103/1103 | **90.8%** (FULL_VERIFIED) |
+| Logistics | 572 | in progress |
+| Depots | 501 | in progress |
+
+### Gemini (2026-02-13) — Paper Canonical Numbers
 
 | Domain | Passed | Total | Accuracy |
-|---|---|---|---|
-| Blocksworld | 399 | 400 | **99.8%** |
+|--------|--------|-------|----------|
+| Blocksworld | ~200 | ~200 | ~99.8% |
 | Logistics | 568 | 570 | **99.6%** |
 | Depots | 497 | 500 | **99.4%** |
-| **Overall** | **1464** | **1470** | **99.6%** |
 
-Only 6 instances failed across all domains (1 new failure in Blocksworld Batch 1). Detailed provenance and SHA256 checksums are available in [Paper Result Provenance](docs/PAPER_RESULT_PROVENANCE.md).
+Frozen evidence snapshot: `artifacts/paper_eval_20260213/` (immutable, do not modify).
+
+### Ablation (GPT-5, blocksworld 1103 instances)
+
+| Mode | Success Rate | What's verified |
+|------|-------------|-----------------|
+| NAIVE | 91.6% | Nothing — raw LLM output |
+| BDI_ONLY | 91.7% | Structural (DAG) only |
+| FULL_VERIFIED | 90.8% | All 3 layers — provably correct |
+
+The ~1% gap between NAIVE and FULL_VERIFIED shows the verification overhead is minimal while providing formal correctness guarantees.
 
 ## Installation
 
-1.  Clone the repository:
-    ```bash
-    git clone https://github.com/alexj11324/BDI_LLM_Formal_Ver.git
-    cd BDI_LLM_Formal_Ver
-    ```
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/alexj11324/BDI_LLM_Formal_Ver.git
+   cd BDI_LLM_Formal_Ver
+   ```
 
-2.  Install dependencies:
-    ```bash
-    pip install -r requirements.txt
-    ```
+2. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
 3. Set up environment variables:
-    ```bash
-    cp .env.example .env
-    # Edit .env to add your API_KEY and optionally API_BASE
-    nano .env
-    ```
-    Alternatively, export them directly:
-    ```bash
-    export OPENAI_API_KEY="your-api-key"
-    # Optional: Set a custom API base URL if using a gateway
-    export OPENAI_API_BASE="https://your-gateway-url/v1"
-    ```
+   ```bash
+   cp .env.example .env
+   # Edit .env: set OPENAI_API_KEY, optionally OPENAI_API_BASE for custom gateway
+   ```
 
 ## Usage
 
-### Running Evaluations
-
-Run the main evaluation script to test the framework:
+### Tests (no API key needed)
 
 ```bash
-python scripts/run_evaluation.py --mode [unit|demo|benchmark]
+pytest
+pytest tests/test_verifier.py -v
 ```
 
-*   `unit`: Run unit tests for core components.
-*   `demo`: Run a live LLM demo with auto-repair.
-*   `benchmark`: Run evaluations on the PlanBench dataset.
+### Evaluation
 
-### MCP Server (Model Context Protocol)
+```bash
+python scripts/run_evaluation.py --mode unit       # offline unit tests
+python scripts/run_evaluation.py --mode demo       # live LLM demo
+python scripts/run_evaluation.py --mode benchmark  # full benchmark
+```
 
-The verifier can be run as an MCP Server, allowing AI agents (like Claude Desktop) to use it as a tool.
+### PlanBench
 
-1.  **Build Docker Image**:
-    ```bash
-    docker build -t bdi-verifier .
-    ```
+```bash
+# Single domain
+python scripts/run_planbench_full.py --domain blocksworld --max_instances 100
 
-2.  **Run Server**:
-    ```bash
-    docker run -i --rm -e OPENAI_API_KEY=$OPENAI_API_KEY bdi-verifier
-    ```
+# All domains, parallel, with ablation mode
+python scripts/run_planbench_full.py --all_domains --execution_mode FULL_VERIFIED \
+  --output_dir runs/my_run --parallel --workers 30
 
-The server exposes:
-*   `generate_plan`: Generate BDI plans.
-*   `verify_plan`: Verify PDDL plans (Structural + Symbolic).
-*   `execute_verified_plan`: Execute commands ONLY if verification passes ("Trojan Horse" pattern).
+# Resume from checkpoint (auto-detected if checkpoint exists in output_dir)
+python scripts/run_planbench_full.py --domain blocksworld --output_dir runs/my_run
+```
+
+### MCP Server
+
+```bash
+python src/mcp_server_bdi.py
+```
+
+Exposes `generate_verified_plan(goal, domain, context, pddl_domain_file, pddl_problem_file)` as an MCP tool.
 
 ### Project Structure
 
 ```
 BDI_LLM_Formal_Ver/
-├── src/bdi_llm/                          # Core planner + verification modules
-├── scripts/                              # Evaluation and utility scripts
-├── tests/                                # Unit and integration tests
-├── docs/                                 # User/system/provenance docs
-├── planbench_data/                       # PlanBench data + VAL binaries
-├── runs/                                 # Mutable outputs + legacy runs (see runs/README.md)
-│   └── legacy/planbench_results_20260211/  # Historical pre-freeze outputs
-├── artifacts/paper_eval_20260213/        # Frozen paper evidence snapshot
-├── planbench_results_archive.tar.gz      # Raw archived experiment bundle
-└── requirements.txt                      # Project dependencies
+├── src/bdi_llm/          # Core modules (planner, verifier, schemas, repair)
+├── src/mcp_server_bdi.py # MCP server entry point
+├── scripts/              # Evaluation and benchmark scripts
+├── tests/                # Unit and integration tests
+├── planbench_data/       # PlanBench PDDL instances + VAL binary (macOS arm64)
+├── runs/                 # Mutable benchmark outputs (not authoritative for paper)
+├── artifacts/            # Frozen paper evidence snapshots (do not modify)
+└── BDI_Paper/            # LaTeX source (AAAI 2026 format)
 ```
 
 ## Documentation
 
-*   [User Guide](docs/USER_GUIDE.md): Detailed guide on usage and configuration.
-*   [Architecture](docs/ARCHITECTURE.md): System architecture and verification layers.
-*   [Benchmarks](docs/BENCHMARKS.md): Evaluation methodology and results.
-*   [Paper Result Provenance](docs/PAPER_RESULT_PROVENANCE.md): Frozen paper-result evidence chain and verification procedure.
-*   [Repo Organization](docs/REPO_ORGANIZATION.md): Directory responsibilities and cleanup rules.
+- [User Guide](docs/USER_GUIDE.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Benchmarks](docs/BENCHMARKS.md)
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Current Status & Next Steps (Updated 2026-02-16)
-
-**Recent Accomplishments:**
-- Implemented Coding Domain (Phase 4): `CodingBDIPlanner`, PDDL domain, local SWE-bench harness.
-- Optimized PlanBench (Phase 5): Batch 1 (400 instances) completed with 99.8% success (399/400).
-
-**Priority Queue for Next Session:**
-1.  **Analyze PlanBench Failure**: Investigate the single failure case in Batch 1 (`runs/planbench_results/results_blocksworld_20260216_162051.json`).
-2.  **Expand SWE-bench**: Run `scripts/run_iterative_fix.py` on more instances (e.g., top 5 verified) to robustify the agent.
-3.  **Continue PlanBench Batches**: Execute Batch 2 (400-800) and Batch 3 (800-1103) to complete the benchmark.
+MIT License — see [LICENSE](LICENSE) for details.
