@@ -28,10 +28,11 @@ class PlanVerifier:
         # Check 3: Cycles (Deadlocks)
         # A plan must be a Directed Acyclic Graph (DAG).
         try:
-            cycles = list(nx.simple_cycles(graph))
-            if cycles:
-                for cycle in cycles:
-                    errors.append(f"Cycle detected: {' -> '.join(cycle)}")
+            if not nx.is_directed_acyclic_graph(graph):
+                cycle_edges = nx.find_cycle(graph)
+                cycle_nodes = [u for u, v in cycle_edges]
+                cycle_str = " -> ".join(map(str, cycle_nodes))
+                errors.append(f"Cycle detected: {cycle_str}")
         except Exception as e:
             errors.append(f"Error checking cycles: {str(e)}")
 
