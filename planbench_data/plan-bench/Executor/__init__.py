@@ -241,6 +241,8 @@ class Executor:
         return pr_domain, pr_problem
 
     def remove_explain(self, domain, problem):
+        import subprocess
+        import shutil
         try:
             for file_path in [problem, domain]:
                 with open(file_path, "r") as handle:
@@ -251,7 +253,6 @@ class Executor:
                             handle.write(line)
         except FileNotFoundError:
             raise Exception('[ERROR] Removing "EXPLAIN" from pr-domain and pr-problem files.')
-
     def get_new_instance(self, change_goal, change_init):
         
         if change_goal:
