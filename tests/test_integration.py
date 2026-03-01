@@ -4,6 +4,7 @@ import json
 from typing import List
 from src.bdi_llm.schemas import BDIPlan
 from src.bdi_llm.verifier import PlanVerifier
+from src.bdi_llm.config import Config
 
 # Check if we have a valid API key (not a dummy/placeholder)
 def _is_valid_api_key(key):
@@ -15,8 +16,60 @@ def _is_valid_api_key(key):
         return False
     return True
 
-api_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
-HAS_API_KEY = _is_valid_api_key(api_key)
+
+def _configured_llm_provider() -> str:
+    """Infer credential provider from active model/base config."""
+    model_name = Config.MODEL_NAME.lower()
+    api_base = (Config.OPENAI_API_BASE or "").lower()
+
+    if model_name.startswith("vertex_ai/"):
+        return "vertex_ai"
+    if "gemini" in model_name:
+        return "gemini"
+    if model_name.startswith("anthropic/"):
+        return "anthropic"
+    if model_name.startswith("nvidia/") or "integrate.api.nvidia.com" in api_base:
+        return "nvidia"
+    return "openai"
+
+
+def _has_credentials_for_provider(provider: str) -> bool:
+    """Check whether required credentials exist for the configured provider."""
+    credentials = Config.get_credentials()
+
+    if provider == "vertex_ai":
+        creds_path = credentials.get("google_application_credentials")
+        return bool(creds_path and os.path.exists(creds_path))
+
+    if provider == "gemini":
+        google_key_ok = _is_valid_api_key(credentials.get("google"))
+        creds_path = credentials.get("google_application_credentials")
+        vertex_creds_ok = bool(creds_path and os.path.exists(creds_path))
+        return google_key_ok or vertex_creds_ok
+
+    if provider == "anthropic":
+        return _is_valid_api_key(credentials.get("anthropic"))
+
+    if provider == "nvidia":
+        key = credentials.get("openai")
+        return _is_valid_api_key(key) and key.startswith("nvapi-")
+
+    return _is_valid_api_key(credentials.get("openai"))
+
+
+def _looks_like_auth_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return (
+        "401" in message
+        or "403" in message
+        or "unauthorized" in message
+        or "forbidden" in message
+        or "invalid api key" in message
+    )
+
+
+LLM_PROVIDER = _configured_llm_provider()
+HAS_PROVIDER_CREDENTIALS = _has_credentials_for_provider(LLM_PROVIDER)
 
 
 class MetricsCollector:
@@ -103,7 +156,10 @@ TEST_SCENARIOS = [
 ]
 
 
-@pytest.mark.skipif(not HAS_API_KEY, reason="No valid API key available")
+@pytest.mark.skipif(
+    not HAS_PROVIDER_CREDENTIALS,
+    reason=f"Missing credentials for configured provider: {LLM_PROVIDER}",
+)
 class TestLLMIntegration:
     """Tests that require actual LLM inference."""
 
@@ -129,6 +185,8 @@ class TestLLMIntegration:
             assert len(plan.nodes) <= scenario["expected_max_nodes"],                 f"Too many nodes: {len(plan.nodes)} > {scenario['expected_max_nodes']}"
 
         except Exception as e:
+            if _looks_like_auth_error(e):
+                pytest.skip(f"Auth unavailable for API-dependent test: {e}")
             pytest.fail(f"Planning failed: {str(e)}")
 
     def test_assert_triggers_retry_on_invalid(self, planner):
@@ -244,7 +302,7 @@ def run_benchmark(output_file: str = "benchmark_results.json"):
     metrics = MetricsCollector()
     results = []
 
-    if not HAS_API_KEY:
+    if not HAS_PROVIDER_CREDENTIALS:
         print("No API key found. Running offline tests only.")
         return
 

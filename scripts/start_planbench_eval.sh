@@ -21,11 +21,12 @@ OUTPUT_DIR="${PROJECT_ROOT}/runs/planbench_results"
 PYTHON_BIN="${PYTHON_BIN:-python}"
 
 # Check API credentials
-if [ -z "$OPENAI_API_KEY" ] && [ -z "$GOOGLE_API_KEY" ] && [ -z "$GOOGLE_APPLICATION_CREDENTIALS" ]; then
+if [ -z "$OPENAI_API_KEY" ] && [ -z "$ANTHROPIC_API_KEY" ] && [ -z "$GOOGLE_API_KEY" ] && [ -z "$GOOGLE_APPLICATION_CREDENTIALS" ]; then
     echo -e "${RED}ERROR: No API credential set${NC}"
     echo ""
     echo "Please set one of:"
     echo "  export OPENAI_API_KEY=sk-..."
+    echo "  export ANTHROPIC_API_KEY=..."
     echo "  export GOOGLE_API_KEY=..."
     echo "  export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json"
     echo ""

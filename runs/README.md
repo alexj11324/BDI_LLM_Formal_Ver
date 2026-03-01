@@ -2,6 +2,17 @@
 
 This folder contains non-canonical experiment outputs and summaries.
 
+## Rerun Policy (Important)
+
+- Completed benchmark groups are tracked in:
+  - `./runs/completed_benchmarks.lock.json`
+- Default behavior:
+  - Skip rerunning anything listed in that lock file.
+- Rerun exception:
+  - Only rerun when the user explicitly asks in the current task.
+- Disabled domains:
+  - `obfuscated_*` (including `./runs/disabled_obfuscated/`) are disabled by default and should not be run.
+
 ## Canonical vs Non-Canonical
 
 - Canonical paper evidence (use for paper tables):

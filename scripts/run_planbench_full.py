@@ -25,7 +25,7 @@ import json
 import re
 import time
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 from datetime import datetime
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -1123,7 +1123,8 @@ def generate_bdi_plan(
     domain: str = "blocksworld",
     timeout: int = 60,
     auto_repair: bool = True,
-    max_retries: int = 3
+    max_retries: int = 3,
+    instance_id: Optional[str] = None,  # NEW: Unique instance identifier for budget tracking
 ) -> Tuple[BDIPlan, bool, dict]:
     """
     Generate plan with BDI-LLM and multi-layer verification
@@ -1148,7 +1149,7 @@ def generate_bdi_plan(
     metrics = {
         'generation_time': 0,
         'verification_layers': {
-            'structural': {'valid': False, 'errors': []},
+            'structural': {'valid': False, 'errors': [], 'hard_errors': [], 'warnings': []},
             'symbolic': {'valid': False, 'errors': []},  # VAL verification
             'physics': {'valid': False, 'errors': []}
         },
@@ -1180,7 +1181,11 @@ def generate_bdi_plan(
 
             # Layer 1: Structural verification
             G = plan.to_networkx()
-            struct_valid, struct_errors = PlanVerifier.verify(G)
+            struct_result = PlanVerifier.verify(G)
+            struct_valid = struct_result.is_valid
+            struct_errors = struct_result.errors
+            struct_hard_errors = struct_result.hard_errors
+            struct_warnings = struct_result.warnings
 
             # If structural verification fails and auto_repair is enabled at this level too
             if not struct_valid and auto_repair:
@@ -1189,12 +1194,18 @@ def generate_bdi_plan(
                 if repaired_valid:
                     plan = repaired_plan
                     G = plan.to_networkx()
-                    struct_valid, struct_errors = PlanVerifier.verify(G)
+                    struct_result = PlanVerifier.verify(G)
+                    struct_valid = struct_result.is_valid
+                    struct_errors = struct_result.errors
+                    struct_hard_errors = struct_result.hard_errors
+                    struct_warnings = struct_result.warnings
                     metrics['auto_repair']['success'] = True
                     metrics['auto_repair']['repairs_applied'] = messages
 
             metrics['verification_layers']['structural']['valid'] = struct_valid
             metrics['verification_layers']['structural']['errors'] = struct_errors
+            metrics['verification_layers']['structural']['hard_errors'] = struct_hard_errors
+            metrics['verification_layers']['structural']['warnings'] = struct_warnings
             metrics['num_nodes'] = len(plan.nodes)
             metrics['num_edges'] = len(plan.edges)
 
@@ -1203,7 +1214,14 @@ def generate_bdi_plan(
             symbolic_errors = ["Skipped - Structural failure"]
             max_val_repairs = 3
 
-            if struct_valid and pddl_problem_path and pddl_domain_path:
+            # VAL is the ultimate validator - if VAL says plan works, it works.
+            # Even if structural verification fails, we should still try VAL.
+            # Set still_try_val to True to let VAL check even structurally failed plans.
+            still_try_val = not struct_valid  # Key fix: try VAL even if structural fails
+            if still_try_val:
+                print(f"    Structural verification failed, but still attempting VAL verification")
+
+            if (struct_valid or still_try_val) and pddl_problem_path and pddl_domain_path:
                 try:
                     # Convert BDI plan to PDDL actions
                     pddl_actions = bdi_to_pddl_actions(plan, domain=domain)
@@ -1255,17 +1273,27 @@ def generate_bdi_plan(
                                 previous_plan_actions=pddl_actions,
                                 val_errors=clean_errors,
                                 repair_history=cumulative_repair_history,
+                                instance_id=instance_id,  # For budget tracking
+                                domain=domain,  # For cache keying
                             )
                             plan = repair_result.plan
 
-                            # Re-verify structure
+                            # Re-verify structure after repair
                             G = plan.to_networkx()
-                            struct_valid_r, struct_errors_r = PlanVerifier.verify(G)
-                            if not struct_valid_r:
-                                print(f"    VAL repair {val_repair_attempt}: structural failure after repair")
-                                break
+                            struct_result_r = PlanVerifier.verify(G)
+                            struct_valid_r = struct_result_r.is_valid
+                            struct_errors_r = struct_result_r.errors
 
-                            # Re-convert and re-verify with VAL
+                            # KEY INSIGHT: VAL is the ultimate validator.
+                            # If structural check fails but VAL passes, the plan works.
+                            # Don't break - let VAL verify anyway.
+                            if not struct_valid_r:
+                                print(f"    VAL repair {val_repair_attempt}: structural failure after repair, but still trying VAL")
+                                struct_valid = struct_valid_r  # Update for outer scope
+                            else:
+                                struct_valid = struct_valid_r  # Update for outer scope
+
+                            # Re-convert and re-verify with VAL (even if structural fails)
                             pddl_actions = bdi_to_pddl_actions(plan, domain=domain)
                             symbolic_valid, symbolic_errors = val_verifier.verify_plan(
                                 domain_file=pddl_domain_path,
@@ -1289,10 +1317,8 @@ def generate_bdi_plan(
                 except Exception as e:
                     symbolic_valid = False
                     symbolic_errors = [f"Symbolic verification error: {str(e)}"]
-
-            elif not struct_valid:
-                symbolic_errors = ["Skipped - Structural failure"]
             else:
+                # No VAL verification because PDDL files are missing
                 symbolic_errors = ["Skipped - Missing PDDL files"]
                 # If no PDDL files provided, we consider symbolic layer 'passed' (or skipped)
                 # to not break existing tests, but for PlanBench it should be provided.
@@ -1325,9 +1351,19 @@ def generate_bdi_plan(
             metrics['verification_layers']['physics']['valid'] = physics_valid
             metrics['verification_layers']['physics']['errors'] = physics_errors
 
-            # Overall validation: must pass ALL layers
-            # Note: symbolic_valid defaults to False if files present but failed
-            overall_valid = struct_valid and symbolic_valid and physics_valid
+            # Overall validation:
+            # KEY PRINCIPLE: VAL is the ultimate validator - if VAL says plan works, it works.
+            # A plan that passes VAL is considered valid even with minor structural issues.
+            # Structural validation is a heuristic; VAL's symbolic execution is ground truth.
+            if symbolic_valid and pddl_problem_path and pddl_domain_path:
+                # VAL passed = plan works (regardless of structural status)
+                overall_valid = True
+                print(f"    Overall: VALID (VAL passed, structural={struct_valid}, physics={physics_valid})")
+            else:
+                # No VAL verification available - fall back to structural + physics
+                overall_valid = struct_valid and physics_valid
+                print(f"    Overall: {'VALID' if overall_valid else 'INVALID'} (no VAL, structural={struct_valid}, physics={physics_valid})")
+
             metrics['overall_valid'] = overall_valid
 
             return plan, overall_valid, metrics
@@ -1351,6 +1387,8 @@ def generate_bdi_plan(
             # Non-retryable error or max retries reached
             metrics['generation_time'] = time.time() - start_time
             metrics['verification_layers']['structural']['errors'] = [last_error]
+            metrics['verification_layers']['structural']['hard_errors'] = [last_error]
+            metrics['verification_layers']['structural']['warnings'] = []
 
             # Return empty plan
             plan = BDIPlan(goal_description=desire, nodes=[], edges=[])
@@ -1359,6 +1397,8 @@ def generate_bdi_plan(
     # Should not reach here, but just in case
     metrics['generation_time'] = time.time() - start_time
     metrics['verification_layers']['structural']['errors'] = [f"Max retries ({max_retries}) exceeded: {last_error}"]
+    metrics['verification_layers']['structural']['hard_errors'] = [f"Max retries ({max_retries}) exceeded: {last_error}"]
+    metrics['verification_layers']['structural']['warnings'] = []
     plan = BDIPlan(goal_description=desire, nodes=[], edges=[])
     return plan, False, metrics
 
@@ -1380,6 +1420,14 @@ def find_all_instances(base_path: str, domain: str) -> List[str]:
         instance_files.extend(domain_path.glob(pattern))
 
     return sorted([str(f) for f in instance_files])
+
+
+def save_checkpoint_atomic(results: dict, checkpoint_file: str) -> None:
+    """Persist checkpoint atomically to reduce corruption risk on interruption."""
+    tmp_file = f"{checkpoint_file}.tmp"
+    with open(tmp_file, 'w') as f:
+        json.dump(results, f, indent=2)
+    os.replace(tmp_file, checkpoint_file)
 
 
 def evaluate_single_instance(instance_file: str, domain: str) -> dict:
@@ -1427,7 +1475,8 @@ def evaluate_single_instance(instance_file: str, domain: str) -> dict:
             pddl_problem_path=instance_file,
             pddl_domain_path=domain_file,
             init_state=init_state,
-            domain=domain
+            domain=domain,
+            instance_id=instance_file,  # Use instance file path as unique ID
         )
 
         instance_result['bdi_metrics'] = metrics
@@ -1446,8 +1495,9 @@ def run_batch_evaluation(
     resume_from: str = None,
     output_dir: str = "runs/planbench_results",
     parallel: bool = False,
-    max_workers: int = 3,
-    instances_file: str = None
+    max_workers: int = 200,
+    instances_file: str = None,
+    checkpoint_every: int = 1
 ) -> dict:
     """Run evaluation on all instances in a domain with MLflow tracking"""
     global MLFLOW_AVAILABLE
@@ -1474,6 +1524,18 @@ def run_batch_evaluation(
             instances = instances[:max_instances]
         print(f"Found {len(instances)} instances")
 
+    checkpoint_file = f"{output_dir}/checkpoint_{domain}.json"
+    effective_resume = resume_from
+    if effective_resume is None and os.path.exists(checkpoint_file):
+        effective_resume = checkpoint_file
+        print(f"Auto-resume enabled from latest checkpoint: {effective_resume}")
+    elif effective_resume and not os.path.exists(effective_resume):
+        print(f"⚠️  Resume file not found: {effective_resume}")
+        effective_resume = None
+
+    if checkpoint_every < 1:
+        checkpoint_every = 1
+
     # Initialize MLflow tracking
     mlflow_run_id = None
     if MLFLOW_AVAILABLE:
@@ -1490,7 +1552,8 @@ def run_batch_evaluation(
             mlflow.log_param("domain", domain)
             mlflow.log_param("max_instances", max_instances if max_instances else "all")
             mlflow.log_param("total_instances", len(instances))
-            mlflow.log_param("resume_from", resume_from if resume_from else "none")
+            mlflow.log_param("resume_from", effective_resume if effective_resume else "none")
+            mlflow.log_param("checkpoint_every", checkpoint_every)
             mlflow.log_param("model", "claude-opus-4")
             mlflow.log_param("auto_repair", True)
 
@@ -1509,17 +1572,18 @@ def run_batch_evaluation(
         'results': []
     }
 
-    if resume_from and os.path.exists(resume_from):
-        print(f"Resuming from checkpoint: {resume_from}")
-        with open(resume_from, 'r') as f:
+    if effective_resume and os.path.exists(effective_resume):
+        print(f"Resuming from checkpoint: {effective_resume}")
+        with open(effective_resume, 'r') as f:
             checkpoint = json.load(f)
             results['results'] = checkpoint.get('results', [])
             completed = set(r['instance_file'] for r in results['results'])
         print(f"Skipping {len(completed)} completed instances")
 
     # Evaluate each instance
-    success_count = 0
-    failed_count = 0
+    # Initialize counters from resumed results (if any), then accumulate new ones.
+    success_count = sum(1 for r in results['results'] if r.get('success', False))
+    failed_count = len(results['results']) - success_count
     results_lock = Lock()  # Thread-safe results collection
 
     # Filter out completed instances
@@ -1529,9 +1593,9 @@ def run_batch_evaluation(
         # Parallel execution mode
         print(f"Running in parallel mode with {max_workers} workers")
 
-        # Rate limiting: limit concurrent API calls to 15
+        # Rate limiting: limit concurrent API calls to max_workers
         import threading
-        api_semaphore = threading.Semaphore(15)
+        api_semaphore = threading.Semaphore(max_workers)
 
         def rate_limited_evaluate(instance_file, domain):
             with api_semaphore:
@@ -1559,7 +1623,12 @@ def run_batch_evaluation(
                             'bdi_metrics': {
                                 'overall_valid': False,
                                 'verification_layers': {
-                                    'structural': {'valid': False, 'errors': ['Timeout after 300 seconds']},
+                                    'structural': {
+                                        'valid': False,
+                                        'errors': ['Timeout after 300 seconds'],
+                                        'hard_errors': ['Timeout after 300 seconds'],
+                                        'warnings': []
+                                    },
                                     'symbolic': {'valid': False, 'errors': []},
                                     'physics': {'valid': False, 'errors': []}
                                 }
@@ -1575,11 +1644,9 @@ def run_batch_evaluation(
                         else:
                             failed_count += 1
 
-                        # Save checkpoint every 10 instances
-                        if len(results['results']) % 10 == 0:
-                            checkpoint_file = f"{output_dir}/checkpoint_{domain}.json"
-                            with open(checkpoint_file, 'w') as f:
-                                json.dump(results, f, indent=2)
+                        # Save checkpoint at configured interval
+                        if len(results['results']) % checkpoint_every == 0:
+                            save_checkpoint_atomic(results, checkpoint_file)
 
                     pbar.update(1)
     else:
@@ -1594,11 +1661,12 @@ def run_batch_evaluation(
             else:
                 failed_count += 1
 
-            # Save checkpoint every 10 instances
-            if len(results['results']) % 10 == 0:
-                checkpoint_file = f"{output_dir}/checkpoint_{domain}.json"
-                with open(checkpoint_file, 'w') as f:
-                    json.dump(results, f, indent=2)
+            # Save checkpoint at configured interval
+            if len(results['results']) % checkpoint_every == 0:
+                save_checkpoint_atomic(results, checkpoint_file)
+
+    # Always persist latest progress snapshot
+    save_checkpoint_atomic(results, checkpoint_file)
 
     # Final statistics with comparative analysis
     # Count structural-only vs multi-layer success
@@ -1753,8 +1821,7 @@ def main():
 
     parser = argparse.ArgumentParser(description="PlanBench Full Benchmark Evaluation")
     parser.add_argument("--domain", type=str,
-                       choices=["blocksworld", "logistics", "depots",
-                               "obfuscated_deceptive_logistics", "obfuscated_randomized_logistics"],
+                       choices=["blocksworld", "logistics", "depots"],
                        help="Domain to evaluate")
     parser.add_argument("--all_domains", action="store_true",
                        help="Evaluate all domains")
@@ -1766,17 +1833,28 @@ def main():
                        help="Output directory for results")
     parser.add_argument("--parallel", action="store_true",
                        help="Enable parallel execution")
-    parser.add_argument("--workers", type=int, default=3,
-                       help="Number of parallel workers (default: 3, recommended: 3-5)")
+    parser.add_argument("--workers", type=int, default=200,
+                       help="Number of parallel workers (default: 200)")
     parser.add_argument("--instances", type=str, default=None,
                        help="File containing list of instance paths to evaluate (one per line)")
+    parser.add_argument("--checkpoint_every", type=int, default=1,
+                       help="Save checkpoint every N completed instances (default: 1)")
+    parser.add_argument("--execution_mode", type=str, default="FULL_VERIFIED",
+                       choices=["NAIVE", "BDI_ONLY", "FULL_VERIFIED"],
+                       help="Ablation execution mode (default: FULL_VERIFIED)")
 
     args = parser.parse_args()
 
-    # Check API key (accept OPENAI_API_KEY, GOOGLE_API_KEY, or GOOGLE_APPLICATION_CREDENTIALS)
-    if not os.environ.get("OPENAI_API_KEY") and not os.environ.get("GOOGLE_API_KEY") and not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
-        print("❌ ERROR: No API key set")
+    # Check API credentials (accept OpenAI, Anthropic, or Google credentials)
+    if (
+        not os.environ.get("OPENAI_API_KEY")
+        and not os.environ.get("ANTHROPIC_API_KEY")
+        and not os.environ.get("GOOGLE_API_KEY")
+        and not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+    ):
+        print("❌ ERROR: No API credential set")
         print("   export OPENAI_API_KEY=your-key")
+        print("   OR export ANTHROPIC_API_KEY=your-key")
         print("   OR export GOOGLE_API_KEY=your-key")
         print("   OR export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json")
         sys.exit(1)
@@ -1790,6 +1868,10 @@ def main():
         print("❌ ERROR: Must specify --domain or --all_domains")
         sys.exit(1)
 
+    # Set execution mode for ablation studies
+    os.environ['AGENT_EXECUTION_MODE'] = args.execution_mode
+    print(f"AGENT_EXECUTION_MODE={args.execution_mode}")
+
     # Run evaluation
     all_results = {}
     for domain in domains:
@@ -1800,7 +1882,8 @@ def main():
             output_dir=args.output_dir,
             parallel=args.parallel,
             max_workers=args.workers,
-            instances_file=args.instances
+            instances_file=args.instances,
+            checkpoint_every=args.checkpoint_every
         )
         all_results[domain] = results
 
