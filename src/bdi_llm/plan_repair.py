@@ -81,9 +81,16 @@ class PlanRepairer:
 
         # Check if already valid
         from .verifier import PlanVerifier
-        is_valid, verify_errors = PlanVerifier.verify(G)
+        result = PlanVerifier.verify(G)
+        is_valid = result.is_valid
+        verify_errors = result.hard_errors
+        has_disconnected_components = (
+            G.number_of_nodes() > 0 and not nx.is_weakly_connected(G)
+        )
 
-        if is_valid:
+        # Even when structurally valid, we still repair disconnected components to
+        # preserve the historical auto-connect behavior of this module.
+        if is_valid and not has_disconnected_components:
             return RepairResult(
                 success=True,
                 repaired_plan=plan,
@@ -94,20 +101,26 @@ class PlanRepairer:
 
         # Attempt repairs
         try:
-            # 1. Fix disconnected subgraphs
+            # 1. Fix cycles (must be done FIRST - cycles prevent topological ordering)
+            if not nx.is_directed_acyclic_graph(G):
+                plan = cls._break_cycles(plan)
+                repairs.append("Broke cycles to convert graph to DAG")
+                G = plan.to_networkx()
+
+            # 2. Fix disconnected subgraphs
             if not nx.is_weakly_connected(G):
                 plan = cls._connect_subgraphs(plan, G)
                 repairs.append("Connected disconnected subgraphs with virtual nodes")
                 G = plan.to_networkx()
 
-            # 2. Ensure single root (no incoming edges)
+            # 3. Ensure single root (no incoming edges)
             roots = cls._find_roots(G)
             if len(roots) > 1:
                 plan = cls._unify_roots(plan, roots)
                 repairs.append(f"Unified {len(roots)} root nodes with virtual START")
                 G = plan.to_networkx()
 
-            # 3. Ensure single terminal (no outgoing edges)
+            # 4. Ensure single terminal (no outgoing edges)
             terminals = cls._find_terminals(G)
             if len(terminals) > 1:
                 plan = cls._unify_terminals(plan, terminals)
@@ -115,7 +128,9 @@ class PlanRepairer:
                 G = plan.to_networkx()
 
             # 4. Re-verify
-            is_valid, verify_errors = PlanVerifier.verify(G)
+            verifier_result = PlanVerifier.verify(G)
+            is_valid = verifier_result.is_valid
+            verify_errors = verifier_result.hard_errors
 
             return RepairResult(
                 success=is_valid,
@@ -207,6 +222,100 @@ class PlanRepairer:
             nodes=new_nodes,
             edges=new_edges
         )
+
+    @classmethod
+    def _break_cycles(cls, plan: BDIPlan) -> BDIPlan:
+        """
+        Break all cycles in the plan graph by removing back edges
+
+        Strategy:
+        1. Find all cycles using DFS-based back edge detection
+        2. For each cycle, identify the back edge (edge to an ancestor in DFS tree)
+        3. Remove back edges to convert graph to DAG
+        4. Preserve plan semantics by keeping causal chain edges intact
+
+        The algorithm uses DFS to classify edges:
+        - Tree edges: edges in the DFS tree
+        - Back edges: edges from descendant to ancestor (create cycles)
+        - Forward/Cross edges: edges that don't create cycles
+
+        By removing only back edges, we minimally break cycles while
+        preserving the causal structure of the plan.
+
+        Args:
+            plan: BDIPlan that may contain cycles
+
+        Returns:
+            BDIPlan with all cycles broken (DAG)
+        """
+        G = plan.to_networkx()
+
+        if nx.is_directed_acyclic_graph(G):
+            return plan  # Already a DAG
+
+        # Track edges to remove
+        edges_to_remove: Set[Tuple[str, str]] = set()
+
+        # DFS-based back edge detection
+        # We need to find edges that go from a node to one of its ancestors
+        visited: Set[str] = set()
+        rec_stack: Set[str] = set()  # Nodes in current DFS recursion stack
+        ancestor_map: Dict[str, Set[str]] = {}  # node -> set of its ancestors
+
+        def dfs_find_back_edges(node: str, ancestors: Set[str]) -> None:
+            """
+            DFS traversal to find back edges
+
+            Args:
+                node: Current node being visited
+                ancestors: Set of ancestors of current node in DFS tree
+            """
+            visited.add(node)
+            rec_stack.add(node)
+            ancestor_map[node] = ancestors.copy()
+            try:
+                for successor in G.successors(node):
+                    if successor not in visited:
+                        # Tree edge - continue DFS
+                        new_ancestors = ancestors | {node}
+                        dfs_find_back_edges(successor, new_ancestors)
+                    elif successor in rec_stack:
+                        # Back edge - this creates a cycle
+                        # The edge (node -> successor) where successor is an ancestor
+                        edges_to_remove.add((node, successor))
+                    # else: forward or cross edge - doesn't create cycle
+            finally:
+                rec_stack.discard(node)
+
+        # Run DFS from all unvisited nodes (handles disconnected graphs)
+        for node in G.nodes():
+            if node not in visited:
+                dfs_find_back_edges(node, set())
+
+        # If no back edges found but graph has cycles, fall back to simple cycle breaking
+        if not edges_to_remove and not nx.is_directed_acyclic_graph(G):
+            # Fallback: for each simple cycle, remove one edge
+            cycles = list(nx.simple_cycles(G))
+            for cycle in cycles:
+                if len(cycle) >= 2:
+                    # Remove edge from last node to first node in cycle
+                    # This breaks the cycle
+                    edges_to_remove.add((cycle[-1], cycle[0]))
+
+        # Remove the back edges from the plan
+        if edges_to_remove:
+            new_edges = [
+                edge for edge in plan.edges
+                if (edge.source, edge.target) not in edges_to_remove
+            ]
+
+            return BDIPlan(
+                goal_description=plan.goal_description,
+                nodes=list(plan.nodes),
+                edges=new_edges
+            )
+
+        return plan
 
     @classmethod
     def _find_roots(cls, G: nx.DiGraph) -> List[str]:

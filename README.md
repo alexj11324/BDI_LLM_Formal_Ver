@@ -12,10 +12,10 @@ BDI-LLM addresses the hallucination and logical inconsistency problems in LLM-ge
 
 - **Hybrid BDI + LLM Planning**: Generates structured BDI plans (Beliefs, Desires, Intentions) as DAGs from natural language goals using DSPy ChainOfThought.
 - **3-Layer Verification**:
-  1. **Structural** — DAG validity, weak connectivity, cycle detection
+  1. **Structural** — hard checks (empty graph, cycles) + soft warning (disconnected components)
   2. **Symbolic** — PDDL precondition/effect checking via VAL
   3. **Physics** — Domain-specific state simulation (e.g., Blocksworld clear/hand constraints)
-- **Auto-Repair**: Fixes disconnected subgraphs and canonicalizes node IDs without re-querying the LLM. Falls back to LLM-guided repair using VAL error messages (up to 3 attempts).
+- **Auto-Repair**: Repairs cycles, still connects disconnected subgraphs (even when reported as warnings), and canonicalizes node IDs without re-querying the LLM. Falls back to LLM-guided repair using VAL error messages (up to 3 attempts).
 - **MCP Server**: Exposes `generate_verified_plan` as an MCP tool for use by Claude Code, Cursor, and other agents.
 - **Coding Domain**: Specialized planner for SWE-bench software engineering tasks (`read-file` → `edit-file` → `run-test` action types).
 - **Ablation Support**: `--execution_mode` flag (NAIVE / BDI_ONLY / FULL_VERIFIED) for controlled experiments.
@@ -68,16 +68,21 @@ The ~1% gap between NAIVE and FULL_VERIFIED shows the verification overhead is m
 3. Set up environment variables:
    ```bash
    cp .env.example .env
-   # Edit .env: set OPENAI_API_KEY, optionally OPENAI_API_BASE for custom gateway
+   # Edit .env: set provider credentials:
+   # - OPENAI_API_KEY (OpenAI / NVIDIA-compatible gateway)
+   # - ANTHROPIC_API_KEY
+   # - GOOGLE_API_KEY or GOOGLE_APPLICATION_CREDENTIALS
+   # Optional: OPENAI_API_BASE for custom gateway
    ```
 
 ## Usage
 
-### Tests (no API key needed)
+### Tests
 
 ```bash
 pytest
 pytest tests/test_verifier.py -v
+pytest tests/test_integration.py -q  # API-dependent; auto-skips when provider creds are unavailable
 ```
 
 ### Evaluation

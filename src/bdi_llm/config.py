@@ -20,10 +20,18 @@ class Config:
     MODEL_NAME = os.environ.get("LLM_MODEL", "openai/gpt-4o")
     MAX_TOKENS = int(os.environ.get("LLM_MAX_TOKENS", "4000"))
     TEMPERATURE = float(os.environ.get("LLM_TEMPERATURE", "0.2"))
+    REASONING_EFFORT = os.environ.get("REASONING_EFFORT", "low")
 
     # Vertex AI Configuration
     VERTEXAI_PROJECT = os.environ.get("VERTEXAI_PROJECT")
     VERTEXAI_LOCATION = os.environ.get("VERTEXAI_LOCATION", "us-central1")
+
+    # API Budget Configuration (for rate limiting and caching)
+    API_BUDGET_MAX_CALLS_PER_INSTANCE = int(os.environ.get("API_BUDGET_MAX_CALLS_PER_INSTANCE", "5"))
+    API_BUDGET_MAX_RPM = int(os.environ.get("API_BUDGET_MAX_RPM", "60"))
+    API_BUDGET_MAX_RPH = int(os.environ.get("API_BUDGET_MAX_RPH", "1000"))
+    API_BUDGET_CACHE_ENABLED = os.environ.get("API_BUDGET_CACHE_ENABLED", "true").lower() == "true"
+    API_BUDGET_EARLY_EXIT_ENABLED = os.environ.get("API_BUDGET_EARLY_EXIT_ENABLED", "true").lower() == "true"
 
     # Tools Configuration
     # Auto-detect VAL in PlanBench if not provided in env
