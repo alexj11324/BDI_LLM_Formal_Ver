@@ -82,7 +82,7 @@
         </mxCell>
 
         <!-- Layer 1 -->
-        <mxCell id="layer1" value="&lt;b&gt;Layer 1: 结构验证&lt;/b&gt;&lt;br&gt;DAG 检查 (无环、连通)&lt;br&gt;NetworkX" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff;strokeColor=#b85450;fontSize=10;" vertex="1" parent="1">
+        <mxCell id="layer1" value="&lt;b&gt;Layer 1: 结构验证&lt;/b&gt;&lt;br&gt;硬错误: 空图/环&lt;br&gt;软告警: 断开子图" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff;strokeColor=#b85450;fontSize=10;" vertex="1" parent="1">
           <mxGeometry x="740" y="200" width="240" height="50" as="geometry"/>
         </mxCell>
         <!-- Layer 2 -->
@@ -104,7 +104,7 @@
         </mxCell>
 
         <!-- Decision diamond -->
-        <mxCell id="decision" value="验证&lt;br&gt;通过?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1">
+        <mxCell id="decision" value="存在&lt;br&gt;硬错误?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1">
           <mxGeometry x="810" y="490" width="90" height="70" as="geometry"/>
         </mxCell>
 
@@ -117,16 +117,16 @@
         <mxCell id="repair-box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;arcSize=10;" vertex="1" parent="1">
           <mxGeometry x="350" y="420" width="300" height="150" as="geometry"/>
         </mxCell>
-        <mxCell id="repair-title" value="&lt;b&gt;③ 自修复 (Self-Repair)&lt;/b&gt;&lt;br&gt;planner.py / RepairPlan" style="text;html=1;align=center;verticalAlign=top;strokeColor=none;fillColor=none;fontSize=11;" vertex="1" parent="1">
+        <mxCell id="repair-title" value="&lt;b&gt;③ 修复环节 (Repair)&lt;/b&gt;&lt;br&gt;结构修复 + LLM/VAL 修复" style="text;html=1;align=center;verticalAlign=top;strokeColor=none;fillColor=none;fontSize=11;" vertex="1" parent="1">
           <mxGeometry x="360" y="425" width="280" height="35" as="geometry"/>
         </mxCell>
 
-        <mxCell id="repair-steps" value="1. 接收 VAL 错误信息&lt;br&gt;2. 诊断: 哪个动作的前置条件不满足?&lt;br&gt;3. LLM 重新生成修复后的 Plan&lt;br&gt;4. 累积修复历史 (repair_history)&lt;br&gt;5. 最多 max_retries 次 (默认 3 次)" style="text;html=1;align=left;verticalAlign=top;strokeColor=none;fillColor=none;fontSize=10;" vertex="1" parent="1">
+        <mxCell id="repair-steps" value="1. 结构硬错误 → 启用 PlanRepairer&lt;br&gt;2. 断开告警可选连接子图&lt;br&gt;3. VAL 失败 → LLM 修复计划&lt;br&gt;4. 累积 repair_history&lt;br&gt;5. 最多 max_retries 次 (默认 3 次)" style="text;html=1;align=left;verticalAlign=top;strokeColor=none;fillColor=none;fontSize=10;" vertex="1" parent="1">
           <mxGeometry x="370" y="465" width="260" height="90" as="geometry"/>
         </mxCell>
 
         <!-- Arrow: decision -> repair (FAIL) -->
-        <mxCell id="arrow-fail" value="❌ FAIL&lt;br&gt;+ VAL 错误详情" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;fontSize=10;strokeWidth=2;strokeColor=#b85450;fontColor=#b85450;" edge="1" parent="1" source="decision" target="repair-box">
+        <mxCell id="arrow-fail" value="是 → 结构修复" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;fontSize=10;strokeWidth=2;strokeColor=#b85450;fontColor=#b85450;" edge="1" parent="1" source="decision" target="repair-box">
           <mxGeometry relative="1" as="geometry"/>
         </mxCell>
 
@@ -141,7 +141,7 @@
         </mxCell>
 
         <!-- Arrow: decision -> return (PASS) -->
-        <mxCell id="arrow-pass" value="✅ PASS" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;exitDx=0;exitDy=0;fontSize=11;strokeWidth=3;strokeColor=#82b366;fontColor=#82b366;" edge="1" parent="1" source="decision">
+        <mxCell id="arrow-pass" value="否 → 继续 Layer2/3 (保留告警)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;exitDx=0;exitDy=0;fontSize=11;strokeWidth=3;strokeColor=#82b366;fontColor=#82b366;" edge="1" parent="1" source="decision">
           <mxGeometry relative="1" as="geometry">
             <mxPoint x="1100" y="525" as="targetPoint"/>
           </mxGeometry>

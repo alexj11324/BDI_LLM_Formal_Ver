@@ -1,21 +1,11 @@
-#!/usr/bin/env python3
-"""
-Test Auto-Repair System
-
-Tests the plan repair functionality that fixes disconnected graphs.
-"""
-
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+"""Tests for plan repair and canonicalization behaviors."""
 
 from src.bdi_llm.schemas import BDIPlan, ActionNode, DependencyEdge
 from src.bdi_llm.plan_repair import PlanRepairer, repair_and_verify, PlanCanonicalizer
 from src.bdi_llm.verifier import PlanVerifier
 
 
-def test_connected_plan():
-    """Test that a connected plan passes through unchanged"""
+def test_connected_plan_remains_unchanged():
     plan = BDIPlan(
         goal_description="Test goal",
         nodes=[
@@ -26,19 +16,17 @@ def test_connected_plan():
         edges=[
             DependencyEdge(source="a", target="b"),
             DependencyEdge(source="b", target="c"),
-        ]
+        ],
     )
 
     result = PlanRepairer.repair(plan)
 
-    assert result.success, f"Expected success, got: {result.errors}"
-    assert result.original_valid, "Connected plan should be valid"
-    assert len(result.repairs_applied) == 0, "No repairs needed"
-    print("✅ test_connected_plan passed")
+    assert result.success
+    assert result.original_valid
+    assert result.repairs_applied == []
 
 
-def test_disconnected_plan():
-    """Test that a disconnected plan gets repaired"""
+def test_disconnected_plan_gets_repaired_and_validated():
     plan = BDIPlan(
         goal_description="Test disconnected",
         nodes=[
@@ -48,35 +36,26 @@ def test_disconnected_plan():
             ActionNode(id="b2", action_type="Test", description="Island 2 - B"),
         ],
         edges=[
-            DependencyEdge(source="a1", target="a2"),  # Island 1
-            DependencyEdge(source="b1", target="b2"),  # Island 2 (disconnected!)
-        ]
+            DependencyEdge(source="a1", target="a2"),
+            DependencyEdge(source="b1", target="b2"),
+        ],
     )
 
     result = PlanRepairer.repair(plan)
 
-    assert result.success, f"Repair should succeed, errors: {result.errors}"
-    assert not result.original_valid, "Original plan should be invalid"
-    assert len(result.repairs_applied) > 0, "Repairs should be applied"
+    assert result.success
+    assert not result.original_valid
+    assert result.repairs_applied
 
-    # Verify repaired plan is valid
-    G = result.repaired_plan.to_networkx()
-    is_valid, errors = PlanVerifier.verify(G)
-    assert is_valid, f"Repaired plan should be valid, errors: {errors}"
+    is_valid, errors = PlanVerifier.verify(result.repaired_plan.to_networkx())
+    assert is_valid, errors
 
-    # Check that virtual nodes were added
     node_ids = [n.id for n in result.repaired_plan.nodes]
-    assert PlanRepairer.VIRTUAL_START in node_ids, "Virtual START should be added"
-    assert PlanRepairer.VIRTUAL_END in node_ids, "Virtual END should be added"
-
-    print("✅ test_disconnected_plan passed")
+    assert PlanRepairer.VIRTUAL_START in node_ids
+    assert PlanRepairer.VIRTUAL_END in node_ids
 
 
-def test_parallel_tasks():
-    """Test that parallel task structure (diamond pattern) is handled"""
-    # This simulates "do A and B in parallel, then C"
-    # Diamond pattern: A and B both go to C
-    # This IS a valid connected DAG, so no repair should be needed
+def test_parallel_diamond_pattern_is_already_valid():
     plan = BDIPlan(
         goal_description="Parallel tasks",
         nodes=[
@@ -87,49 +66,16 @@ def test_parallel_tasks():
         edges=[
             DependencyEdge(source="task_a", target="sync"),
             DependencyEdge(source="task_b", target="sync"),
-        ]
-    )
-
-    result = PlanRepairer.repair(plan)
-
-    # This plan is actually valid (diamond pattern is a correct DAG)
-    assert result.success, f"Repair should succeed, errors: {result.errors}"
-    assert result.original_valid, "Diamond pattern is a valid connected DAG"
-    print("✅ test_parallel_tasks passed (valid diamond pattern)")
-
-
-def test_truly_disconnected_parallel():
-    """Test truly disconnected parallel tasks that need repair"""
-    # Two completely separate task chains - needs virtual nodes
-    plan = BDIPlan(
-        goal_description="Truly disconnected parallel",
-        nodes=[
-            ActionNode(id="a1", action_type="Chain1", description="Chain 1 - A"),
-            ActionNode(id="a2", action_type="Chain1", description="Chain 1 - B"),
-            ActionNode(id="b1", action_type="Chain2", description="Chain 2 - A"),
-            ActionNode(id="b2", action_type="Chain2", description="Chain 2 - B"),
         ],
-        edges=[
-            DependencyEdge(source="a1", target="a2"),  # Chain 1
-            DependencyEdge(source="b1", target="b2"),  # Chain 2 - completely separate
-        ]
     )
 
     result = PlanRepairer.repair(plan)
 
-    assert result.success, f"Repair should succeed, errors: {result.errors}"
-    assert not result.original_valid, "Original should be invalid (disconnected)"
-
-    # Check that virtual nodes were added
-    node_ids = [n.id for n in result.repaired_plan.nodes]
-    assert PlanRepairer.VIRTUAL_START in node_ids, "Virtual START should be added"
-    assert PlanRepairer.VIRTUAL_END in node_ids, "Virtual END should be added"
-
-    print("✅ test_truly_disconnected_parallel passed")
+    assert result.success
+    assert result.original_valid
 
 
-def test_canonicalizer():
-    """Test plan canonicalization"""
+def test_canonicalizer_renames_nodes_in_topological_order():
     plan = BDIPlan(
         goal_description="Test canonicalization",
         nodes=[
@@ -140,59 +86,241 @@ def test_canonicalizer():
         edges=[
             DependencyEdge(source="a", target="m"),
             DependencyEdge(source="m", target="z"),
-        ]
+        ],
     )
 
     canonical = PlanCanonicalizer.canonicalize(plan)
 
-    # Check nodes are renamed in topological order
-    node_ids = [n.id for n in canonical.nodes]
-    assert node_ids == ["action_1", "action_2", "action_3"], f"Expected canonical IDs, got: {node_ids}"
-
-    # Check edges are updated
-    edge_pairs = [(e.source, e.target) for e in canonical.edges]
+    assert [n.id for n in canonical.nodes] == ["action_1", "action_2", "action_3"]
+    edge_pairs = {(e.source, e.target) for e in canonical.edges}
     assert ("action_1", "action_2") in edge_pairs
     assert ("action_2", "action_3") in edge_pairs
 
-    print("✅ test_canonicalizer passed")
 
-
-def test_convenience_function():
-    """Test the repair_and_verify convenience function"""
+def test_repair_and_verify_convenience_function_repairs_plan():
     plan = BDIPlan(
         goal_description="Test convenience",
         nodes=[
             ActionNode(id="x", action_type="Test", description="X"),
             ActionNode(id="y", action_type="Test", description="Y"),
         ],
-        edges=[]  # Disconnected!
+        edges=[],
     )
 
     repaired, is_valid, messages = repair_and_verify(plan)
 
-    assert is_valid, "Should be valid after repair"
-    assert len(messages) > 0, "Should have repair messages"
-
-    print("✅ test_convenience_function passed")
-
-
-def run_all_tests():
-    """Run all tests"""
-    print("\n" + "="*60)
-    print("Testing Auto-Repair System")
-    print("="*60 + "\n")
-
-    test_connected_plan()
-    test_disconnected_plan()
-    test_parallel_tasks()
-    test_truly_disconnected_parallel()
-    test_canonicalizer()
-    test_convenience_function()
-
-    print("\n" + "="*60)
-    print("✅ All auto-repair tests passed!")
-    print("="*60 + "\n")
+    assert is_valid
+    assert messages
+    assert isinstance(repaired, BDIPlan)
 
 
-if __name__ == "__main__":
-    run_all_tests()
+def test_repair_reuses_existing_virtual_nodes_without_duplication():
+    """Regression: inputs already containing virtual IDs should not get duplicated nodes."""
+    plan = BDIPlan(
+        goal_description="Reuse virtual nodes",
+        nodes=[
+            ActionNode(id=PlanRepairer.VIRTUAL_START, action_type="Virtual", description="Existing start"),
+            ActionNode(id=PlanRepairer.VIRTUAL_END, action_type="Virtual", description="Existing end"),
+            ActionNode(id="a", action_type="Test", description="A"),
+            ActionNode(id="b", action_type="Test", description="B"),
+        ],
+        edges=[DependencyEdge(source="a", target=PlanRepairer.VIRTUAL_END)],
+    )
+
+    result = PlanRepairer.repair(plan)
+    assert result.success
+
+    repaired_ids = [node.id for node in result.repaired_plan.nodes]
+    assert repaired_ids.count(PlanRepairer.VIRTUAL_START) == 1
+    assert repaired_ids.count(PlanRepairer.VIRTUAL_END) == 1
+
+
+def test_simple_cycle_is_broken():
+    """Test that a simple 3-node cycle A -> B -> C -> A is broken."""
+    plan = BDIPlan(
+        goal_description="Test cycle",
+        nodes=[
+            ActionNode(id="a", action_type="Test", description="A"),
+            ActionNode(id="b", action_type="Test", description="B"),
+            ActionNode(id="c", action_type="Test", description="C"),
+        ],
+        edges=[
+            DependencyEdge(source="a", target="b"),
+            DependencyEdge(source="b", target="c"),
+            DependencyEdge(source="c", target="a"),  # Creates cycle
+        ],
+    )
+
+    result = PlanRepairer.repair(plan)
+
+    assert result.success
+    assert "Broke cycles to convert graph to DAG" in result.repairs_applied
+
+    # Verify the repaired plan is a DAG
+    is_valid, errors = PlanVerifier.verify(result.repaired_plan.to_networkx())
+    assert is_valid, f"Repaired plan has errors: {errors}"
+
+    # Verify one edge was removed (breaking the cycle)
+    assert len(result.repaired_plan.edges) == 2
+
+
+def test_complex_cycle_with_multiple_paths():
+    """Test cycle breaking with parallel paths that merge and cycle back."""
+    plan = BDIPlan(
+        goal_description="Complex cycle",
+        nodes=[
+            ActionNode(id="start", action_type="Start", description="Start"),
+            ActionNode(id="a", action_type="Test", description="A"),
+            ActionNode(id="b", action_type="Test", description="B"),
+            ActionNode(id="c", action_type="Test", description="C"),
+            ActionNode(id="end", action_type="End", description="End"),
+        ],
+        edges=[
+            DependencyEdge(source="start", target="a"),
+            DependencyEdge(source="start", target="b"),
+            DependencyEdge(source="a", target="c"),
+            DependencyEdge(source="b", target="c"),
+            DependencyEdge(source="c", target="a"),  # Back edge creating cycle
+            DependencyEdge(source="c", target="end"),
+        ],
+    )
+
+    result = PlanRepairer.repair(plan)
+
+    assert result.success
+    assert "Broke cycles to convert graph to DAG" in result.repairs_applied
+
+    # Verify the repaired plan is a DAG
+    is_valid, errors = PlanVerifier.verify(result.repaired_plan.to_networkx())
+    assert is_valid, f"Repaired plan has errors: {errors}"
+
+
+def test_logistics_style_long_cycle():
+    """Test breaking a long cycle similar to logistics domain failures."""
+    plan = BDIPlan(
+        goal_description="Logistics delivery",
+        nodes=[
+            ActionNode(id="load_p3", action_type="Load", description="Load package 3"),
+            ActionNode(id="fly_a1", action_type="Fly", description="Fly airplane"),
+            ActionNode(id="unload_p3", action_type="Unload", description="Unload package 3"),
+            ActionNode(id="drive_t0", action_type="Drive", description="Drive truck"),
+            ActionNode(id="load_p0", action_type="Load", description="Load package 0"),
+            ActionNode(id="drive_t0_2", action_type="Drive", description="Drive truck again"),
+            ActionNode(id="load_p1", action_type="Load", description="Load package 1"),
+        ],
+        edges=[
+            DependencyEdge(source="load_p3", target="fly_a1"),
+            DependencyEdge(source="fly_a1", target="unload_p3"),
+            DependencyEdge(source="unload_p3", target="drive_t0"),
+            DependencyEdge(source="drive_t0", target="load_p0"),
+            DependencyEdge(source="load_p0", target="drive_t0_2"),
+            DependencyEdge(source="drive_t0_2", target="load_p1"),
+            DependencyEdge(source="load_p1", target="load_p3"),  # Back edge
+        ],
+    )
+
+    result = PlanRepairer.repair(plan)
+
+    assert result.success
+    assert "Broke cycles to convert graph to DAG" in result.repairs_applied
+
+    # Verify the repaired plan is a DAG
+    is_valid, errors = PlanVerifier.verify(result.repaired_plan.to_networkx())
+    assert is_valid, f"Repaired plan has errors: {errors}"
+
+    # Verify the back edge was removed (7 edges -> 6 edges)
+    assert len(result.repaired_plan.edges) == 6
+
+
+def test_cycle_and_disconnected_combined():
+    """Test that cycles are broken before connecting disconnected subgraphs."""
+    plan = BDIPlan(
+        goal_description="Cycle + disconnected",
+        nodes=[
+            # Component 1: has a cycle
+            ActionNode(id="a1", action_type="Test", description="A1"),
+            ActionNode(id="a2", action_type="Test", description="A2"),
+            ActionNode(id="a3", action_type="Test", description="A3"),
+            # Component 2: linear chain
+            ActionNode(id="b1", action_type="Test", description="B1"),
+            ActionNode(id="b2", action_type="Test", description="B2"),
+        ],
+        edges=[
+            # Component 1: cycle
+            DependencyEdge(source="a1", target="a2"),
+            DependencyEdge(source="a2", target="a3"),
+            DependencyEdge(source="a3", target="a1"),
+            # Component 2: linear (disconnected from component 1)
+            DependencyEdge(source="b1", target="b2"),
+        ],
+    )
+
+    result = PlanRepairer.repair(plan)
+
+    assert result.success
+    repairs = result.repairs_applied
+    assert "Broke cycles to convert graph to DAG" in repairs
+    assert "Connected disconnected subgraphs" in str(repairs)
+
+    # Verify the repaired plan is a DAG and connected
+    is_valid, errors = PlanVerifier.verify(result.repaired_plan.to_networkx())
+    assert is_valid, f"Repaired plan has errors: {errors}"
+
+
+def test_dag_passes_through_unchanged():
+    """Test that a valid DAG is not modified by cycle breaking."""
+    plan = BDIPlan(
+        goal_description="Valid DAG",
+        nodes=[
+            ActionNode(id="a", action_type="Test", description="A"),
+            ActionNode(id="b", action_type="Test", description="B"),
+            ActionNode(id="c", action_type="Test", description="C"),
+            ActionNode(id="d", action_type="Test", description="D"),
+        ],
+        edges=[
+            DependencyEdge(source="a", target="b"),
+            DependencyEdge(source="a", target="c"),
+            DependencyEdge(source="b", target="d"),
+            DependencyEdge(source="c", target="d"),
+        ],
+    )
+
+    result = PlanRepairer.repair(plan)
+
+    assert result.success
+    assert result.original_valid
+    assert result.repairs_applied == []
+
+
+def test_cycle_breaking_preserves_non_cycle_feeder_edges():
+    """
+    Regression: DFS cycle breaking should remove only true back-edges.
+
+    In this graph, `x -> b` is a feeder edge into a cyclic component and must
+    not be removed when breaking the `b <-> c` cycle.
+    """
+    plan = BDIPlan(
+        goal_description="Preserve feeder edge",
+        nodes=[
+            ActionNode(id="a", action_type="Test", description="A"),
+            ActionNode(id="b", action_type="Test", description="B"),
+            ActionNode(id="c", action_type="Test", description="C"),
+            ActionNode(id="x", action_type="Test", description="X"),
+        ],
+        edges=[
+            DependencyEdge(source="a", target="b"),
+            DependencyEdge(source="b", target="c"),
+            DependencyEdge(source="c", target="b"),  # Cycle edge
+            DependencyEdge(source="x", target="b"),  # Non-cycle feeder edge
+        ],
+    )
+
+    result = PlanRepairer.repair(plan)
+
+    assert result.success
+    repaired_edges = {(edge.source, edge.target) for edge in result.repaired_plan.edges}
+
+    # Non-cycle feeder edge should be preserved.
+    assert ("x", "b") in repaired_edges
+    # Exactly one edge from the 2-cycle should remain.
+    assert len({("b", "c"), ("c", "b")} & repaired_edges) == 1

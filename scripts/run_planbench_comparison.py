@@ -9,6 +9,7 @@ Compares planning success rates between:
 
 Usage:
     export OPENAI_API_KEY=your-key
+    # or ANTHROPIC_API_KEY / GOOGLE_API_KEY / GOOGLE_APPLICATION_CREDENTIALS
     python run_planbench_comparison.py --n_samples 50 --mode both
 
 Author: BDI-LLM Research
@@ -32,6 +33,21 @@ from src.bdi_llm.verifier import PlanVerifier
 from scripts.quick_fix_parallel_tasks import auto_repair_disconnected_graph
 import networkx as nx
 import dspy
+
+
+def has_any_api_credential() -> bool:
+    """Return True when any supported model credential exists."""
+    return bool(
+        os.environ.get("OPENAI_API_KEY")
+        or os.environ.get("ANTHROPIC_API_KEY")
+        or os.environ.get("GOOGLE_API_KEY")
+        or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+    )
+
+
+def has_disconnected_warning(messages) -> bool:
+    """Detect disconnected-component diagnostics from verifier messages."""
+    return any("disconnected" in str(message).lower() for message in messages)
 
 
 # ============================================================================
@@ -188,8 +204,8 @@ class BDIPlannerWithRepair:
 
             metrics["verification_errors"] = errors
 
-            # If disconnected, apply auto-repair
-            if not is_valid and any("disconnected" in str(e).lower() for e in errors):
+            # If disconnected-warning appears, apply connectivity repair.
+            if has_disconnected_warning(errors):
                 plan, was_repaired = auto_repair_disconnected_graph(plan)
                 metrics["auto_repaired"] = was_repaired
 
@@ -465,10 +481,13 @@ def main():
 
     args = parser.parse_args()
 
-    # Check API key
-    if not os.environ.get("OPENAI_API_KEY"):
-        print("❌ ERROR: OPENAI_API_KEY not set")
+    # Check API credentials
+    if not has_any_api_credential():
+        print("❌ ERROR: no API credential set")
         print("  export OPENAI_API_KEY=your-key")
+        print("  OR export ANTHROPIC_API_KEY=your-key")
+        print("  OR export GOOGLE_API_KEY=your-key")
+        print("  OR export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json")
         sys.exit(1)
 
     # Run comparison

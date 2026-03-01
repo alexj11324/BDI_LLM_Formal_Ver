@@ -331,11 +331,20 @@ def main():
 
     args = parser.parse_args()
 
-    # Check if API key is available
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        print("ERROR: OPENAI_API_KEY environment variable not set.")
-        print("Set it with: export OPENAI_API_KEY=sk-...")
+    # Check if API credentials are available
+    has_credentials = bool(
+        os.environ.get("OPENAI_API_KEY")
+        or os.environ.get("ANTHROPIC_API_KEY")
+        or os.environ.get("GOOGLE_API_KEY")
+        or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+    )
+    if not has_credentials:
+        print("ERROR: No API credential environment variable set.")
+        print("Set one of:")
+        print("  export OPENAI_API_KEY=...")
+        print("  export ANTHROPIC_API_KEY=...")
+        print("  export GOOGLE_API_KEY=...")
+        print("  export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json")
         sys.exit(1)
 
     # Initialize evaluator

@@ -59,8 +59,10 @@ class PlanVisualizer:
         G = plan.to_networkx()
 
         # Verify and get execution order
-        is_valid, errors = PlanVerifier.verify(G)
-        execution_order = PlanVerifier.topological_sort(G) if is_valid else []
+        struct_result = PlanVerifier.verify(G)
+        is_valid = struct_result.is_valid
+        has_blocking_errors = struct_result.should_block_execution
+        execution_order = PlanVerifier.topological_sort(G) if not has_blocking_errors else []
 
         # Create figure
         fig, ax = plt.subplots(figsize=figsize)

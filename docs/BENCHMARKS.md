@@ -15,9 +15,10 @@ We evaluate the framework using the **PlanBench** dataset (Valmeekam et al., 202
 
 We track success rates across different validation layers:
 
-1.  **Structural Accuracy**: Percentage of plans that form a valid DAG (no cycles, fully connected).
-2.  **Multi-Layer Success**: Percentage of plans that pass **both** structural checks and domain physics validation.
-3.  **Auto-Repair Efficiency**: Rate at which structurally invalid plans are successfully repaired by the heuristic system.
+1.  **Structural Hard-Pass Rate**: Percentage of plans with no hard structural errors (non-empty + acyclic).
+2.  **Structural Warning Rate**: Percentage of plans with non-blocking structural warnings (for example, disconnected subgraphs).
+3.  **Multi-Layer Success**: Percentage of plans that pass structural + symbolic/physics validation.
+4.  **Auto-Repair Efficiency**: Rate at which repair converts problematic plans (hard-fail or warning-heavy cases) into executable outputs.
 
 ## Results
 
@@ -34,7 +35,8 @@ We track success rates across different validation layers:
 #### Parallel Tasks
 One common failure mode for LLMs is generating "disconnected islands" for tasks that can be performed in parallel.
 *   **Issue**: LLM generates two separate action chains for independent goals.
-*   **Solution**: The **Auto-Repair System** detects this and inserts virtual `START`/`END` nodes to unify the graph.
+*   **Current behavior**: Layer 1 reports this as a **warning** (not a hard failure), then downstream validation/repair decides whether to connect components.
+*   **Repair strategy**: The **Auto-Repair System** can insert virtual `START`/`END` nodes to unify the graph when connected execution is required.
 
 #### Physical Constraints
 LLMs occasionally hallucinate valid moves that violate state preconditions (e.g., trying to pick up a block that is underneath another).
@@ -46,9 +48,12 @@ LLMs occasionally hallucinate valid moves that violate state preconditions (e.g.
 To run the benchmarks locally:
 
 ```bash
-# Run a subset of PlanBench (requires API Key)
+# Run a subset of PlanBench (requires provider credentials)
 python scripts/run_planbench_full.py --domain blocksworld --max_instances 10
 
-# Run evaluation unit tests (No API Key)
+# Run evaluation unit tests (offline)
 python scripts/run_evaluation.py --mode unit
+
+# API-dependent integration tests (auto-skip when credentials unavailable)
+pytest tests/test_integration.py -q
 ```

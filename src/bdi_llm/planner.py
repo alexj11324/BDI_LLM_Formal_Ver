@@ -1,15 +1,260 @@
 import dspy
 import yaml
+import hashlib
+import json
+import logging
 from pathlib import Path
-from typing import List
+from typing import List, Optional, Dict
 import networkx as nx
 from .schemas import BDIPlan, ActionNode, DependencyEdge
 from .verifier import PlanVerifier
+from .api_budget import get_budget_manager, get_repair_cache, BudgetConfig
 
 from .config import Config
 
 # Module-level flag to ensure DSPy is configured only once
 _dspy_configured: bool = False
+
+logger = logging.getLogger(__name__)
+
+
+class _MockMessage:
+    def __init__(self, content):
+        self.content = content
+        self.tool_calls = None
+
+
+class _MockChoice:
+    def __init__(self, content):
+        self.message = _MockMessage(content)
+        self.logprobs = None
+
+
+class _MockUsage(dict):
+    def __init__(self):
+        super().__init__(prompt_tokens=0, completion_tokens=0, total_tokens=0)
+
+
+class _MockChatCompletion:
+    def __init__(self, text, model):
+        self.choices = [_MockChoice(text)]
+        self.usage = _MockUsage()
+        self.model = model
+        self._hidden_params = {}
+
+
+class ResponsesAPILM(dspy.BaseLM):
+    """DSPy LM adapter for OpenAI Responses API or Chat Completions API.
+
+    Supports:
+    - infiniteai Responses API (streaming SSE)
+    - NVIDIA NIM Chat Completions API (with reasoning_content capture)
+    """
+    def __init__(self, model, api_key, api_base, reasoning_effort='low',
+                 max_tokens=16000, timeout=120, num_retries=5,
+                 use_chat_completions=False):
+        """
+        Args:
+            use_chat_completions: If True, use /v1/chat/completions endpoint (NVIDIA).
+                                  If False, use /v1/responses endpoint (infiniteai).
+        """
+        super().__init__(model=model, model_type='chat', temperature=1.0, max_tokens=max_tokens)
+        self.api_key = api_key
+        self.api_base = api_base.rstrip('/')
+        self.reasoning_effort = reasoning_effort
+        self.timeout = timeout
+        self.num_retries = num_retries
+        self.use_chat_completions = use_chat_completions
+        self._last_reasoning_content = None  # Store reasoning for logging
+
+    def _messages_to_input(self, messages):
+        """Convert DSPy message list to Responses API format.
+
+        Returns (input_items, instructions) where instructions collects all
+        system-role content (infiniteai does not support system role in input[]).
+        """
+        input_items = []
+        system_parts = []
+        for m in messages:
+            role = m.get('role', 'user')
+            content = m.get('content', '')
+            if isinstance(content, str):
+                content_list = [{'type': 'input_text', 'text': content}]
+            else:
+                content_list = content
+            if role == 'system':
+                for part in content_list:
+                    text = part.get('text', '') if isinstance(part, dict) else str(part)
+                    if text:
+                        system_parts.append(text)
+            else:
+                input_items.append({'type': 'message', 'role': role, 'content': content_list})
+        instructions = '\n\n'.join(system_parts) if system_parts else None
+        return input_items, instructions
+
+    def _call_once_chat_completions(self, messages):
+        """Call Chat Completions API (NVIDIA style) with streaming."""
+        import requests, json
+
+        url = f'{self.api_base}/chat/completions'
+        headers = {
+            'Authorization': f'Bearer {self.api_key}',
+            'Content-Type': 'application/json',
+        }
+
+        # Build messages for Chat Completions
+        chat_messages = []
+        system_content = []
+        for m in messages:
+            role = m.get('role', 'user')
+            content = m.get('content', '')
+            if role == 'system':
+                if isinstance(content, str):
+                    system_content.append(content)
+                else:
+                    for part in content:
+                        if isinstance(part, dict) and 'text' in part:
+                            system_content.append(part['text'])
+            else:
+                chat_messages.append({'role': role, 'content': content})
+
+        # Prepend system content as first user message if present
+        if system_content:
+            # NVIDIA API doesn't support system role, prepend to first user message
+            if chat_messages:
+                chat_messages[0]['content'] = '\n\n'.join(system_content) + '\n\n' + str(chat_messages[0]['content'])
+            else:
+                chat_messages.append({'role': 'user', 'content': '\n\n'.join(system_content)})
+
+        payload = {
+            'model': self.model,
+            'messages': chat_messages,
+            'max_tokens': self.kwargs.get('max_tokens', 16000),
+            'temperature': self.kwargs.get('temperature', 1.0),
+            'top_p': 1.0,
+            'stream': True,
+        }
+
+        # For reasoning models, add reasoning_effort if supported
+        if self.reasoning_effort:
+            # NVIDIA uses reasoning_effort parameter
+            payload['reasoning_effort'] = self.reasoning_effort
+
+        resp = requests.post(url, json=payload, headers=headers, stream=True, timeout=self.timeout)
+        resp.raise_for_status()
+
+        reasoning_parts = []
+        content_parts = []
+
+        for line in resp.iter_lines():
+            if not line:
+                continue
+            line = line.decode('utf-8') if isinstance(line, bytes) else line
+            if not line.startswith('data: '):
+                continue
+            if line == 'data: [DONE]':
+                break
+
+            try:
+                data = json.loads(line[6:])
+            except json.JSONDecodeError:
+                continue
+
+            choices = data.get('choices', [])
+            if not choices:
+                continue
+
+            delta = choices[0].get('delta', {})
+
+            # Capture reasoning_content (NVIDIA format)
+            if delta.get('reasoning_content') is not None:
+                reasoning_parts.append(delta['reasoning_content'])
+
+            # Capture content
+            if delta.get('content'):
+                content_parts.append(delta['content'])
+
+        self._last_reasoning_content = ''.join(reasoning_parts)
+        return ''.join(content_parts)
+
+    def _call_once(self, input_items, instructions=None):
+        """Call Responses API (infiniteai style)."""
+        import requests, json
+        url = f'{self.api_base}/responses'
+        headers = {
+            'Authorization': f'Bearer {self.api_key}',
+            'Content-Type': 'application/json',
+        }
+        payload = {
+            'model': self.model,
+            'input': input_items,
+            'reasoning': {'effort': self.reasoning_effort},
+            'max_output_tokens': self.kwargs.get('max_tokens', 16000),
+            'store': False,
+            'stream': False,
+        }
+        if instructions:
+            payload['instructions'] = instructions
+        resp = requests.post(url, json=payload, headers=headers,
+                             stream=False, timeout=self.timeout)
+        resp.raise_for_status()
+        data = resp.json()
+
+        # Check for error in response
+        if data.get('status') == 'failed' or 'error' in data:
+            error = data.get('error', {})
+            raise RuntimeError(f"ResponsesAPI error: {error.get('code', 'unknown')} - {error.get('message', 'unknown error')}")
+
+        # Extract text from response
+        output = data.get('output', [])
+        for item in reversed(output):
+            if item.get('type') == 'message':
+                for part in item.get('content', []):
+                    if part.get('type') == 'output_text':
+                        self._last_reasoning_content = None  # Responses API doesn't return reasoning separately
+                        return part['text']
+
+        if 'response' in data:
+            output = data['response'].get('output', [])
+            for item in reversed(output):
+                if item.get('type') == 'message':
+                    for part in item.get('content', []):
+                        if part.get('type') == 'output_text':
+                            self._last_reasoning_content = None
+                            return part['text']
+
+        raise RuntimeError('ResponsesAPILM: no output_text found in response')
+
+    def forward(self, prompt=None, messages=None, **kwargs):
+        if prompt is not None:
+            messages = [{'role': 'user', 'content': prompt}]
+
+        if self.use_chat_completions:
+            # Use Chat Completions API (NVIDIA style)
+            last_err = None
+            for attempt in range(self.num_retries):
+                try:
+                    text = self._call_once_chat_completions(messages)
+                    return _MockChatCompletion(text, self.model)
+                except Exception as e:
+                    last_err = e
+                    import time
+                    time.sleep(2 ** attempt)
+            raise last_err
+        else:
+            # Use Responses API (infiniteai style)
+            input_items, instructions = self._messages_to_input(messages or [])
+            last_err = None
+            for attempt in range(self.num_retries):
+                try:
+                    text = self._call_once(input_items, instructions)
+                    return _MockChatCompletion(text, self.model)
+                except Exception as e:
+                    last_err = e
+                    import time
+                    time.sleep(2 ** attempt)
+            raise last_err
+
 
 def configure_dspy():
     """
@@ -30,13 +275,17 @@ def configure_dspy():
 
     # Check if model is a reasoning model (gpt-5, o1, etc.)
     is_reasoning_model = any(model_type in Config.MODEL_NAME.lower()
-                             for model_type in ['gpt-5', 'o1', 'o3'])
+                             for model_type in ['gpt-5', 'gpt-oss', 'o1', 'o3'])
 
     # Check if model is a Gemini model
     is_gemini_model = 'gemini' in Config.MODEL_NAME.lower()
 
     # Check if model uses Vertex AI (vertex_ai/ prefix)
     is_vertex_ai = Config.MODEL_NAME.lower().startswith('vertex_ai/')
+
+    # Check if model uses NVIDIA API (nvidia/ prefix or integrate.api.nvidia.com)
+    is_nvidia_api = (Config.MODEL_NAME.lower().startswith('nvidia/') or
+                     (Config.OPENAI_API_BASE and 'nvidia' in Config.OPENAI_API_BASE.lower()))
 
     # Prepare LM configuration based on model type
     lm_config = {
@@ -56,9 +305,40 @@ def configure_dspy():
 
     # Add model-specific parameters
     if is_reasoning_model:
-        # Reasoning models require temperature=1.0 and max_tokens >= 16000
-        lm_config['temperature'] = 1.0
-        lm_config['max_tokens'] = 16000
+        # NVIDIA API uses Chat Completions with streaming
+        if is_nvidia_api:
+            lm = ResponsesAPILM(
+                model=Config.MODEL_NAME.replace('nvidia/', ''),
+                api_key=credentials['openai'],
+                api_base=Config.OPENAI_API_BASE or 'https://integrate.api.nvidia.com/v1',
+                reasoning_effort=Config.REASONING_EFFORT,
+                max_tokens=16000,
+                timeout=120,
+                num_retries=5,
+                use_chat_completions=True,  # Use Chat Completions API for NVIDIA
+            )
+            dspy.configure(lm=lm)
+            _dspy_configured = True
+            return
+        # infiniteai Responses API path
+        elif credentials['openai'] and Config.OPENAI_API_BASE:
+            lm = ResponsesAPILM(
+                model=Config.MODEL_NAME.replace('openai/', ''),
+                api_key=credentials['openai'],
+                api_base=Config.OPENAI_API_BASE,
+                reasoning_effort=Config.REASONING_EFFORT,
+                max_tokens=16000,
+                timeout=120,
+                num_retries=5,
+                use_chat_completions=False,  # Use Responses API for infiniteai
+            )
+            dspy.configure(lm=lm)
+            _dspy_configured = True
+            return
+        else:
+            lm_config['temperature'] = 1.0
+            lm_config['max_tokens'] = 16000
+            lm_config['reasoning_effort'] = 'low'
     else:
         # Standard models use configured temperature for deterministic output
         lm_config['temperature'] = Config.TEMPERATURE
@@ -71,6 +351,7 @@ def configure_dspy():
     # Add timeout and retry settings for rate limiting and reliability
     lm_config['timeout'] = 120  # 2 minute timeout per API call
     lm_config['num_retries'] = 5  # more retries for rate limiting
+    lm_config['extra_headers'] = {'User-Agent': 'python-httpx/0.28.1'}
 
     lm = dspy.LM(**lm_config)
     dspy.configure(lm=lm)
@@ -87,9 +368,17 @@ _GRAPH_STRUCTURE_COMMON = """    CRITICAL GRAPH STRUCTURE REQUIREMENTS:
        There should be NO disconnected "islands" or separate subgraphs.
 
     2. **DAG (Directed Acyclic Graph)**: No cycles allowed.
+       If action A → B → C, then C cannot have an edge back to A or B.
+       After generating your plan, VERIFY: "Does any action appear twice in the execution order?" If YES, remove the duplicate.
 
     3. **Sequential Chain**: Each action depends on the previous one completing.
-       All actions form one connected chain/path."""
+       All actions form one connected chain/path.
+
+    4. **EXACTLY ONCE EXECUTION**: Each action appears EXACTLY ONCE in the plan.
+       Before finalizing, COUNT: "How many times does each action appear?" Every action must have count = 1.
+
+    5. **NO RETURN TO PREVIOUS STATES**: Once a state change occurs (e.g., block moved, truck driven),
+       you CANNOT return to the exact previous configuration. This prevents cycles."""
 
 _STATE_TRACKING_HEADER = """    ═══════════════════════════════════════════════════════════════════════════
     CRITICAL: STATE TRACKING AND LOGICAL VERIFICATION (P0 Requirements)
@@ -139,6 +428,46 @@ class GeneratePlan(dspy.Signature):
     Given a set of Beliefs (current context) and a Desire (goal),
     generate a formal Intention (Plan) as a directed graph of actions.
 
+    ═══════════════════════════════════════════════════════════════════════════
+    STEP 1: LIST ALL ACTIONS IN EXECUTION ORDER (Chain-of-Thought)
+    ═══════════════════════════════════════════════════════════════════════════
+
+    Before generating the graph, write down ALL actions in the exact order they
+    must execute. This is your "linearization" of the plan.
+
+    Format:
+    ```
+    EXECUTION ORDER:
+    1. <action_1>
+    2. <action_2>
+    3. <action_3>
+    ...
+    N. <action_N>
+    ```
+
+    Then VERIFY:
+    - [ ] No action appears more than once (check for duplicates)
+    - [ ] Each action advances toward the goal
+    - [ ] No action returns to a previously visited state
+    - [ ] The last action achieves the goal
+
+    ═══════════════════════════════════════════════════════════════════════════
+    STEP 2: CONVERT TO GRAPH (Nodes + Edges)
+    ═══════════════════════════════════════════════════════════════════════════
+
+    Convert your linear order into a graph:
+    - Each action becomes a node with a unique ID (s1, s2, ..., sN)
+    - Add edges: (s1→s2), (s2→s3), ..., (sN-1→sN)
+    - This guarantees acyclicity by construction
+
+    ═══════════════════════════════════════════════════════════════════════════
+    FINAL CHECK (Mandatory)
+    ═══════════════════════════════════════════════════════════════════════════
+
+    Count occurrences of each UNIQUE action (by action_type + params):
+    - If any action appears 2+ times → YOU HAVE A CYCLE. Remove duplicates.
+    - If graph is not connected → ADD MISSING EDGES to connect all nodes.
+
     CRITICAL GRAPH STRUCTURE REQUIREMENTS:
 
     1. **CONNECTIVITY**: The plan graph MUST be weakly connected.
@@ -146,7 +475,8 @@ class GeneratePlan(dspy.Signature):
        There should be NO disconnected "islands" or separate subgraphs.
 
     2. **DAG (Directed Acyclic Graph)**: No cycles allowed.
-       If action A depends on B, and B depends on C, then C cannot depend on A.
+       If action A → B → C, then C cannot have an edge back to A or B.
+       After generating your plan, VERIFY: "Does any action appear twice in the execution order?" If YES, remove the duplicate.
 
     3. **Single Goal**: All actions should ultimately contribute to the goal.
        Every action should have a path connecting it to the goal state.
@@ -299,6 +629,47 @@ class GeneratePlanLogistics(dspy.Signature):
     Given a set of Beliefs (current context) and a Desire (goal),
     generate a formal Intention (Plan) as a directed graph of actions.
 
+    ═══════════════════════════════════════════════════════════════════════════
+    STEP 1: LIST ALL ACTIONS IN EXECUTION ORDER (Chain-of-Thought)
+    ═══════════════════════════════════════════════════════════════════════════
+
+    Before generating the graph, write down ALL actions in the exact order they
+    must execute. This is your "linearization" of the plan.
+
+    Format:
+    ```
+    EXECUTION ORDER:
+    1. <action_1>
+    2. <action_2>
+    3. <action_3>
+    ...
+    N. <action_N>
+    ```
+
+    Then VERIFY:
+    - [ ] No action appears more than once (check for duplicates)
+    - [ ] Each action advances toward the goal
+    - [ ] No action returns to a previously visited state
+    - [ ] The last action achieves the goal
+    - [ ] AFTER EVERY vehicle movement (drive/fly), the vehicle is at the NEW location
+
+    ═══════════════════════════════════════════════════════════════════════════
+    STEP 2: CONVERT TO GRAPH (Nodes + Edges)
+    ═══════════════════════════════════════════════════════════════════════════
+
+    Convert your linear order into a graph:
+    - Each action becomes a node with a unique ID (s1, s2, ..., sN)
+    - Add edges: (s1→s2), (s2→s3), ..., (sN-1→sN)
+    - This guarantees acyclicity by construction
+
+    ═══════════════════════════════════════════════════════════════════════════
+    FINAL CHECK (Mandatory)
+    ═══════════════════════════════════════════════════════════════════════════
+
+    Count occurrences of each UNIQUE action (by action_type + params):
+    - If any action appears 2+ times → YOU HAVE A CYCLE. Remove duplicates.
+    - If graph is not connected → ADD MISSING EDGES to connect all nodes.
+
 {_GRAPH_STRUCTURE_COMMON}
 
     LOGISTICS ACTION TYPE CONSTRAINTS:
@@ -439,6 +810,48 @@ class GeneratePlanDepots(dspy.Signature):
     You are a BDI (Belief-Desire-Intention) Planning Agent for the DEPOTS domain.
     Given a set of Beliefs (current context) and a Desire (goal),
     generate a formal Intention (Plan) as a directed graph of actions.
+
+    ═══════════════════════════════════════════════════════════════════════════
+    STEP 1: LIST ALL ACTIONS IN EXECUTION ORDER (Chain-of-Thought)
+    ═══════════════════════════════════════════════════════════════════════════
+
+    Before generating the graph, write down ALL actions in the exact order they
+    must execute. This is your "linearization" of the plan.
+
+    Format:
+    ```
+    EXECUTION ORDER:
+    1. <action_1>
+    2. <action_2>
+    3. <action_3>
+    ...
+    N. <action_N>
+    ```
+
+    Then VERIFY:
+    - [ ] No action appears more than once (check for duplicates)
+    - [ ] Each action advances toward the goal
+    - [ ] No action returns to a previously visited state
+    - [ ] The last action achieves the goal
+    - [ ] AFTER EVERY truck drive, the truck is at the NEW location (not the old one)
+    - [ ] AFTER EVERY hoist lift, the hoist is BUSY (cannot lift another crate)
+
+    ═══════════════════════════════════════════════════════════════════════════
+    STEP 2: CONVERT TO GRAPH (Nodes + Edges)
+    ═══════════════════════════════════════════════════════════════════════════
+
+    Convert your linear order into a graph:
+    - Each action becomes a node with a unique ID (s1, s2, ..., sN)
+    - Add edges: (s1→s2), (s2→s3), ..., (sN-1→sN)
+    - This guarantees acyclicity by construction
+
+    ═══════════════════════════════════════════════════════════════════════════
+    FINAL CHECK (Mandatory)
+    ═══════════════════════════════════════════════════════════════════════════
+
+    Count occurrences of each UNIQUE action (by action_type + params):
+    - If any action appears 2+ times → YOU HAVE A CYCLE. Remove duplicates.
+    - If graph is not connected → ADD MISSING EDGES to connect all nodes.
 
 {_GRAPH_STRUCTURE_COMMON}
 
@@ -866,12 +1279,16 @@ class BDIPlanner(dspy.Module):
                 else:
                     # Auto-repair didn't fully fix, but include repair messages
                     errors = errors + [f"Auto-repair attempted: {msg}" for msg in messages]
+                    # CRITICAL: Still return the (possibly repaired) plan instead of raising.
+                    # Let the caller's verification/repair layer handle it.
+                    pred.plan = repaired_plan if repaired_plan else plan_obj
 
-            # If still invalid, raise an error with detailed feedback
+            # If still invalid, DO NOT raise - return the plan for external repair
+            # The benchmark script has its own auto-repair that should handle this.
+            # Only raise for truly unrecoverable errors (parsing failures, etc.)
             if not is_valid:
-                raise ValueError(
-                    f"The generated plan is invalid. Errors: {'; '.join(errors)}. Please fix the dependencies to remove cycles or connect the graph. REMEMBER: All nodes must form ONE CONNECTED graph, not separate islands."
-                )
+                # Return the invalid plan - let external repair handle it
+                pred.plan = plan_obj
         except Exception as e:
             # Handle potential pydantic validation errors or parsing issues
             raise ValueError(
@@ -920,6 +1337,23 @@ class BDIPlanner(dspy.Module):
         )
         return "\n".join(parts)
 
+    def _compute_error_signature(self, val_errors: List[str]) -> str:
+        """
+        Compute a compact signature of VAL errors for pattern detection.
+
+        Groups similar errors and creates a hash for early exit detection.
+        """
+        # Extract error types (first line of each error, normalized)
+        error_types = []
+        for err in val_errors[:5]:  # Limit to first 5 errors
+            # Normalize: remove specific object names, keep error type
+            normalized = err.lower().split(':')[0][:50]  # First 50 chars of error type
+            error_types.append(normalized)
+
+        # Create signature
+        signature = "|".join(sorted(error_types))
+        return hashlib.sha256(signature.encode()).hexdigest()[:8]
+
     def repair_from_val_errors(
         self,
         beliefs: str,
@@ -927,6 +1361,8 @@ class BDIPlanner(dspy.Module):
         previous_plan_actions: List[str],
         val_errors: List[str],
         repair_history: List[dict] | None = None,
+        instance_id: Optional[str] = None,
+        domain: Optional[str] = None,
     ) -> dspy.Prediction:
         """
         Generate a repaired plan based on VAL validation errors.
@@ -938,25 +1374,80 @@ class BDIPlanner(dspy.Module):
             val_errors: Error messages from VAL validator
             repair_history: Cumulative list of all previous repair attempts,
                 each dict has keys: attempt, plan_actions, val_errors
+            instance_id: Unique identifier for this instance (for budget tracking)
+            domain: Planning domain (for cache keying)
 
         Returns:
             dspy.Prediction with repaired plan
 
         Raises:
             ValueError: If the repaired plan is structurally invalid
+            RuntimeError: If budget exhausted or early exit triggered
         """
-        # Build repair history string for the dedicated field
-        history_str = self._format_repair_history(repair_history)
+        # Get budget manager and repair cache
+        budget = get_budget_manager()
+        cache = get_repair_cache()
 
-        pred = self.repair_plan(
-            beliefs=beliefs,
-            desire=desire,
-            previous_plan="\n".join(previous_plan_actions),
-            val_errors="\n".join(val_errors),
-            repair_history=history_str,
-        )
+        # Compute signatures for caching and early exit
+        error_signature = self._compute_error_signature(val_errors)
+        plan_hash = hashlib.sha256(
+            json.dumps(previous_plan_actions, sort_keys=True).encode()
+        ).hexdigest()[:16]
+
+        # EARLY EXIT CHECK: Detect repeated failure patterns
+        if instance_id and budget.config.early_exit_enabled:
+            if budget.track_error_pattern(instance_id, error_signature):
+                raise RuntimeError(
+                    f"Early exit: Same error pattern detected {budget.config.early_exit_after_failures} times. "
+                    f"Error type: {error_signature}. Repair unlikely to succeed."
+                )
+
+        # BUDGET CHECK: Verify we're within budget
+        if instance_id:
+            allowed, reason = budget.check_budget(instance_id)
+            if not allowed:
+                raise RuntimeError(f"Budget exhausted: {reason}")
+
+        # CACHE CHECK: Try to get cached repair result
+        cache_key_domain = domain or "unknown"
+        cached_result = cache.get(cache_key_domain, error_signature, plan_hash)
+        if cached_result is not None:
+            logger.info(f"Cache hit for repair (domain={cache_key_domain}, err={error_signature})")
+            return cached_result
+
+        # RATE LIMIT CHECK: Wait if rate limited
+        allowed, wait_time = budget.check_rate_limit()
+        if not allowed:
+            logger.info(f"Rate limited, waiting {wait_time:.1f}s before repair")
+            import time as time_module
+            time_module.sleep(wait_time + 0.1)
+
+        # CHECK BACKOFF: Wait if endpoint in backoff
+        in_backoff, backoff_time = budget.check_backoff(endpoint="repair")
+        if in_backoff:
+            logger.info(f"Backoff active, waiting {backoff_time:.1f}s")
+            import time as time_module
+            time_module.sleep(backoff_time + 0.1)
+
+        # RECORD REQUEST for rate limiting
+        budget.record_request("repair")
 
         try:
+            # Build repair history string for the dedicated field
+            history_str = self._format_repair_history(repair_history)
+
+            pred = self.repair_plan(
+                beliefs=beliefs,
+                desire=desire,
+                previous_plan="\n".join(previous_plan_actions),
+                val_errors="\n".join(val_errors),
+                repair_history=history_str,
+            )
+
+            # RECORD CALL against budget
+            if instance_id:
+                budget.record_call(instance_id)
+
             plan_obj = pred.plan
 
             # Validate action constraints on repaired plan
@@ -983,7 +1474,12 @@ class BDIPlanner(dspy.Module):
                 raise ValueError(
                     f"Repaired plan is structurally invalid. Errors: {'; '.join(errors)}"
                 )
+
+            # CACHE SUCCESSFUL RESULT
+            cache.put(cache_key_domain, error_signature, plan_hash, pred)
+
         except Exception as e:
+            # Don't cache failures
             raise ValueError(
                 f"Failed to generate repaired plan. Error: {str(e)}"
             ) from e
