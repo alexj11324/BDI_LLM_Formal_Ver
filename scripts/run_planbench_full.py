@@ -1143,7 +1143,11 @@ def generate_bdi_plan(
     Returns:
         (plan, is_valid, metrics)
     """
-    from src.bdi_llm.symbolic_verifier import BlocksworldPhysicsValidator, PDDLSymbolicVerifier
+    from src.bdi_llm.symbolic_verifier import (
+        BlocksworldPhysicsValidator,
+        IntegratedVerifier,
+        PDDLSymbolicVerifier,
+    )
 
     start_time = time.time()
     metrics = {
@@ -1266,6 +1270,33 @@ def generate_bdi_plan(
                         try:
                             print(f"    VAL repair attempt {val_repair_attempt}/{max_val_repairs} - errors: {clean_errors[:2]}")
 
+                            verification_context = {
+                                'layers': {
+                                    'structural': {
+                                        'valid': struct_valid,
+                                        'errors': struct_errors,
+                                    },
+                                    'symbolic': {
+                                        'valid': symbolic_valid,
+                                        'errors': clean_errors,
+                                    },
+                                },
+                                'overall_valid': struct_valid and symbolic_valid,
+                            }
+                            failed_layers = [
+                                name
+                                for name, layer in verification_context['layers'].items()
+                                if not layer.get('valid', False)
+                            ]
+                            verification_context['error_summary'] = (
+                                f"Failed layers: {', '.join(failed_layers)}"
+                                if failed_layers
+                                else "All layers passed"
+                            )
+                            verification_feedback = IntegratedVerifier.build_planner_feedback(
+                                verification_context
+                            )
+
                             # Call LLM to repair based on VAL errors + full history
                             repair_result = planner.repair_from_val_errors(
                                 beliefs=beliefs,
@@ -1273,6 +1304,7 @@ def generate_bdi_plan(
                                 previous_plan_actions=pddl_actions,
                                 val_errors=clean_errors,
                                 repair_history=cumulative_repair_history,
+                                verification_feedback=verification_feedback,
                                 instance_id=instance_id,  # For budget tracking
                                 domain=domain,  # For cache keying
                             )

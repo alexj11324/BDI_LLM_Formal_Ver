@@ -1,0 +1,142 @@
+{
+  "domain": "blocksworld",
+  "timestamp": "2026-02-27T00:02:33.588397",
+  "total_instances": 3,
+  "results": [
+    {
+      "instance_file": "/Users/alexjiang/Desktop/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-1.pddl",
+      "instance_name": "instance-1",
+      "timestamp": "2026-02-27T00:02:33.629502",
+      "pddl_data": {
+        "problem_name": "BW-generalization-4",
+        "num_objects": 8,
+        "num_init": 17,
+        "num_goals": 7
+      },
+      "beliefs": "BLOCKSWORLD DOMAIN\n\n=== CURRENT STATE ===\nAvailable blocks (8): b, d, f, g, h, i, j, l\nCurrent stacks: None (all blocks are on table)\nBlocks on table: b, d, f, g, h, i, j, l\nClear blocks (nothing on t...",
+      "desire": "Build the following tower(s) from BOTTOM to TOP:\n\n  Tower (base=l): l -> h -> b -> d -> g -> i -> f -> j  (bottom to top)\n  Construction steps:\n    Step 1: pick-up h, then stack h on l\n    Step 2: pic...",
+      "bdi_metrics": {
+        "generation_time": 25.745814085006714,
+        "verification_layers": {
+          "structural": {
+            "valid": true,
+            "errors": []
+          },
+          "symbolic": {
+            "valid": true,
+            "errors": []
+          },
+          "physics": {
+            "valid": true,
+            "errors": []
+          }
+        },
+        "auto_repair": {
+          "triggered": false,
+          "success": false,
+          "repairs_applied": []
+        },
+        "val_repair": {
+          "attempts": 0,
+          "success": false,
+          "history": []
+        },
+        "overall_valid": true,
+        "num_nodes": 14,
+        "num_edges": 13,
+        "retries": 0
+      },
+      "success": true
+    },
+    {
+      "instance_file": "/Users/alexjiang/Desktop/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-10.pddl",
+      "instance_name": "instance-10",
+      "timestamp": "2026-02-27T00:02:59.584547",
+      "pddl_data": {
+        "problem_name": "BW-generalization-4",
+        "num_objects": 5,
+        "num_init": 11,
+        "num_goals": 4
+      },
+      "beliefs": "BLOCKSWORLD DOMAIN\n\n=== CURRENT STATE ===\nAvailable blocks (5): a, b, d, e, f\nCurrent stacks: None (all blocks are on table)\nBlocks on table: a, b, d, e, f\nClear blocks (nothing on top): a, b, d, e, f...",
+      "desire": "Build the following tower(s) from BOTTOM to TOP:\n\n  Tower (base=f): f -> b -> a -> e -> d  (bottom to top)\n  Construction steps:\n    Step 1: pick-up b, then stack b on f\n    Step 2: pick-up a, then st...",
+      "bdi_metrics": {
+        "generation_time": 18.105293035507202,
+        "verification_layers": {
+          "structural": {
+            "valid": true,
+            "errors": []
+          },
+          "symbolic": {
+            "valid": true,
+            "errors": []
+          },
+          "physics": {
+            "valid": true,
+            "errors": []
+          }
+        },
+        "auto_repair": {
+          "triggered": false,
+          "success": false,
+          "repairs_applied": []
+        },
+        "val_repair": {
+          "attempts": 0,
+          "success": false,
+          "history": []
+        },
+        "overall_valid": true,
+        "num_nodes": 8,
+        "num_edges": 7,
+        "retries": 0
+      },
+      "success": true
+    },
+    {
+      "instance_file": "/Users/alexjiang/Desktop/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-100.pddl",
+      "instance_name": "instance-100",
+      "timestamp": "2026-02-27T00:03:17.719796",
+      "pddl_data": {
+        "problem_name": "BW-generalization-4",
+        "num_objects": 4,
+        "num_init": 9,
+        "num_goals": 3
+      },
+      "beliefs": "BLOCKSWORLD DOMAIN\n\n=== CURRENT STATE ===\nAvailable blocks (4): b, i, j, l\nCurrent stacks: None (all blocks are on table)\nBlocks on table: b, i, j, l\nClear blocks (nothing on top): b, i, j, l\nHand: em...",
+      "desire": "Build the following tower(s) from BOTTOM to TOP:\n\n  Tower (base=i): i -> l -> j -> b  (bottom to top)\n  Construction steps:\n    Step 1: pick-up l, then stack l on i\n    Step 2: pick-up j, then stack j...",
+      "bdi_metrics": {
+        "generation_time": 13.82874608039856,
+        "verification_layers": {
+          "structural": {
+            "valid": true,
+            "errors": []
+          },
+          "symbolic": {
+            "valid": true,
+            "errors": []
+          },
+          "physics": {
+            "valid": true,
+            "errors": []
+          }
+        },
+        "auto_repair": {
+          "triggered": false,
+          "success": false,
+          "repairs_applied": []
+        },
+        "val_repair": {
+          "attempts": 0,
+          "success": false,
+          "history": []
+        },
+        "overall_valid": true,
+        "num_nodes": 6,
+        "num_edges": 5,
+        "retries": 0
+      },
+      "success": true
+    }
+  ]
+}
