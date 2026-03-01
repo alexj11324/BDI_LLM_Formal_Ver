@@ -1037,7 +1037,7 @@ class BDIPlanner(dspy.Module):
                     errors = []
                 else:
                     # Auto-repair didn't fully fix, but include repair messages
-                    errors = errors + [f"Auto-repair attempted: {msg}" for msg in messages]
+                    errors.extend([f"Auto-repair attempted: {msg}" for msg in messages])
 
             # If still invalid, raise an error with detailed feedback
             if not is_valid:
