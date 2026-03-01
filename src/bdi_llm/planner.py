@@ -1,68 +1,472 @@
 import dspy
-from typing import List
+import yaml
+import hashlib
+import json
+import logging
+from pathlib import Path
+from typing import Dict, List, Optional
 import networkx as nx
 from .schemas import BDIPlan, ActionNode, DependencyEdge
 from .verifier import PlanVerifier
+from .api_budget import get_budget_manager, get_repair_cache, BudgetConfig
 
 from .config import Config
 
-# 1. Configure DSPy
-# Ensure configuration is valid before proceeding
-Config.validate()
+# Module-level flag to ensure DSPy is configured only once
+_dspy_configured: bool = False
 
-# Check if model is a reasoning model (gpt-5, o1, etc.)
-is_reasoning_model = any(model_type in Config.MODEL_NAME.lower()
-                         for model_type in ['gpt-5', 'o1', 'o3'])
+logger = logging.getLogger(__name__)
 
-# Check if model is a Gemini model
-is_gemini_model = 'gemini' in Config.MODEL_NAME.lower()
 
-# Check if model uses Vertex AI (vertex_ai/ prefix)
-is_vertex_ai = Config.MODEL_NAME.lower().startswith('vertex_ai/')
+class _MockMessage:
+    def __init__(self, content):
+        self.content = content
+        self.tool_calls = None
 
-# Prepare LM configuration based on model type
-lm_config = {
-    'model': Config.MODEL_NAME,
-}
 
-# Add API key based on model type
-# Vertex AI models use service account credentials via env vars (no api_key needed)
-if is_vertex_ai:
-    pass  # litellm reads GOOGLE_APPLICATION_CREDENTIALS, VERTEXAI_PROJECT, VERTEXAI_LOCATION from env
-elif is_gemini_model and Config.GOOGLE_API_KEY:
-    lm_config['api_key'] = Config.GOOGLE_API_KEY
-elif Config.OPENAI_API_KEY:
-    lm_config['api_key'] = Config.OPENAI_API_KEY
-    if Config.OPENAI_API_BASE:
-        lm_config['api_base'] = Config.OPENAI_API_BASE
+class _MockChoice:
+    def __init__(self, content):
+        self.message = _MockMessage(content)
+        self.logprobs = None
 
-# Add model-specific parameters
-if is_reasoning_model:
-    # Reasoning models require temperature=1.0 and max_tokens >= 16000
-    lm_config['temperature'] = 1.0
-    lm_config['max_tokens'] = 16000
-else:
-    # Standard models use configured temperature for deterministic output
-    lm_config['temperature'] = Config.TEMPERATURE
-    lm_config['max_tokens'] = Config.MAX_TOKENS
 
-# Add max_tokens for gemini models
-if 'gemini' in Config.MODEL_NAME.lower() or 'vertex_ai' in Config.MODEL_NAME.lower():
-    lm_config['max_tokens'] = 16000
+class _MockUsage(dict):
+    def __init__(self):
+        super().__init__(prompt_tokens=0, completion_tokens=0, total_tokens=0)
 
-# Add timeout and retry settings for rate limiting and reliability
-lm_config['timeout'] = 120  # 2 minute timeout per API call
-lm_config['num_retries'] = 5  # more retries for rate limiting
 
-lm = dspy.LM(**lm_config)
-dspy.configure(lm=lm)
+class _MockChatCompletion:
+    def __init__(self, text, model):
+        self.choices = [_MockChoice(text)]
+        self.usage = _MockUsage()
+        self.model = model
+        self._hidden_params = {}
+
+
+class ResponsesAPILM(dspy.BaseLM):
+    """DSPy LM adapter for OpenAI Responses API or Chat Completions API.
+
+    Supports:
+    - infiniteai Responses API (streaming SSE)
+    - NVIDIA NIM Chat Completions API (with reasoning_content capture)
+    """
+    def __init__(self, model, api_key, api_base, reasoning_effort='low',
+                 max_tokens=16000, timeout=120, num_retries=5,
+                 use_chat_completions=False):
+        """
+        Args:
+            use_chat_completions: If True, use /v1/chat/completions endpoint (NVIDIA).
+                                  If False, use /v1/responses endpoint (infiniteai).
+        """
+        super().__init__(model=model, model_type='chat', temperature=1.0, max_tokens=max_tokens)
+        self.api_key = api_key
+        self.api_base = api_base.rstrip('/')
+        self.reasoning_effort = reasoning_effort
+        self.timeout = timeout
+        self.num_retries = num_retries
+        self.use_chat_completions = use_chat_completions
+        self._last_reasoning_content = None  # Store reasoning for logging
+
+    def _messages_to_input(self, messages):
+        """Convert DSPy message list to Responses API format.
+
+        Returns (input_items, instructions) where instructions collects all
+        system-role content (infiniteai does not support system role in input[]).
+        """
+        input_items = []
+        system_parts = []
+        for m in messages:
+            role = m.get('role', 'user')
+            content = m.get('content', '')
+            if isinstance(content, str):
+                content_list = [{'type': 'input_text', 'text': content}]
+            else:
+                content_list = content
+            if role == 'system':
+                for part in content_list:
+                    text = part.get('text', '') if isinstance(part, dict) else str(part)
+                    if text:
+                        system_parts.append(text)
+            else:
+                input_items.append({'type': 'message', 'role': role, 'content': content_list})
+        instructions = '\n\n'.join(system_parts) if system_parts else None
+        return input_items, instructions
+
+    def _call_once_chat_completions(self, messages):
+        """Call Chat Completions API (NVIDIA style) with streaming."""
+        import requests, json
+
+        url = f'{self.api_base}/chat/completions'
+        headers = {
+            'Authorization': f'Bearer {self.api_key}',
+            'Content-Type': 'application/json',
+        }
+
+        # Build messages for Chat Completions
+        chat_messages = []
+        system_content = []
+        for m in messages:
+            role = m.get('role', 'user')
+            content = m.get('content', '')
+            if role == 'system':
+                if isinstance(content, str):
+                    system_content.append(content)
+                else:
+                    for part in content:
+                        if isinstance(part, dict) and 'text' in part:
+                            system_content.append(part['text'])
+            else:
+                chat_messages.append({'role': role, 'content': content})
+
+        # Prepend system content as first user message if present
+        if system_content:
+            # NVIDIA API doesn't support system role, prepend to first user message
+            if chat_messages:
+                chat_messages[0]['content'] = '\n\n'.join(system_content) + '\n\n' + str(chat_messages[0]['content'])
+            else:
+                chat_messages.append({'role': 'user', 'content': '\n\n'.join(system_content)})
+
+        payload = {
+            'model': self.model,
+            'messages': chat_messages,
+            'max_tokens': self.kwargs.get('max_tokens', 16000),
+            'temperature': self.kwargs.get('temperature', 1.0),
+            'top_p': 1.0,
+            'stream': True,
+        }
+
+        # For reasoning models, add reasoning_effort if supported
+        if self.reasoning_effort:
+            # NVIDIA uses reasoning_effort parameter
+            payload['reasoning_effort'] = self.reasoning_effort
+
+        resp = requests.post(url, json=payload, headers=headers, stream=True, timeout=self.timeout)
+        resp.raise_for_status()
+
+        reasoning_parts = []
+        content_parts = []
+
+        for line in resp.iter_lines():
+            if not line:
+                continue
+            line = line.decode('utf-8') if isinstance(line, bytes) else line
+            if not line.startswith('data: '):
+                continue
+            if line == 'data: [DONE]':
+                break
+
+            try:
+                data = json.loads(line[6:])
+            except json.JSONDecodeError:
+                continue
+
+            choices = data.get('choices', [])
+            if not choices:
+                continue
+
+            delta = choices[0].get('delta', {})
+
+            # Capture reasoning_content (NVIDIA format)
+            if delta.get('reasoning_content') is not None:
+                reasoning_parts.append(delta['reasoning_content'])
+
+            # Capture content
+            if delta.get('content'):
+                content_parts.append(delta['content'])
+
+        self._last_reasoning_content = ''.join(reasoning_parts)
+        return ''.join(content_parts)
+
+    def _call_once(self, input_items, instructions=None):
+        """Call Responses API (infiniteai style)."""
+        import requests, json
+        url = f'{self.api_base}/responses'
+        headers = {
+            'Authorization': f'Bearer {self.api_key}',
+            'Content-Type': 'application/json',
+        }
+        payload = {
+            'model': self.model,
+            'input': input_items,
+            'reasoning': {'effort': self.reasoning_effort},
+            'max_output_tokens': self.kwargs.get('max_tokens', 16000),
+            'store': False,
+            'stream': False,
+        }
+        if instructions:
+            payload['instructions'] = instructions
+        resp = requests.post(url, json=payload, headers=headers,
+                             stream=False, timeout=self.timeout)
+        resp.raise_for_status()
+        data = resp.json()
+
+        # Check for error in response
+        if data.get('status') == 'failed' or 'error' in data:
+            error = data.get('error', {})
+            raise RuntimeError(f"ResponsesAPI error: {error.get('code', 'unknown')} - {error.get('message', 'unknown error')}")
+
+        # Extract text from response
+        output = data.get('output', [])
+        for item in reversed(output):
+            if item.get('type') == 'message':
+                for part in item.get('content', []):
+                    if part.get('type') == 'output_text':
+                        self._last_reasoning_content = None  # Responses API doesn't return reasoning separately
+                        return part['text']
+
+        if 'response' in data:
+            output = data['response'].get('output', [])
+            for item in reversed(output):
+                if item.get('type') == 'message':
+                    for part in item.get('content', []):
+                        if part.get('type') == 'output_text':
+                            self._last_reasoning_content = None
+                            return part['text']
+
+        raise RuntimeError('ResponsesAPILM: no output_text found in response')
+
+    def forward(self, prompt=None, messages=None, **kwargs):
+        if prompt is not None:
+            messages = [{'role': 'user', 'content': prompt}]
+
+        if self.use_chat_completions:
+            # Use Chat Completions API (NVIDIA style)
+            last_err = None
+            for attempt in range(self.num_retries):
+                try:
+                    text = self._call_once_chat_completions(messages)
+                    return _MockChatCompletion(text, self.model)
+                except Exception as e:
+                    last_err = e
+                    import time
+                    time.sleep(2 ** attempt)
+            raise last_err
+        else:
+            # Use Responses API (infiniteai style)
+            input_items, instructions = self._messages_to_input(messages or [])
+            last_err = None
+            for attempt in range(self.num_retries):
+                try:
+                    text = self._call_once(input_items, instructions)
+                    return _MockChatCompletion(text, self.model)
+                except Exception as e:
+                    last_err = e
+                    import time
+                    time.sleep(2 ** attempt)
+            raise last_err
+
+
+def configure_dspy():
+    """
+    Idempotently configure DSPy for use by BDIPlanner.
+
+    Subsequent calls are effectively no-ops once configuration has been
+    successfully completed in this process.
+    """
+    global _dspy_configured
+    if _dspy_configured:
+        # DSPy already configured in this process; reuse existing configuration
+        return
+
+    # 1. Configure DSPy
+    # Validate configuration in non-strict mode so parser/unit tests can import
+    # planner utilities without requiring live API credentials.
+    credentials = Config.validate(require_credentials=False)
+
+    # Check if model is a reasoning model (gpt-5, o1, etc.)
+    is_reasoning_model = any(model_type in Config.MODEL_NAME.lower()
+                             for model_type in ['gpt-5', 'gpt-oss', 'o1', 'o3'])
+
+    # Check if model is a Gemini model
+    is_gemini_model = 'gemini' in Config.MODEL_NAME.lower()
+
+    # Check if model uses Vertex AI (vertex_ai/ prefix)
+    is_vertex_ai = Config.MODEL_NAME.lower().startswith('vertex_ai/')
+
+    # Check if model uses NVIDIA API (nvidia/ prefix or integrate.api.nvidia.com)
+    is_nvidia_api = (Config.MODEL_NAME.lower().startswith('nvidia/') or
+                     (Config.OPENAI_API_BASE and 'nvidia' in Config.OPENAI_API_BASE.lower()))
+
+    # Prepare LM configuration based on model type
+    lm_config = {
+        'model': Config.MODEL_NAME,
+    }
+
+    # Add API key based on model type
+    # Vertex AI models use service account credentials via env vars (no api_key needed)
+    if is_vertex_ai:
+        pass  # litellm reads GOOGLE_APPLICATION_CREDENTIALS, VERTEXAI_PROJECT, VERTEXAI_LOCATION from env
+    elif is_gemini_model and credentials['google']:
+        lm_config['api_key'] = credentials['google']
+    elif credentials['openai']:
+        lm_config['api_key'] = credentials['openai']
+        if Config.OPENAI_API_BASE:
+            lm_config['api_base'] = Config.OPENAI_API_BASE
+
+    # Add model-specific parameters
+    if is_reasoning_model:
+        # NVIDIA API uses Chat Completions with streaming
+        if is_nvidia_api:
+            lm = ResponsesAPILM(
+                model=Config.MODEL_NAME.replace('nvidia/', ''),
+                api_key=credentials['openai'],
+                api_base=Config.OPENAI_API_BASE or 'https://integrate.api.nvidia.com/v1',
+                reasoning_effort=Config.REASONING_EFFORT,
+                max_tokens=16000,
+                timeout=120,
+                num_retries=5,
+                use_chat_completions=True,  # Use Chat Completions API for NVIDIA
+            )
+            dspy.configure(lm=lm)
+            _dspy_configured = True
+            return
+        # infiniteai Responses API path
+        elif credentials['openai'] and Config.OPENAI_API_BASE:
+            lm = ResponsesAPILM(
+                model=Config.MODEL_NAME.replace('openai/', ''),
+                api_key=credentials['openai'],
+                api_base=Config.OPENAI_API_BASE,
+                reasoning_effort=Config.REASONING_EFFORT,
+                max_tokens=16000,
+                timeout=120,
+                num_retries=5,
+                use_chat_completions=False,  # Use Responses API for infiniteai
+            )
+            dspy.configure(lm=lm)
+            _dspy_configured = True
+            return
+        else:
+            lm_config['temperature'] = 1.0
+            lm_config['max_tokens'] = 16000
+            lm_config['reasoning_effort'] = 'low'
+    else:
+        # Standard models use configured temperature for deterministic output
+        lm_config['temperature'] = Config.TEMPERATURE
+        lm_config['max_tokens'] = Config.MAX_TOKENS
+
+    # Add max_tokens for gemini models
+    if 'gemini' in Config.MODEL_NAME.lower() or 'vertex_ai' in Config.MODEL_NAME.lower():
+        lm_config['max_tokens'] = 16000
+
+    # Add timeout and retry settings for rate limiting and reliability
+    lm_config['timeout'] = 120  # 2 minute timeout per API call
+    lm_config['num_retries'] = 5  # more retries for rate limiting
+    lm_config['extra_headers'] = {'User-Agent': 'python-httpx/0.28.1'}
+
+    lm = dspy.LM(**lm_config)
+    dspy.configure(lm=lm)
+
+    # Mark as configured after successful configuration
+    _dspy_configured = True
 
 # 2. Define the Signature
+
+_GRAPH_STRUCTURE_COMMON = """    CRITICAL GRAPH STRUCTURE REQUIREMENTS:
+
+    1. **CONNECTIVITY**: The plan graph MUST be weakly connected.
+       ALL action nodes must be reachable from each other via edges.
+       There should be NO disconnected "islands" or separate subgraphs.
+
+    2. **DAG (Directed Acyclic Graph)**: No cycles allowed.
+       If action A → B → C, then C cannot have an edge back to A or B.
+       After generating your plan, VERIFY: "Does any action appear twice in the execution order?" If YES, remove the duplicate.
+
+    3. **Sequential Chain**: Each action depends on the previous one completing.
+       All actions form one connected chain/path.
+
+    4. **EXACTLY ONCE EXECUTION**: Each action appears EXACTLY ONCE in the plan.
+       Before finalizing, COUNT: "How many times does each action appear?" Every action must have count = 1.
+
+    5. **NO RETURN TO PREVIOUS STATES**: Once a state change occurs (e.g., block moved, truck driven),
+       you CANNOT return to the exact previous configuration. This prevents cycles."""
+
+_STATE_TRACKING_HEADER = """    ═══════════════════════════════════════════════════════════════════════════
+    CRITICAL: STATE TRACKING AND LOGICAL VERIFICATION (P0 Requirements)
+    ═══════════════════════════════════════════════════════════════════════════
+
+    You MUST use explicit state tracking and logical verification to avoid common
+    planning errors. This is MANDATORY.
+
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │ P0-1: EXPLICIT STATE TRACKING                                           │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+    Maintain a STATE TABLE throughout planning. Update it after EVERY action."""
+
+_COS_REPRESENTATION_HEADER = """    ┌─────────────────────────────────────────────────────────────────────────┐
+    │ P0-2: CHAIN-OF-SYMBOL (CoS) REPRESENTATION                             │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+    Use symbolic notation for clarity:"""
+
+_LOGICOT_HEADER = """    ┌─────────────────────────────────────────────────────────────────────────┐
+    │ P0-3: LOGICAL CHAIN-OF-THOUGHT (LogiCoT) PROTOCOL                      │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+    For EVERY action, follow this 4-step verification protocol:"""
+
+_LOGICOT_PROTOCOL_DETAILED = """    **Step 1: Identify Goal**
+    What are you trying to achieve with this action?
+
+    **Step 2: List Preconditions**
+    What conditions MUST be true for this action to be valid?
+
+    **Step 3: Check Current State**
+    For each precondition, check against your state table:
+    - ✓ Condition satisfied
+    - ✗ Condition NOT satisfied → explain why
+
+    **Step 4: Decision**
+    - If ALL preconditions satisfied → Select this action
+    - If ANY precondition NOT satisfied → Find prerequisite actions first"""
+
+_REMINDER = "    REMEMBER: State tracking is NOT optional. It is MANDATORY for correct planning."
+
 class GeneratePlan(dspy.Signature):
-    """
+    __doc__ = f"""
     You are a BDI (Belief-Desire-Intention) Planning Agent.
     Given a set of Beliefs (current context) and a Desire (goal),
     generate a formal Intention (Plan) as a directed graph of actions.
+
+    ═══════════════════════════════════════════════════════════════════════════
+    STEP 1: LIST ALL ACTIONS IN EXECUTION ORDER (Chain-of-Thought)
+    ═══════════════════════════════════════════════════════════════════════════
+
+    Before generating the graph, write down ALL actions in the exact order they
+    must execute. This is your "linearization" of the plan.
+
+    Format:
+    ```
+    EXECUTION ORDER:
+    1. <action_1>
+    2. <action_2>
+    3. <action_3>
+    ...
+    N. <action_N>
+    ```
+
+    Then VERIFY:
+    - [ ] No action appears more than once (check for duplicates)
+    - [ ] Each action advances toward the goal
+    - [ ] No action returns to a previously visited state
+    - [ ] The last action achieves the goal
+
+    ═══════════════════════════════════════════════════════════════════════════
+    STEP 2: CONVERT TO GRAPH (Nodes + Edges)
+    ═══════════════════════════════════════════════════════════════════════════
+
+    Convert your linear order into a graph:
+    - Each action becomes a node with a unique ID (s1, s2, ..., sN)
+    - Add edges: (s1→s2), (s2→s3), ..., (sN-1→sN)
+    - This guarantees acyclicity by construction
+
+    ═══════════════════════════════════════════════════════════════════════════
+    FINAL CHECK (Mandatory)
+    ═══════════════════════════════════════════════════════════════════════════
+
+    Count occurrences of each UNIQUE action (by action_type + params):
+    - If any action appears 2+ times → YOU HAVE A CYCLE. Remove duplicates.
+    - If graph is not connected → ADD MISSING EDGES to connect all nodes.
 
     CRITICAL GRAPH STRUCTURE REQUIREMENTS:
 
@@ -71,7 +475,8 @@ class GeneratePlan(dspy.Signature):
        There should be NO disconnected "islands" or separate subgraphs.
 
     2. **DAG (Directed Acyclic Graph)**: No cycles allowed.
-       If action A depends on B, and B depends on C, then C cannot depend on A.
+       If action A → B → C, then C cannot have an edge back to A or B.
+       After generating your plan, VERIFY: "Does any action appear twice in the execution order?" If YES, remove the duplicate.
 
     3. **Single Goal**: All actions should ultimately contribute to the goal.
        Every action should have a path connecting it to the goal state.
@@ -110,7 +515,7 @@ class GeneratePlan(dspy.Signature):
     EXAMPLE WRONG STRUCTURE:
     Nodes: [pick_a, stack_a_b, pick_c, stack_c_d]
     Edges: [(pick_a, stack_a_b), (pick_c, stack_c_d)]
-    This is WRONG because {pick_a, stack_a_b} and {pick_c, stack_c_d} are disconnected!
+    This is WRONG because {{pick_a, stack_a_b}} and {{pick_c, stack_c_d}} are disconnected!
 
     Always ensure your plan forms ONE connected graph, not multiple fragments.
 
@@ -118,8 +523,8 @@ class GeneratePlan(dspy.Signature):
 
     action_type must be one of: pick-up | put-down | stack | unstack
     params:
-      pick-up / put-down : {"block": <block>}
-      stack / unstack    : {"block": <block>, "target": <block>}
+      pick-up / put-down : {{"block": <block>}}
+      stack / unstack    : {{"block": <block>, "target": <block>}}
     check-before-act preconditions (MUST be true before choosing an action):
       pick-up : block is clear, block is on the table, and hand is empty
       put-down: hand is holding the block
@@ -133,18 +538,7 @@ class GeneratePlan(dspy.Signature):
 
     Do NOT invent action types outside this set.
 
-    ═══════════════════════════════════════════════════════════════════════════
-    CRITICAL: STATE TRACKING AND LOGICAL VERIFICATION (P0 Requirements)
-    ═══════════════════════════════════════════════════════════════════════════
-
-    You MUST use explicit state tracking and logical verification to avoid common
-    planning errors. This is MANDATORY.
-
-    ┌─────────────────────────────────────────────────────────────────────────┐
-    │ P0-1: EXPLICIT STATE TRACKING                                           │
-    └─────────────────────────────────────────────────────────────────────────┘
-
-    Maintain a STATE TABLE throughout planning. Update it after EVERY action.
+{_STATE_TRACKING_HEADER}
 
     **BLOCKSWORLD State Table Format:**
     ```
@@ -161,11 +555,7 @@ class GeneratePlan(dspy.Signature):
     3. After each action: Update affected blocks, mark with [UPDATED]
     4. Track: block positions, clear status, hand state
 
-    ┌─────────────────────────────────────────────────────────────────────────┐
-    │ P0-2: CHAIN-OF-SYMBOL (CoS) REPRESENTATION                             │
-    └─────────────────────────────────────────────────────────────────────────┘
-
-    Use symbolic notation for clarity:
+{_COS_REPRESENTATION_HEADER}
 
     **Symbolic State Format:**
     - on(X,Y): block X is on block Y
@@ -179,26 +569,9 @@ class GeneratePlan(dspy.Signature):
     - After unstack(a,b): holding(a), clear(b), ontable(b), ontable(c), clear(c)
     - After put-down(a): ontable(a), clear(a), ontable(b), clear(b), ontable(c), clear(c), handempty
 
-    ┌─────────────────────────────────────────────────────────────────────────┐
-    │ P0-3: LOGICAL CHAIN-OF-THOUGHT (LogiCoT) PROTOCOL                      │
-    └─────────────────────────────────────────────────────────────────────────┘
+{_LOGICOT_HEADER}
 
-    For EVERY action, follow this 4-step verification protocol:
-
-    **Step 1: Identify Goal**
-    What are you trying to achieve with this action?
-
-    **Step 2: List Preconditions**
-    What conditions MUST be true for this action to be valid?
-
-    **Step 3: Check Current State**
-    For each precondition, check against your state table:
-    - ✓ Condition satisfied
-    - ✗ Condition NOT satisfied → explain why
-
-    **Step 4: Decision**
-    - If ALL preconditions satisfied → Select this action
-    - If ANY precondition NOT satisfied → Find prerequisite actions first
+{_LOGICOT_PROTOCOL_DETAILED}
 
     ═══════════════════════════════════════════════════════════════════════════
     WORKED EXAMPLE WITH STATE TRACKING
@@ -243,7 +616,7 @@ class GeneratePlan(dspy.Signature):
 
     ═══════════════════════════════════════════════════════════════════════════
 
-    REMEMBER: State tracking is NOT optional. It is MANDATORY for correct planning.
+{_REMINDER}
     """
     beliefs: str = dspy.InputField(desc="Current state of the world and available tools")
     desire: str = dspy.InputField(desc="The high-level goal to achieve")
@@ -251,21 +624,53 @@ class GeneratePlan(dspy.Signature):
 
 
 class GeneratePlanLogistics(dspy.Signature):
-    """
+    __doc__ = f"""
     You are a BDI (Belief-Desire-Intention) Planning Agent for the LOGISTICS domain.
     Given a set of Beliefs (current context) and a Desire (goal),
     generate a formal Intention (Plan) as a directed graph of actions.
 
-    CRITICAL GRAPH STRUCTURE REQUIREMENTS:
+    ═══════════════════════════════════════════════════════════════════════════
+    STEP 1: LIST ALL ACTIONS IN EXECUTION ORDER (Chain-of-Thought)
+    ═══════════════════════════════════════════════════════════════════════════
 
-    1. **CONNECTIVITY**: The plan graph MUST be weakly connected.
-       ALL action nodes must be reachable from each other via edges.
-       There should be NO disconnected "islands" or separate subgraphs.
+    Before generating the graph, write down ALL actions in the exact order they
+    must execute. This is your "linearization" of the plan.
 
-    2. **DAG (Directed Acyclic Graph)**: No cycles allowed.
+    Format:
+    ```
+    EXECUTION ORDER:
+    1. <action_1>
+    2. <action_2>
+    3. <action_3>
+    ...
+    N. <action_N>
+    ```
 
-    3. **Sequential Chain**: Each action depends on the previous one completing.
-       All actions form one connected chain/path.
+    Then VERIFY:
+    - [ ] No action appears more than once (check for duplicates)
+    - [ ] Each action advances toward the goal
+    - [ ] No action returns to a previously visited state
+    - [ ] The last action achieves the goal
+    - [ ] AFTER EVERY vehicle movement (drive/fly), the vehicle is at the NEW location
+
+    ═══════════════════════════════════════════════════════════════════════════
+    STEP 2: CONVERT TO GRAPH (Nodes + Edges)
+    ═══════════════════════════════════════════════════════════════════════════
+
+    Convert your linear order into a graph:
+    - Each action becomes a node with a unique ID (s1, s2, ..., sN)
+    - Add edges: (s1→s2), (s2→s3), ..., (sN-1→sN)
+    - This guarantees acyclicity by construction
+
+    ═══════════════════════════════════════════════════════════════════════════
+    FINAL CHECK (Mandatory)
+    ═══════════════════════════════════════════════════════════════════════════
+
+    Count occurrences of each UNIQUE action (by action_type + params):
+    - If any action appears 2+ times → YOU HAVE A CYCLE. Remove duplicates.
+    - If graph is not connected → ADD MISSING EDGES to connect all nodes.
+
+{_GRAPH_STRUCTURE_COMMON}
 
     LOGISTICS ACTION TYPE CONSTRAINTS:
 
@@ -274,12 +679,12 @@ class GeneratePlanLogistics(dspy.Signature):
       drive-truck | fly-airplane
 
     params:
-      load-truck       : {"obj": <package>, "truck": <truck>, "loc": <location>}
-      unload-truck     : {"obj": <package>, "truck": <truck>, "loc": <location>}
-      load-airplane    : {"obj": <package>, "airplane": <airplane>, "loc": <airport>}
-      unload-airplane  : {"obj": <package>, "airplane": <airplane>, "loc": <airport>}
-      drive-truck      : {"truck": <truck>, "from": <location>, "to": <location>, "city": <city>}
-      fly-airplane     : {"airplane": <airplane>, "from": <airport>, "to": <airport>}
+      load-truck       : {{"obj": <package>, "truck": <truck>, "loc": <location>}}
+      unload-truck     : {{"obj": <package>, "truck": <truck>, "loc": <location>}}
+      load-airplane    : {{"obj": <package>, "airplane": <airplane>, "loc": <airport>}}
+      unload-airplane  : {{"obj": <package>, "airplane": <airplane>, "loc": <airport>}}
+      drive-truck      : {{"truck": <truck>, "from": <location>, "to": <location>, "city": <city>}}
+      fly-airplane     : {{"airplane": <airplane>, "from": <airport>, "to": <airport>}}
 
     ═══════════════════════════════════════════════════════════════════════════
     ⚠️⚠️⚠️ #1 FAILURE CAUSE: AIRPORT IDENTIFICATION ⚠️⚠️⚠️
@@ -348,11 +753,7 @@ class GeneratePlanLogistics(dspy.Signature):
       Action: unload-airplane(p1, a0, l1-0) ← CORRECT: uses a0's current location
       ❌ WRONG: load-airplane(p2, a0, l0-0) ← WRONG: a0 is no longer at l0-0!
 
-    ═══════════════════════════════════════════════════════════════════════════
-    CRITICAL: STATE TRACKING AND LOGICAL VERIFICATION
-    ═══════════════════════════════════════════════════════════════════════════
-
-    Maintain a STATE TABLE throughout planning. Update it after EVERY action.
+{_STATE_TRACKING_HEADER}
 
     **LOGISTICS State Table Format:**
     ```
@@ -363,7 +764,7 @@ class GeneratePlanLogistics(dspy.Signature):
     | a0 | airplane | l0-0 | [] | YES |
     ```
 
-    For EVERY action, follow this 4-step verification protocol:
+{_LOGICOT_HEADER}
 
     **Step 1: Identify Goal** — What are you trying to achieve?
     **Step 2: List Preconditions** — What MUST be true?
@@ -397,7 +798,7 @@ class GeneratePlanLogistics(dspy.Signature):
 
     ═══════════════════════════════════════════════════════════════════════════
 
-    REMEMBER: State tracking is NOT optional. It is MANDATORY for correct planning.
+{_REMINDER}
     """
     beliefs: str = dspy.InputField(desc="Current state of the logistics world")
     desire: str = dspy.InputField(desc="The logistics goal to achieve")
@@ -405,32 +806,65 @@ class GeneratePlanLogistics(dspy.Signature):
 
 
 class GeneratePlanDepots(dspy.Signature):
-    """
+    __doc__ = f"""
     You are a BDI (Belief-Desire-Intention) Planning Agent for the DEPOTS domain.
     Given a set of Beliefs (current context) and a Desire (goal),
     generate a formal Intention (Plan) as a directed graph of actions.
 
-    CRITICAL GRAPH STRUCTURE REQUIREMENTS:
+    ═══════════════════════════════════════════════════════════════════════════
+    STEP 1: LIST ALL ACTIONS IN EXECUTION ORDER (Chain-of-Thought)
+    ═══════════════════════════════════════════════════════════════════════════
 
-    1. **CONNECTIVITY**: The plan graph MUST be weakly connected.
-       ALL action nodes must be reachable from each other via edges.
-       There should be NO disconnected "islands" or separate subgraphs.
+    Before generating the graph, write down ALL actions in the exact order they
+    must execute. This is your "linearization" of the plan.
 
-    2. **DAG (Directed Acyclic Graph)**: No cycles allowed.
+    Format:
+    ```
+    EXECUTION ORDER:
+    1. <action_1>
+    2. <action_2>
+    3. <action_3>
+    ...
+    N. <action_N>
+    ```
 
-    3. **Sequential Chain**: Each action depends on the previous one completing.
-       All actions form one connected chain/path.
+    Then VERIFY:
+    - [ ] No action appears more than once (check for duplicates)
+    - [ ] Each action advances toward the goal
+    - [ ] No action returns to a previously visited state
+    - [ ] The last action achieves the goal
+    - [ ] AFTER EVERY truck drive, the truck is at the NEW location (not the old one)
+    - [ ] AFTER EVERY hoist lift, the hoist is BUSY (cannot lift another crate)
+
+    ═══════════════════════════════════════════════════════════════════════════
+    STEP 2: CONVERT TO GRAPH (Nodes + Edges)
+    ═══════════════════════════════════════════════════════════════════════════
+
+    Convert your linear order into a graph:
+    - Each action becomes a node with a unique ID (s1, s2, ..., sN)
+    - Add edges: (s1→s2), (s2→s3), ..., (sN-1→sN)
+    - This guarantees acyclicity by construction
+
+    ═══════════════════════════════════════════════════════════════════════════
+    FINAL CHECK (Mandatory)
+    ═══════════════════════════════════════════════════════════════════════════
+
+    Count occurrences of each UNIQUE action (by action_type + params):
+    - If any action appears 2+ times → YOU HAVE A CYCLE. Remove duplicates.
+    - If graph is not connected → ADD MISSING EDGES to connect all nodes.
+
+{_GRAPH_STRUCTURE_COMMON}
 
     DEPOTS ACTION TYPE CONSTRAINTS:
 
     action_type must be one of: drive | lift | drop | load | unload
 
     params:
-      drive  : {"truck": <truck>, "from": <place>, "to": <place>}
-      lift   : {"hoist": <hoist>, "crate": <crate>, "surface": <surface>, "place": <place>}
-      drop   : {"hoist": <hoist>, "crate": <crate>, "surface": <surface>, "place": <place>}
-      load   : {"hoist": <hoist>, "crate": <crate>, "truck": <truck>, "place": <place>}
-      unload : {"hoist": <hoist>, "crate": <crate>, "truck": <truck>, "place": <place>}
+      drive  : {{"truck": <truck>, "from": <place>, "to": <place>}}
+      lift   : {{"hoist": <hoist>, "crate": <crate>, "surface": <surface>, "place": <place>}}
+      drop   : {{"hoist": <hoist>, "crate": <crate>, "surface": <surface>, "place": <place>}}
+      load   : {{"hoist": <hoist>, "crate": <crate>, "truck": <truck>, "place": <place>}}
+      unload : {{"hoist": <hoist>, "crate": <crate>, "truck": <truck>, "place": <place>}}
 
     ═══════════════════════════════════════════════════════════════════════════
     CHECK-BEFORE-ACT PRECONDITIONS (MUST be true before choosing an action):
@@ -469,15 +903,7 @@ class GeneratePlanDepots(dspy.Signature):
     Do NOT invent action types outside this set.
     ❌ DO NOT use blocksworld actions: pick-up, put-down, stack, unstack
 
-    ═══════════════════════════════════════════════════════════════════════════
-    CRITICAL: STATE TRACKING AND LOGICAL VERIFICATION (P0 Requirements)
-    ═══════════════════════════════════════════════════════════════════════════
-
-    ┌─────────────────────────────────────────────────────────────────────────┐
-    │ P0-1: EXPLICIT STATE TRACKING                                           │
-    └─────────────────────────────────────────────────────────────────────────┘
-
-    Maintain a STATE TABLE throughout planning. Update it after EVERY action.
+{_STATE_TRACKING_HEADER}
 
     **DEPOTS State Table Format:**
     ```
@@ -495,11 +921,8 @@ class GeneratePlanDepots(dspy.Signature):
     3. After each action: Update affected objects, mark with [UPDATED]
     4. Track: hoist state (available/lifting), crate positions, truck contents, surface clear status
 
-    ┌─────────────────────────────────────────────────────────────────────────┐
-    │ P0-2: CHAIN-OF-SYMBOL (CoS) REPRESENTATION                             │
-    └─────────────────────────────────────────────────────────────────────────┘
+{_COS_REPRESENTATION_HEADER}
 
-    Use symbolic notation for clarity:
     - [hoist, available] or [hoist, lifting=crate1]
     - [crate@surface] means "crate is on surface"
     - [crate@truck] means "crate is in truck"
@@ -510,16 +933,9 @@ class GeneratePlanDepots(dspy.Signature):
     - After lift(h1, c1, pallet1, depot1): [h1, lifting=c1], [pallet1, clear]
     - After load(h1, c1, t1, depot1): [h1, available], [c1@t1]
 
-    ┌─────────────────────────────────────────────────────────────────────────┐
-    │ P0-3: LOGICAL CHAIN-OF-THOUGHT (LogiCoT) PROTOCOL                      │
-    └─────────────────────────────────────────────────────────────────────────┘
+{_LOGICOT_HEADER}
 
-    For EVERY action, follow this 4-step verification protocol:
-
-    **Step 1: Identify Goal** — What are you trying to achieve?
-    **Step 2: List Preconditions** — What MUST be true?
-    **Step 3: Check Current State** — ✓ satisfied / ✗ NOT satisfied
-    **Step 4: Decision** — ALL satisfied → proceed; ANY failed → fix first
+{_LOGICOT_PROTOCOL_DETAILED}
 
     ═══════════════════════════════════════════════════════════════════════════
     WORKED EXAMPLE WITH STATE TRACKING
@@ -623,7 +1039,7 @@ class GeneratePlanDepots(dspy.Signature):
 
     ═══════════════════════════════════════════════════════════════════════════
 
-    REMEMBER: State tracking is NOT optional. It is MANDATORY for correct planning.
+{_REMINDER}
     """
     beliefs: str = dspy.InputField(desc="Current state of the depots world")
     desire: str = dspy.InputField(desc="The depots goal to achieve")
@@ -671,12 +1087,18 @@ class RepairPlan(dspy.Signature):
     - Analyze the pattern of failures across attempts to identify the root cause.
     - If the same error keeps recurring, try a fundamentally different approach rather than
       making incremental fixes.
+
+    VERIFIER FEEDBACK:
+    - If verification_feedback is provided, it summarizes multi-layer verifier failures.
+    - Prioritize fixes based on failed_layers and repair_focus before proposing new actions.
+    - Use val_repair_advice as hard guidance when present.
     """
     beliefs: str = dspy.InputField(desc="Current state of the world")
     desire: str = dspy.InputField(desc="The goal to achieve")
     previous_plan: str = dspy.InputField(desc="The plan that failed validation (as PDDL action sequence)")
     val_errors: str = dspy.InputField(desc="Specific validation errors from the PDDL validator (VAL), including which action failed, why, and repair advice")
     repair_history: str = dspy.InputField(desc="History of ALL previous repair attempts and their errors. Empty string if this is the first attempt. Study this to avoid repeating the same mistakes.", default="")
+    verification_feedback: str = dspy.InputField(desc="Structured multi-layer verifier feedback (failed layers, key errors, and suggested repair focus). Empty string if unavailable.", default="")
     plan: BDIPlan = dspy.OutputField(desc="Corrected plan fixing the validation errors, as a SINGLE CONNECTED DAG")
 
 
@@ -692,6 +1114,10 @@ class BDIPlanner(dspy.Module):
                     ("blocksworld", "logistics", or "depots")
         """
         super().__init__()
+
+        # Configure DSPy (idempotent - only runs once per process)
+        configure_dspy()
+
         self.domain = domain
 
         # Select domain-specific Signature
@@ -716,6 +1142,7 @@ class BDIPlanner(dspy.Module):
             "logistics": {"load-truck", "unload-truck", "load-airplane",
                           "unload-airplane", "drive-truck", "fly-airplane"},
             "depots": {"drive", "lift", "drop", "load", "unload"},
+            "testing": set(),  # Empty set = no validation for testing
         }
         self._required_params = {
             "blocksworld": {
@@ -737,229 +1164,49 @@ class BDIPlanner(dspy.Module):
                 "load": {"hoist", "crate", "truck", "place"},
                 "unload": {"hoist", "crate", "truck", "place"},
             },
+            "testing": {},  # No required params for testing
         }
 
     @staticmethod
     def _build_logistics_demos():
         """Build few-shot demonstrations for the Logistics domain.
 
-        Uses VAL-verified gold-standard plans from real PlanBench instances:
-        - Instance-10: 3 goals, single city (basic truck routing)
-        - Instance-116: 6 goals, 2 cities (cross-city transport with airplanes)
-
-        These demonstrate:
-        1. Correct sequential truck routing within a city
-        2. AIRPORT identification (only airports for fly/load/unload-airplane)
-        3. Airplane position tracking after fly-airplane
-        4. Multi-vehicle coordination across cities
+        Loads demonstrations from 'src/bdi_llm/data/logistics_demos.yaml'.
         """
-        # ── Demo 1: PlanBench instance-10 (3 goals, single city c0) ──
-        # VAL-verified: 9-step plan, all intra-city truck deliveries
-        demo1_beliefs = (
-            "LOGISTICS DOMAIN\n"
-            "\n=== WORLD STRUCTURE ===\n"
-            "Cities: c0\n"
-            "  c0: AIRPORT(s)=['l0-3'], other locations=['l0-0', 'l0-1', 'l0-2']\n"
-            "\n"
-            "⚠️  AIRPORTS (airplanes can ONLY fly between these): ['l0-3']\n"
-            "   Non-airport locations CANNOT be used with fly-airplane!\n"
-            "\n=== VEHICLE POSITIONS ===\n"
-            "Airplanes (fly between AIRPORTS only):\n"
-            "  a0 is at l0-3 (✓ AIRPORT, c0)\n"
-            "Trucks (drive within ONE city only):\n"
-            "  t0 is at l0-2 (c0)\n"
-            "\n=== PACKAGE POSITIONS ===\n"
-            "  p0 is at l0-2 (c0)\n"
-            "  p1 is at l0-0 (c0)\n"
-            "  p2 is at l0-1 (c0)\n"
-            "  p3 is at l0-3 (c0)"
-        )
-        demo1_desire = (
-            "Goal: deliver 3 package(s):\n"
-            "  - p0 → l0-0 (c0) [same city, truck only]\n"
-            "  - p1 → l0-1 (c0) [same city, truck only]\n"
-            "  - p2 → l0-3 (c0) [same city, truck only]\n"
-            "\n⚠️  AIRPORTS: ['l0-3'] — fly-airplane ONLY between these!\n"
-            "Track vehicle positions after EVERY action.\n"
-            "Generate a SEQUENTIAL plan with CONNECTED actions."
-        )
-        demo1_plan = BDIPlan(
-            goal_description="Deliver p0→l0-0, p1→l0-1, p2→l0-3 (all in city c0)",
-            nodes=[
-                ActionNode(id="s1", action_type="load-truck",
-                           params={"obj": "p0", "truck": "t0", "loc": "l0-2"},
-                           description="Load p0 onto t0 at l0-2 (both start here)"),
-                ActionNode(id="s2", action_type="drive-truck",
-                           params={"truck": "t0", "from": "l0-2", "to": "l0-0", "city": "c0"},
-                           description="Drive t0 to l0-0. t0 is now at l0-0"),
-                ActionNode(id="s3", action_type="unload-truck",
-                           params={"obj": "p0", "truck": "t0", "loc": "l0-0"},
-                           description="Unload p0 at l0-0 — p0 goal achieved"),
-                ActionNode(id="s4", action_type="load-truck",
-                           params={"obj": "p1", "truck": "t0", "loc": "l0-0"},
-                           description="Load p1 onto t0 at l0-0 (p1 is here, t0 is here after s2)"),
-                ActionNode(id="s5", action_type="drive-truck",
-                           params={"truck": "t0", "from": "l0-0", "to": "l0-1", "city": "c0"},
-                           description="Drive t0 to l0-1. t0 is now at l0-1"),
-                ActionNode(id="s6", action_type="unload-truck",
-                           params={"obj": "p1", "truck": "t0", "loc": "l0-1"},
-                           description="Unload p1 at l0-1 — p1 goal achieved"),
-                ActionNode(id="s7", action_type="load-truck",
-                           params={"obj": "p2", "truck": "t0", "loc": "l0-1"},
-                           description="Load p2 onto t0 at l0-1 (p2 is here, t0 is here after s5)"),
-                ActionNode(id="s8", action_type="drive-truck",
-                           params={"truck": "t0", "from": "l0-1", "to": "l0-3", "city": "c0"},
-                           description="Drive t0 to l0-3. t0 is now at l0-3"),
-                ActionNode(id="s9", action_type="unload-truck",
-                           params={"obj": "p2", "truck": "t0", "loc": "l0-3"},
-                           description="Unload p2 at l0-3 — p2 goal achieved"),
-            ],
-            edges=[
-                DependencyEdge(source="s1", target="s2"),
-                DependencyEdge(source="s2", target="s3"),
-                DependencyEdge(source="s3", target="s4"),
-                DependencyEdge(source="s4", target="s5"),
-                DependencyEdge(source="s5", target="s6"),
-                DependencyEdge(source="s6", target="s7"),
-                DependencyEdge(source="s7", target="s8"),
-                DependencyEdge(source="s8", target="s9"),
-            ],
-        )
+        # Resolve the path to the data file relative to this module
+        data_path = Path(__file__).parent / "data" / "logistics_demos.yaml"
 
-        # ── Demo 2: PlanBench instance-116 (6 goals, 2 cities c0+c1) ──
-        # VAL-verified: 18-step plan, cross-city transport with airplanes
-        demo2_beliefs = (
-            "LOGISTICS DOMAIN\n"
-            "\n=== WORLD STRUCTURE ===\n"
-            "Cities: c0, c1\n"
-            "  c0: AIRPORT(s)=['l0-0'], other locations=['l0-1', 'l0-2']\n"
-            "  c1: AIRPORT(s)=['l1-0'], other locations=['l1-1', 'l1-2']\n"
-            "\n"
-            "⚠️  AIRPORTS (airplanes can ONLY fly between these): ['l0-0', 'l1-0']\n"
-            "   Non-airport locations CANNOT be used with fly-airplane!\n"
-            "\n=== VEHICLE POSITIONS ===\n"
-            "Airplanes (fly between AIRPORTS only):\n"
-            "  a0 is at l0-0 (✓ AIRPORT, c0)\n"
-            "  a1 is at l1-0 (✓ AIRPORT, c1)\n"
-            "Trucks (drive within ONE city only):\n"
-            "  t0 is at l0-2 (c0)\n"
-            "  t1 is at l1-2 (c1)\n"
-            "\n=== PACKAGE POSITIONS ===\n"
-            "  p0 is at l0-2 (c0)\n"
-            "  p1 is at l0-0 (c0)\n"
-            "  p2 is at l0-1 (c0)\n"
-            "  p3 is at l1-2 (c1)\n"
-            "  p4 is at l1-0 (c1)\n"
-            "  p5 is at l1-1 (c1)"
-        )
-        demo2_desire = (
-            "Goal: deliver 6 package(s):\n"
-            "  - p3 → l1-1 (c1) [same city, truck only]\n"
-            "  - p5 → l1-0 (c1) [same city, truck only]\n"
-            "  - p0 → l0-1 (c0) [same city, truck only]\n"
-            "  - p2 → l0-0 (c0) [same city, truck only]\n"
-            "  - p4 → l0-0 (c0) [CROSS-CITY c1→c0, needs airplane]\n"
-            "  - p1 → l1-0 (c1) [CROSS-CITY c0→c1, needs airplane]\n"
-            "\n⚠️  AIRPORTS: ['l0-0', 'l1-0'] — fly-airplane ONLY between these!\n"
-            "Track vehicle positions after EVERY action.\n"
-            "Generate a SEQUENTIAL plan with CONNECTED actions."
-        )
-        demo2_plan = BDIPlan(
-            goal_description="Deliver 6 packages across 2 cities (c0, c1) with truck+airplane",
-            nodes=[
-                # c1 local deliveries: t1 delivers p3, p5
-                ActionNode(id="a1", action_type="load-truck",
-                           params={"obj": "p3", "truck": "t1", "loc": "l1-2"},
-                           description="Load p3 onto t1 at l1-2 (both start here)"),
-                ActionNode(id="a2", action_type="drive-truck",
-                           params={"truck": "t1", "from": "l1-2", "to": "l1-1", "city": "c1"},
-                           description="Drive t1 to l1-1. t1 is now at l1-1"),
-                ActionNode(id="a3", action_type="unload-truck",
-                           params={"obj": "p3", "truck": "t1", "loc": "l1-1"},
-                           description="Unload p3 at l1-1 — p3 goal achieved"),
-                ActionNode(id="a4", action_type="load-truck",
-                           params={"obj": "p5", "truck": "t1", "loc": "l1-1"},
-                           description="Load p5 onto t1 at l1-1 (p5 is here, t1 is here after a2)"),
-                ActionNode(id="a5", action_type="drive-truck",
-                           params={"truck": "t1", "from": "l1-1", "to": "l1-0", "city": "c1"},
-                           description="Drive t1 to airport l1-0. t1 is now at l1-0"),
-                ActionNode(id="a6", action_type="unload-truck",
-                           params={"obj": "p5", "truck": "t1", "loc": "l1-0"},
-                           description="Unload p5 at l1-0 — p5 goal achieved"),
-                # Cross-city prep: load p4 onto airplane a1
-                ActionNode(id="a7", action_type="load-airplane",
-                           params={"obj": "p4", "airplane": "a1", "loc": "l1-0"},
-                           description="Load p4 onto a1 at airport l1-0 (a1 starts here)"),
-                # c0 local deliveries: t0 delivers p0, p2
-                ActionNode(id="a8", action_type="load-truck",
-                           params={"obj": "p0", "truck": "t0", "loc": "l0-2"},
-                           description="Load p0 onto t0 at l0-2 (both start here)"),
-                ActionNode(id="a9", action_type="drive-truck",
-                           params={"truck": "t0", "from": "l0-2", "to": "l0-1", "city": "c0"},
-                           description="Drive t0 to l0-1. t0 is now at l0-1"),
-                ActionNode(id="a10", action_type="unload-truck",
-                           params={"obj": "p0", "truck": "t0", "loc": "l0-1"},
-                           description="Unload p0 at l0-1 — p0 goal achieved"),
-                ActionNode(id="a11", action_type="load-truck",
-                           params={"obj": "p2", "truck": "t0", "loc": "l0-1"},
-                           description="Load p2 onto t0 at l0-1 (p2 is here, t0 is here after a9)"),
-                ActionNode(id="a12", action_type="drive-truck",
-                           params={"truck": "t0", "from": "l0-1", "to": "l0-0", "city": "c0"},
-                           description="Drive t0 to airport l0-0. t0 is now at l0-0"),
-                ActionNode(id="a13", action_type="unload-truck",
-                           params={"obj": "p2", "truck": "t0", "loc": "l0-0"},
-                           description="Unload p2 at l0-0 — p2 goal achieved"),
-                # Cross-city prep: load p1 onto airplane a0
-                ActionNode(id="a14", action_type="load-airplane",
-                           params={"obj": "p1", "airplane": "a0", "loc": "l0-0"},
-                           description="Load p1 onto a0 at airport l0-0 (a0 starts here)"),
-                # Cross-city flights
-                ActionNode(id="a15", action_type="fly-airplane",
-                           params={"airplane": "a1", "from": "l1-0", "to": "l0-0"},
-                           description="Fly a1 from l1-0 to l0-0 (both AIRPORTS). a1 is now at l0-0"),
-                ActionNode(id="a16", action_type="unload-airplane",
-                           params={"obj": "p4", "airplane": "a1", "loc": "l0-0"},
-                           description="Unload p4 at l0-0 (a1 is NOW at l0-0) — p4 goal achieved"),
-                ActionNode(id="a17", action_type="fly-airplane",
-                           params={"airplane": "a0", "from": "l0-0", "to": "l1-0"},
-                           description="Fly a0 from l0-0 to l1-0 (both AIRPORTS). a0 is now at l1-0"),
-                ActionNode(id="a18", action_type="unload-airplane",
-                           params={"obj": "p1", "airplane": "a0", "loc": "l1-0"},
-                           description="Unload p1 at l1-0 (a0 is NOW at l1-0) — p1 goal achieved"),
-            ],
-            edges=[
-                DependencyEdge(source="a1", target="a2"),
-                DependencyEdge(source="a2", target="a3"),
-                DependencyEdge(source="a3", target="a4"),
-                DependencyEdge(source="a4", target="a5"),
-                DependencyEdge(source="a5", target="a6"),
-                DependencyEdge(source="a6", target="a7"),
-                DependencyEdge(source="a7", target="a8"),
-                DependencyEdge(source="a8", target="a9"),
-                DependencyEdge(source="a9", target="a10"),
-                DependencyEdge(source="a10", target="a11"),
-                DependencyEdge(source="a11", target="a12"),
-                DependencyEdge(source="a12", target="a13"),
-                DependencyEdge(source="a13", target="a14"),
-                DependencyEdge(source="a14", target="a15"),
-                DependencyEdge(source="a15", target="a16"),
-                DependencyEdge(source="a16", target="a17"),
-                DependencyEdge(source="a17", target="a18"),
-            ],
-        )
+        if not data_path.exists():
+            print(f"Warning: logistics_demos.yaml not found at {data_path}")
+            return []
 
-        return [
-            dspy.Example(
-                beliefs=demo1_beliefs,
-                desire=demo1_desire,
-                plan=demo1_plan,
-            ).with_inputs("beliefs", "desire"),
-            dspy.Example(
-                beliefs=demo2_beliefs,
-                desire=demo2_desire,
-                plan=demo2_plan,
-            ).with_inputs("beliefs", "desire"),
-        ]
+        with open(data_path, "r") as f:
+            data = yaml.safe_load(f)
+
+        demos = []
+        for demo_data in data.get("demos", []):
+            # Reconstruct nodes and edges from dicts
+            nodes_data = demo_data["plan"]["nodes"]
+            edges_data = demo_data["plan"]["edges"]
+
+            nodes = [ActionNode(**n) for n in nodes_data]
+            edges = [DependencyEdge(**e) for e in edges_data]
+
+            plan = BDIPlan(
+                goal_description=demo_data["plan"]["goal_description"],
+                nodes=nodes,
+                edges=edges
+            )
+
+            demos.append(
+                dspy.Example(
+                    beliefs=demo_data["beliefs"],
+                    desire=demo_data["desire"],
+                    plan=plan,
+                ).with_inputs("beliefs", "desire")
+            )
+
+        return demos
 
     def _validate_action_constraints(self, plan_obj) -> tuple:
         """Validate action_type and params against domain constraints.
@@ -1038,12 +1285,16 @@ class BDIPlanner(dspy.Module):
                 else:
                     # Auto-repair didn't fully fix, but include repair messages
                     errors.extend([f"Auto-repair attempted: {msg}" for msg in messages])
+                    # CRITICAL: Still return the (possibly repaired) plan instead of raising.
+                    # Let the caller's verification/repair layer handle it.
+                    pred.plan = repaired_plan if repaired_plan else plan_obj
 
-            # If still invalid, raise an error with detailed feedback
+            # If still invalid, DO NOT raise - return the plan for external repair
+            # The benchmark script has its own auto-repair that should handle this.
+            # Only raise for truly unrecoverable errors (parsing failures, etc.)
             if not is_valid:
-                raise ValueError(
-                    f"The generated plan is invalid. Errors: {'; '.join(errors)}. Please fix the dependencies to remove cycles or connect the graph. REMEMBER: All nodes must form ONE CONNECTED graph, not separate islands."
-                )
+                # Return the invalid plan - let external repair handle it
+                pred.plan = plan_obj
         except Exception as e:
             # Handle potential pydantic validation errors or parsing issues
             raise ValueError(
@@ -1092,6 +1343,73 @@ class BDIPlanner(dspy.Module):
         )
         return "\n".join(parts)
 
+    def _format_verification_feedback(
+        self,
+        verification_feedback: Dict | None = None,
+    ) -> str:
+        """Format structured verifier diagnostics for the repair prompt."""
+        if not verification_feedback:
+            return ""
+
+        parts = ["=== VERIFIER FEEDBACK (MULTI-LAYER) ==="]
+        summary = verification_feedback.get("error_summary")
+        if summary:
+            parts.append(f"Summary: {summary}")
+
+        failed_layers = verification_feedback.get("failed_layers", [])
+        if failed_layers:
+            parts.append(f"Failed Layers: {', '.join(failed_layers)}")
+
+        layer_status = verification_feedback.get("layer_status", {})
+        if layer_status:
+            parts.append("Layer Status:")
+            for layer in ("structural", "symbolic", "physics"):
+                status = layer_status.get(layer)
+                if status is not None:
+                    parts.append(f"  - {layer}: {status}")
+
+        key_errors = verification_feedback.get("key_errors", {})
+        if key_errors:
+            parts.append("Key Errors by Layer:")
+            for layer in ("structural", "symbolic", "physics"):
+                errors = key_errors.get(layer, [])
+                if errors:
+                    parts.append(f"  - {layer}:")
+                    for err in errors[:3]:
+                        parts.append(f"      * {err}")
+
+        val_advice = verification_feedback.get("val_repair_advice", [])
+        if val_advice:
+            parts.append("VAL Repair Advice:")
+            for advice in val_advice[:3]:
+                parts.append(f"  - {advice}")
+
+        repair_focus = verification_feedback.get("repair_focus", [])
+        if repair_focus:
+            parts.append("Repair Focus Priority:")
+            for focus in repair_focus:
+                parts.append(f"  - {focus}")
+
+        parts.append("=== END VERIFIER FEEDBACK ===")
+        return "\n".join(parts)
+
+    def _compute_error_signature(self, val_errors: List[str]) -> str:
+        """
+        Compute a compact signature of VAL errors for pattern detection.
+
+        Groups similar errors and creates a hash for early exit detection.
+        """
+        # Extract error types (first line of each error, normalized)
+        error_types = []
+        for err in val_errors[:5]:  # Limit to first 5 errors
+            # Normalize: remove specific object names, keep error type
+            normalized = err.lower().split(':')[0][:50]  # First 50 chars of error type
+            error_types.append(normalized)
+
+        # Create signature
+        signature = "|".join(sorted(error_types))
+        return hashlib.sha256(signature.encode()).hexdigest()[:8]
+
     def repair_from_val_errors(
         self,
         beliefs: str,
@@ -1099,6 +1417,9 @@ class BDIPlanner(dspy.Module):
         previous_plan_actions: List[str],
         val_errors: List[str],
         repair_history: List[dict] | None = None,
+        verification_feedback: Dict | None = None,
+        instance_id: Optional[str] = None,
+        domain: Optional[str] = None,
     ) -> dspy.Prediction:
         """
         Generate a repaired plan based on VAL validation errors.
@@ -1110,25 +1431,83 @@ class BDIPlanner(dspy.Module):
             val_errors: Error messages from VAL validator
             repair_history: Cumulative list of all previous repair attempts,
                 each dict has keys: attempt, plan_actions, val_errors
+            verification_feedback: Structured multi-layer verifier diagnostics
+                generated by IntegratedVerifier.build_planner_feedback(...)
+            instance_id: Unique identifier for this instance (for budget tracking)
+            domain: Planning domain (for cache keying)
 
         Returns:
             dspy.Prediction with repaired plan
 
         Raises:
             ValueError: If the repaired plan is structurally invalid
+            RuntimeError: If budget exhausted or early exit triggered
         """
-        # Build repair history string for the dedicated field
-        history_str = self._format_repair_history(repair_history)
+        # Get budget manager and repair cache
+        budget = get_budget_manager()
+        cache = get_repair_cache()
 
-        pred = self.repair_plan(
-            beliefs=beliefs,
-            desire=desire,
-            previous_plan="\n".join(previous_plan_actions),
-            val_errors="\n".join(val_errors),
-            repair_history=history_str,
-        )
+        # Compute signatures for caching and early exit
+        error_signature = self._compute_error_signature(val_errors)
+        plan_hash = hashlib.sha256(
+            json.dumps(previous_plan_actions, sort_keys=True).encode()
+        ).hexdigest()[:16]
+
+        # EARLY EXIT CHECK: Detect repeated failure patterns
+        if instance_id and budget.config.early_exit_enabled:
+            if budget.track_error_pattern(instance_id, error_signature):
+                raise RuntimeError(
+                    f"Early exit: Same error pattern detected {budget.config.early_exit_after_failures} times. "
+                    f"Error type: {error_signature}. Repair unlikely to succeed."
+                )
+
+        # BUDGET CHECK: Verify we're within budget
+        if instance_id:
+            allowed, reason = budget.check_budget(instance_id)
+            if not allowed:
+                raise RuntimeError(f"Budget exhausted: {reason}")
+
+        # CACHE CHECK: Try to get cached repair result
+        cache_key_domain = domain or "unknown"
+        cached_result = cache.get(cache_key_domain, error_signature, plan_hash)
+        if cached_result is not None:
+            logger.info(f"Cache hit for repair (domain={cache_key_domain}, err={error_signature})")
+            return cached_result
+
+        # RATE LIMIT CHECK: Wait if rate limited
+        allowed, wait_time = budget.check_rate_limit()
+        if not allowed:
+            logger.info(f"Rate limited, waiting {wait_time:.1f}s before repair")
+            import time as time_module
+            time_module.sleep(wait_time + 0.1)
+
+        # CHECK BACKOFF: Wait if endpoint in backoff
+        in_backoff, backoff_time = budget.check_backoff(endpoint="repair")
+        if in_backoff:
+            logger.info(f"Backoff active, waiting {backoff_time:.1f}s")
+            import time as time_module
+            time_module.sleep(backoff_time + 0.1)
+
+        # RECORD REQUEST for rate limiting
+        budget.record_request("repair")
 
         try:
+            # Build repair history string for the dedicated field
+            history_str = self._format_repair_history(repair_history)
+            verifier_feedback_str = self._format_verification_feedback(verification_feedback)
+
+            pred = self.repair_plan(
+                beliefs=beliefs,
+                desire=desire,
+                previous_plan="\n".join(previous_plan_actions),
+                val_errors="\n".join(val_errors),
+                repair_history=history_str,
+                verification_feedback=verifier_feedback_str,
+            )
+
+            # RECORD CALL against budget
+            if instance_id:
+                budget.record_call(instance_id)
             plan_obj = pred.plan
 
             # Validate action constraints on repaired plan
@@ -1155,7 +1534,12 @@ class BDIPlanner(dspy.Module):
                 raise ValueError(
                     f"Repaired plan is structurally invalid. Errors: {'; '.join(errors)}"
                 )
+
+            # CACHE SUCCESSFUL RESULT
+            cache.put(cache_key_domain, error_signature, plan_hash, pred)
+
         except Exception as e:
+            # Don't cache failures
             raise ValueError(
                 f"Failed to generate repaired plan. Error: {str(e)}"
             ) from e

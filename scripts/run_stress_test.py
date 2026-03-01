@@ -50,6 +50,21 @@ STRESS_TEST_SCENARIOS = [
 ]
 
 
+def has_any_api_credential() -> bool:
+    """Return True when any supported model credential exists."""
+    return bool(
+        os.environ.get("OPENAI_API_KEY")
+        or os.environ.get("ANTHROPIC_API_KEY")
+        or os.environ.get("GOOGLE_API_KEY")
+        or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+    )
+
+
+def has_disconnected_warning(messages) -> bool:
+    """Detect disconnected-component diagnostics from verifier messages."""
+    return any("disconnected" in str(message).lower() for message in messages)
+
+
 def test_without_repair(scenario):
     """Test BDI planner WITHOUT auto-repair"""
     planner = BDIPlanner()
@@ -63,10 +78,12 @@ def test_without_repair(scenario):
     # Verify
     G = plan.to_networkx()
     is_valid, errors = PlanVerifier.verify(G)
+    disconnected_warning = has_disconnected_warning(errors)
 
     return {
         "scenario_id": scenario["id"],
         "is_valid": is_valid,
+        "has_disconnected_warning": disconnected_warning,
         "errors": errors,
         "num_nodes": len(plan.nodes),
         "num_edges": len(plan.edges)
@@ -86,10 +103,11 @@ def test_with_repair(scenario):
     # Verify
     G = plan.to_networkx()
     is_valid_before, errors_before = PlanVerifier.verify(G)
+    disconnected_warning_before = has_disconnected_warning(errors_before)
 
     # Apply auto-repair if needed
     repaired = False
-    if not is_valid_before and any("disconnected" in str(e).lower() for e in errors_before):
+    if disconnected_warning_before:
         plan, repaired = auto_repair_disconnected_graph(plan)
 
         # Re-verify
@@ -103,6 +121,8 @@ def test_with_repair(scenario):
         "scenario_id": scenario["id"],
         "is_valid_before": is_valid_before,
         "is_valid_after": is_valid_after,
+        "disconnected_warning_before": disconnected_warning_before,
+        "disconnected_warning_after": has_disconnected_warning(errors_after),
         "was_repaired": repaired,
         "errors_before": errors_before,
         "errors_after": errors_after,
@@ -117,9 +137,10 @@ def main():
     print("="*80 + "\n")
     print(f"Testing {len(STRESS_TEST_SCENARIOS)} scenarios designed to trigger failures\n")
 
-    # Check API key
-    if not os.environ.get("OPENAI_API_KEY"):
-        print("❌ API key not set")
+    # Check API credentials
+    if not has_any_api_credential():
+        print("❌ No API credential set")
+        print("   Set one of: OPENAI_API_KEY / ANTHROPIC_API_KEY / GOOGLE_API_KEY / GOOGLE_APPLICATION_CREDENTIALS")
         sys.exit(1)
 
     results_without_repair = []
@@ -137,9 +158,14 @@ def main():
             result = test_without_repair(scenario)
             results_without_repair.append(result)
 
-            status = "✅ VALID" if result["is_valid"] else "❌ INVALID"
-            print(f"  Result: {status}")
             if not result["is_valid"]:
+                status = "❌ INVALID"
+            elif result["has_disconnected_warning"]:
+                status = "⚠️ VALID (DISCONNECTED WARNING)"
+            else:
+                status = "✅ VALID"
+            print(f"  Result: {status}")
+            if not result["is_valid"] or result["has_disconnected_warning"]:
                 print(f"  Errors: {result['errors']}")
             print(f"  Graph: {result['num_nodes']} nodes, {result['num_edges']} edges\n")
 
@@ -183,12 +209,21 @@ def main():
     print("=" * 80 + "\n")
 
     # Without repair statistics
-    valid_without_repair = sum(1 for r in results_without_repair if r.get("is_valid", False))
+    valid_without_repair = sum(
+        1 for r in results_without_repair
+        if r.get("is_valid", False) and not r.get("has_disconnected_warning", False)
+    )
     failed_without_repair = len(results_without_repair) - valid_without_repair
 
     # With repair statistics
-    valid_before_repair = sum(1 for r in results_with_repair if r.get("is_valid_before", False))
-    valid_after_repair = sum(1 for r in results_with_repair if r.get("is_valid_after", False))
+    valid_before_repair = sum(
+        1 for r in results_with_repair
+        if r.get("is_valid_before", False) and not r.get("disconnected_warning_before", False)
+    )
+    valid_after_repair = sum(
+        1 for r in results_with_repair
+        if r.get("is_valid_after", False) and not r.get("disconnected_warning_after", False)
+    )
     repairs_triggered = sum(1 for r in results_with_repair if r.get("was_repaired", False))
 
     print(f"{'Metric':<35} {'Without Repair':<20} {'With Repair':<20}")

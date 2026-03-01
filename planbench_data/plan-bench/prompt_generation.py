@@ -11,7 +11,7 @@ import time
 import json
 
 from tqdm import tqdm
-
+from shared_utils import str2bool
 
 class PromptGenerator:
     def __init__(self,config_file, verbose, ignore_existing, seed) -> None:
@@ -854,19 +854,19 @@ if __name__=="__main__":
     \n t8_2 = Goal Reformulation (Full -> Partial) \
     \n t8_3 = Goal Reformulation (Partial -> Full) \
     ')
-    parser.add_argument('--verbose', type=str, default="False", help='Verbose')
+    parser.add_argument('--verbose', type=str2bool, default=False, help='Verbose')
     #config
     parser.add_argument('--config', type=str, required=True, help='Config file name (no need to add .yaml)')
     parser.add_argument('--specific_instances', nargs='+', type=int, default=[], help='List of instances to run')
-    parser.add_argument('--random_example', type=str, default="False", help='Random example')
+    parser.add_argument('--random_example', type=str2bool, default=False, help='Random example')
     parser.add_argument('--ignore_existing', action='store_true', help='Ignore existing output')
     parser.add_argument('--seed', type=int, default=42, help='Random seed')
     args = parser.parse_args()
     task = args.task
     config = args.config
-    verbose = eval(args.verbose)
+    verbose = args.verbose
     specified_instances = args.specific_instances
-    random_example = eval(args.random_example)
+    random_example = args.random_example
     ignore_existing = args.ignore_existing
     seed = args.seed
     # print(task, config, verbose, specified_instances, random_example)
@@ -894,5 +894,4 @@ if __name__=="__main__":
         prompt_generator.task_8_2_full_to_partial(specified_instances)
     elif task == 't8_3':
         prompt_generator.task_8_3_partial_to_full(specified_instances)
-
 
