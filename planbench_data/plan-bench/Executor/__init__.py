@@ -414,14 +414,47 @@ class Executor:
         return pr_domain, pr_problem
 
     def remove_explain(self, domain, problem):
+        import subprocess
+        import shutil
         try:
-            cmd = 'cat {0} | grep -v "EXPLAIN" > pr-problem.pddl.tmp && mv pr-problem.pddl.tmp {0}'.format(problem)
-            os.system(cmd)
-            cmd = 'cat {0} | grep -v "EXPLAIN" > pr-domain.pddl.tmp && mv pr-domain.pddl.tmp {0}'.format(domain)
-            os.system(cmd)
-        except FileNotFoundError:
-            raise Exception('[ERROR] Removing "EXPLAIN" from pr-domain and pr-problem files.')
+            # Securely process problem file using subprocess.run
+            problem_tmp = problem + ".tmp"
+            with open(problem_tmp, "w") as f_out:
+                # Equivalent to: grep -v "EXPLAIN" problem > problem.tmp
+                subprocess.run(["grep", "-v", "EXPLAIN", problem], stdout=f_out, check=True)
+            shutil.move(problem_tmp, problem)
 
+            # Securely process domain file using subprocess.run
+            domain_tmp = domain + ".tmp"
+            with open(domain_tmp, "w") as f_out:
+                # Equivalent to: grep -v "EXPLAIN" domain > domain.tmp
+                subprocess.run(["grep", "-v", "EXPLAIN", domain], stdout=f_out, check=True)
+            shutil.move(domain_tmp, domain)
+
+        except FileNotFoundError:
+            raise Exception('[ERROR] Removing "EXPLAIN" from pr-domain and pr-problem files. (FileNotFound)')
+        except subprocess.CalledProcessError as e:
+            # grep returns 1 if no lines were selected, which is fine if EXPLAIN is on every line (unlikely)
+            # but if it fails for other reasons, we handle it
+            if e.returncode != 1:
+                if os.path.exists(problem + ".tmp"):
+                    os.remove(problem + ".tmp")
+                if os.path.exists(domain + ".tmp"):
+                    os.remove(domain + ".tmp")
+                raise Exception(f'[ERROR] Removing "EXPLAIN" from files failed: {e}')
+            else:
+                # grep found no matches for -v EXPLAIN (i.e. all lines have EXPLAIN, or file is empty)
+                # This might be expected behavior. We still move the file.
+                if os.path.exists(problem + ".tmp"):
+                    shutil.move(problem + ".tmp", problem)
+                if os.path.exists(domain + ".tmp"):
+                    shutil.move(domain + ".tmp", domain)
+        except Exception as e:
+            if os.path.exists(problem + ".tmp"):
+                os.remove(problem + ".tmp")
+            if os.path.exists(domain + ".tmp"):
+                os.remove(domain + ".tmp")
+            raise e
     def get_new_instance(self, change_goal, change_init):
         
         if change_goal:
