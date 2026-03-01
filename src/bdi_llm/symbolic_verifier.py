@@ -608,7 +608,11 @@ class IntegratedVerifier:
         Returns:
             {
                 'layers': {
-                    'structural': {'valid': bool, 'errors': [...]},
+                    'structural': {
+                        'valid': bool,
+                        'hard_errors': [...],
+                        'warnings': [...]
+                    },
                     'symbolic': {'valid': bool, 'errors': [...]},
                     'physics': {'valid': bool, 'errors': [...]}
                 },
@@ -634,14 +638,16 @@ class IntegratedVerifier:
 
         # Layer 1: Structural verification (Graph)
         G = bdi_plan.to_networkx()
-        struct_valid, struct_errors = PlanVerifier.verify(G)
+        struct_result = PlanVerifier.verify(G)
         results['layers']['structural'] = {
-            'valid': struct_valid,
-            'errors': struct_errors
+            'valid': struct_result.is_valid,
+            'hard_errors': struct_result.hard_errors,
+            'warnings': struct_result.warnings
         }
 
         # Layer 2: Symbolic verification (PDDL/VAL)
-        if domain_file and problem_file and struct_valid:
+        # Proceed if no hard structural errors (warnings are OK)
+        if domain_file and problem_file and not struct_result.should_block_execution:
             symb_valid, symb_errors = self.symbolic_verifier.verify_plan(
                 domain_file, problem_file, pddl_actions
             )
@@ -650,9 +656,10 @@ class IntegratedVerifier:
                 'errors': symb_errors
             }
         else:
+            reason = "missing PDDL files" if not (domain_file and problem_file) else "structural hard errors"
             results['layers']['symbolic'] = {
                 'valid': False,
-                'errors': ["Skipped (missing files or structural errors)"]
+                'errors': [f"Skipped ({reason})"]
             }
 
         # Layer 3: Physics validation (Domain-specific)

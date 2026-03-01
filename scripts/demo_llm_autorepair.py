@@ -9,6 +9,7 @@ This script demonstrates:
 
 Usage:
     export OPENAI_API_KEY=your-key
+    # or ANTHROPIC_API_KEY / GOOGLE_API_KEY / GOOGLE_APPLICATION_CREDENTIALS
     python demo_llm_autorepair.py
 """
 
@@ -23,6 +24,21 @@ from src.bdi_llm.planner import BDIPlanner
 from src.bdi_llm.verifier import PlanVerifier
 from scripts.quick_fix_parallel_tasks import auto_repair_disconnected_graph
 import json
+
+
+def has_any_api_credential() -> bool:
+    """Return True when any supported model credential exists."""
+    return bool(
+        os.environ.get("OPENAI_API_KEY")
+        or os.environ.get("ANTHROPIC_API_KEY")
+        or os.environ.get("GOOGLE_API_KEY")
+        or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+    )
+
+
+def has_disconnected_warning(messages) -> bool:
+    """Detect disconnected-component diagnostics from verifier messages."""
+    return any("disconnected" in str(message).lower() for message in messages)
 
 
 def print_section(title):
@@ -82,18 +98,23 @@ def test_llm_with_parallel_task():
         # Check if it's valid
         G = original_plan.to_networkx()
         is_valid, errors = PlanVerifier.verify(G)
+        disconnected_warning = has_disconnected_warning(errors)
+        was_repaired = False
+        is_valid_repaired = is_valid
 
         print(f"🔍 VERIFICATION RESULT:")
         print(f"   Valid: {is_valid}")
-        if not is_valid:
-            print(f"   ❌ Errors:")
-            for error in errors:
-                print(f"      - {error}")
-        else:
+        if errors:
+            print(f"   Messages:")
+            for message in errors:
+                print(f"      - {message}")
+        if is_valid and not disconnected_warning:
             print(f"   ✅ Plan passed all checks!")
+        elif is_valid and disconnected_warning:
+            print(f"   ⚠️ Plan passed hard checks but has disconnected warning")
 
-        # If invalid and disconnected, show the repair
-        if not is_valid and "disconnected" in str(errors).lower():
+        # If disconnected-warning appears, show the repair.
+        if disconnected_warning:
             print_section("🔧 AUTO-REPAIR IN ACTION")
 
             print("Applying auto_repair_disconnected_graph()...\n")
@@ -118,21 +139,29 @@ def test_llm_with_parallel_task():
                 print("-" * 60)
                 print(f"{'Number of nodes':<30} {len(original_plan.nodes):<15} {len(repaired_plan.nodes):<15}")
                 print(f"{'Number of edges':<30} {len(original_plan.edges):<15} {len(repaired_plan.edges):<15}")
-                print(f"{'Weakly connected':<30} {str(not 'disconnected' in str(errors).lower()):<15} {str(is_valid_repaired):<15}")
+                print(f"{'Weakly connected':<30} {str(not disconnected_warning):<15} {str(not has_disconnected_warning(errors_repaired)):<15}")
                 print(f"{'Is DAG':<30} {str(is_valid):<15} {str(is_valid_repaired):<15}")
 
         print_section("✅ DEMO COMPLETE")
         print("Summary:")
-        print(f"  • LLM generated {'valid' if is_valid else 'INVALID'} plan on first try")
-        if not is_valid and was_repaired:
+        if is_valid and not disconnected_warning:
+            print("  • LLM generated a structurally clean plan on first try")
+        elif is_valid and disconnected_warning:
+            print("  • LLM generated a plan with disconnected warning on first try")
+        else:
+            print("  • LLM generated a structurally invalid plan on first try")
+        if disconnected_warning and was_repaired:
             print(f"  • Auto-repair successfully fixed the disconnection issue")
             print(f"  • Final result: {'✅ VALID' if is_valid_repaired else '❌ STILL INVALID'}")
 
     except Exception as e:
         print(f"\n❌ ERROR: {e}")
         print("\nTroubleshooting:")
-        print("  1. Check OPENAI_API_KEY is set:")
+        print("  1. Check credentials are set:")
         print("     export OPENAI_API_KEY=your-key")
+        print("     OR export ANTHROPIC_API_KEY=your-key")
+        print("     OR export GOOGLE_API_KEY=your-key")
+        print("     OR export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json")
         print("  2. Verify CMU AI Gateway access")
         print("  3. Check network connectivity")
         return
@@ -189,13 +218,14 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    # Check API key
-    if not os.environ.get("OPENAI_API_KEY"):
-        print("❌ ERROR: OPENAI_API_KEY environment variable not set")
+    # Check API credentials
+    if not has_any_api_credential():
+        print("❌ ERROR: no API credential environment variable set")
         print("\nPlease set it first:")
         print("  export OPENAI_API_KEY=your-api-key")
-        print("\nSet your OpenAI API key:")
-        print("  export OPENAI_API_KEY=your-api-key")
+        print("  OR export ANTHROPIC_API_KEY=your-api-key")
+        print("  OR export GOOGLE_API_KEY=your-api-key")
+        print("  OR export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json")
         sys.exit(1)
 
     print("🚀 Starting Live LLM Demo...")
