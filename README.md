@@ -42,7 +42,7 @@ Full-dataset evaluation across three planning domains.
 
 Frozen evidence snapshot: `artifacts/paper_eval_20260213/` (immutable, do not modify).
 
-### Ablation (GPT-5, blocksworld 1103 instances)
+### Ablation (GPT-OSS-120B, blocksworld 1103 instances)
 
 | Mode | Success Rate | What's verified |
 |------|-------------|-----------------|
