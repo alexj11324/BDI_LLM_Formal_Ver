@@ -13,6 +13,8 @@ from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModel
 import json
 np.random.seed(42)
 from tqdm import tqdm
+from shared_utils import str2bool
+
 class ResponseEvaluator:
     def __init__(self, config_file, engine, specified_instances, verbose, ignore_existing=False):
         self.engine = engine
@@ -333,7 +335,7 @@ if __name__=="__main__":
                         \n ada = GPT-3 Ada \
                         ')
                         
-    parser.add_argument('--verbose', type=str, default="False", help='Verbose')
+    parser.add_argument('--verbose', type=str2bool, default=False, help='Verbose')
     #config
     parser.add_argument('--config', type=str, required=True, help='Config file name (no need to add .yaml)')
     
@@ -344,14 +346,14 @@ if __name__=="__main__":
     task = args.task
     engine = args.engine
     config = args.config
-    verbose = eval(args.verbose)
+    verbose = args.verbose
     ignore_existing = args.ignore_existing
     specified_instances = args.specific_instances
 
     print(f"Task: {task}, Engine: {engine}, Config: {config}, Verbose: {verbose}")
 
     # specified_instances = args.specified_instances
-    # random_example = eval(args.random_example)
+    # random_example = ast.literal_eval(args.random_example)
     # print(task, config, verbose, specified_instances, random_example)
     config_file = f'./configs/{config}.yaml'
     response_evaluator = ResponseEvaluator(config_file, engine, specified_instances, verbose, ignore_existing)
@@ -376,20 +378,20 @@ if __name__=="__main__":
     if task in eval_plan_dict:
         try:
             task_name = eval_plan_dict[task]
-        except:
-            raise ValueError("Invalid task name")
+        except KeyError as e:
+            raise ValueError(f"Invalid task name: {task}") from e
         response_evaluator.evaluate_plan(task_name)
     elif task in eval_state_dict:
         try:
             task_name = eval_state_dict[task]
-        except:
-            raise ValueError("Invalid task name")
+        except KeyError as e:
+            raise ValueError(f"Invalid task name: {task}") from e
         response_evaluator.evaluate_state(task_name)
     elif task in eval_verification_dict:
         try:
             task_name = eval_verification_dict[task]
-        except:
-            raise ValueError("Invalid task name")
+        except KeyError as e:
+            raise ValueError(f"Invalid task name: {task}") from e
         response_evaluator.evaluate_verification(task_name)
     
 

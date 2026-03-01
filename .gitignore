@@ -51,6 +51,29 @@ htmlcov/
 .claude/
 .ralph/
 AGENT_RULES.md
+.agents/
+.codex/
+.cursor/
+.gemini/
+.opencode/
+.qwen/
+.orchestra-skills.json
+skills/
+
+# LaTeX build artifacts
+*.aux
+*.out
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+*.bbl
+*.blg
+BDI_Paper/main.pdf
+
+# Binary/large files
+*.zip
+Paper——draft.pdf
+Paper-draft.pdf
 
 # Temporary
 tmp/
@@ -76,8 +99,12 @@ test_*.py
 paper/
 paper.zip
 
+# BDI_Paper is now an independent repo
+BDI_Paper/
+
 # Unrelated projects
 activation_functions/
 AI-Research-SKILLs/
 runs/planbench_results/
 runs/legacy/planbench_results_20260211/
+swe_bench_workspace/
