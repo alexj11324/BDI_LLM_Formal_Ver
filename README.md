@@ -24,7 +24,7 @@ BDI-LLM addresses the hallucination and logical inconsistency problems in LLM-ge
 
 Full-dataset evaluation across three planning domains.
 
-### GPT-5 (infiniteai, 2026-02-27) — Full Dataset
+### GPT-5 (2026-02-27) — Full Dataset
 
 | Domain | Instances | Success Rate |
 |--------|-----------|-------------|
