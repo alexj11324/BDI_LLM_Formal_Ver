@@ -1,6 +1,6 @@
 # Integration Guide: Multi-Layer Symbolic Verification
 
-**Last Updated**: 2026-02-04
+**Last Updated**: 2026-03-01
 **Purpose**: Guide for using and understanding the integrated symbolic verification system
 
 ---
@@ -9,9 +9,44 @@
 
 The BDI-LLM framework now includes a **three-layer verification system** that validates plans at multiple levels of abstraction:
 
-1. **Layer 1 - Structural Verification**: DAG properties (cycles, connectivity, topological ordering)
+1. **Layer 1 - Structural Verification**: hard errors (empty graph, cycles) + soft warnings (disconnected components)
 2. **Layer 2a - Physics Validation**: Domain-specific physical constraints (currently blocksworld)
-3. **Layer 2b - PDDL Semantic Validation**: PDDL preconditions and goal achievement (VAL - Linux only)
+3. **Layer 2b - PDDL Semantic Validation**: PDDL preconditions and goal achievement (VAL; local binary required)
+
+---
+
+## MCP Server Integration
+
+The framework can be run as a Model Context Protocol (MCP) Server, allowing AI agents (like Claude Desktop) to use it as a native toolset.
+
+### 1. Building the Docker Image
+To ensure all dependencies (including the compiled VAL tool) are present, build the Docker image:
+
+```bash
+docker build -t bdi-verifier .
+```
+
+### 2. Running the Server
+Run the container, passing credentials for your configured provider:
+
+```bash
+docker run -i --rm -e OPENAI_API_KEY=$OPENAI_API_KEY bdi-verifier
+# or:
+# docker run -i --rm -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY bdi-verifier
+# docker run -i --rm -e GOOGLE_API_KEY=$GOOGLE_API_KEY bdi-verifier
+# docker run -i --rm -e GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa.json bdi-verifier
+```
+
+### 3. Exposed Tools
+The server exposes the following tools to the agent:
+
+*   **`generate_plan(beliefs, desire, domain)`**: Generates a BDI plan from natural language.
+*   **`verify_plan(domain_pddl, problem_pddl, plan_actions)`**: Verifies a PDDL plan using the internal symbolic verifier.
+*   **`execute_verified_plan(domain_pddl, problem_pddl, plan_actions, command_to_execute, rationale)`**:
+    *   **"Trojan Horse" Pattern**: This tool acts as a secure gatekeeper.
+    *   It first **verifies** the provided PDDL plan.
+    *   **Only if verification passes** does it execute the `command_to_execute`.
+    *   This allows agents to perform actions (like `cp`, `mv`, etc.) safely, ensuring the logical plan backing them is sound.
 
 ---
 
@@ -21,10 +56,10 @@ The BDI-LLM framework now includes a **three-layer verification system** that va
 
 ```bash
 # Run with physics validation on 3 instances
-python run_planbench_full.py --domain blocksworld --max_instances 3
+python scripts/run_planbench_full.py --domain blocksworld --max_instances 3
 
 # Run full 100-instance benchmark
-python run_planbench_full.py --domain blocksworld --max_instances 100
+python scripts/run_planbench_full.py --domain blocksworld --max_instances 100
 ```
 
 ### Interpreting Results
@@ -39,7 +74,7 @@ Physics caught: 2 additional errors
 ```
 
 **What this means:**
-- **Structural-only success**: Plans that passed DAG validation (no cycles, connected graph)
+- **Structural-only success**: Plans that passed hard structural checks (no empty graph, no cycles). Disconnected components are tracked as warnings.
 - **Multi-layer success**: Plans that passed BOTH structural AND physics validation
 - **Physics caught**: Additional errors found by physics validator that structural verification missed
 
@@ -67,7 +102,8 @@ Physics caught: 2 additional errors
     'verification_layers': {
         'structural': {
             'valid': True,
-            'errors': []
+            'hard_errors': [],
+            'warnings': []
         },
         'physics': {
             'valid': True,
@@ -82,6 +118,7 @@ Physics caught: 2 additional errors
 
 **Key Changes:**
 - `verification_layers`: Separate results for each validation layer
+- `structural.hard_errors` vs `structural.warnings`: blocking issues vs non-blocking diagnostics
 - `overall_valid`: Combined validation result (must pass ALL layers)
 - Backward compatible: Old keys (`num_nodes`, `num_edges`, `generation_time`) still present
 
@@ -176,12 +213,21 @@ init_state = pddl_data['init_state']
 ```python
 # Examples:
 "Graph contains cycles: ['node1', 'node2', 'node1']"
-"Graph is not weakly connected - found 2 disconnected components"
 "Empty plan - no action nodes"
 ```
 
-**Cause**: Invalid DAG structure
+**Cause**: Blocking structural violations (no executable topological order)
 **Solution**: LLM needs to regenerate plan with proper dependencies
+
+### Structural Warnings (Layer 1)
+
+```python
+# Examples:
+"Plan graph has disconnected components - may indicate parallel independent subplans"
+```
+
+**Cause**: Non-blocking structural concerns
+**Solution**: Continue to Layer 2 validation; auto-repair can still connect components when needed
 
 ### Physics Errors (Layer 2a)
 
@@ -251,21 +297,26 @@ generate_bdi_plan(beliefs, desire, init_state)
 pytest tests/test_symbolic_verifier.py -v
 
 # Test Phase 2 integration (offline)
-python test_integration_phase2.py
+pytest tests/test_integration_phase2.py -v
 ```
 
-### Integration Tests (Requires API Key)
+### Integration Tests (API-dependent)
 
 ```bash
-# Set API key
-export OPENAI_API_KEY="sk-..."
+# Set credentials for your configured provider:
+# - OpenAI / NVIDIA-compatible gateway: OPENAI_API_KEY
+# - Anthropic: ANTHROPIC_API_KEY
+# - Gemini/Vertex: GOOGLE_API_KEY or GOOGLE_APPLICATION_CREDENTIALS
 
 # Run integration tests
-python test_integrated_verification.py
+pytest tests/test_integration.py -q
+pytest tests/test_val_integration.py -q
 
 # Run small batch
-python run_planbench_full.py --domain blocksworld --max_instances 3
+python scripts/run_planbench_full.py --domain blocksworld --max_instances 3
 ```
+
+`tests/test_integration.py` now skips automatically when provider credentials are missing/invalid.
 
 ---
 
@@ -278,16 +329,16 @@ python run_planbench_full.py --domain blocksworld --max_instances 3
 
 ### 2. VAL Verifier Platform Dependency
 
-**Issue**: VAL binary is Linux ELF format
-**Status**: Not working on macOS
-**Workaround**: Use physics validator (Layer 2a) instead
-**Solution**: Recompile VAL for macOS or use Docker
+**Issue**: VAL binary is platform-specific
+**Status**: Repository currently includes a macOS arm64 binary at `planbench_data/planner_tools/VAL/validate`
+**Workaround**: On unsupported platforms, compile VAL locally or use Docker
+**Solution**: Keep a platform-matched VAL binary in `planbench_data/planner_tools/VAL/`
 
-### 3. API Key Required for Full Testing
+### 3. Provider Credentials Required for API-Dependent Testing
 
 **Offline tests**: Physics validator, PDDL parser, metrics structure
 **Online tests**: Full LLM integration with plan generation
-**Workaround**: Use provided test suite for offline validation
+**Workaround**: API-dependent tests now auto-skip when credentials are unavailable
 
 ---
 
