@@ -323,3 +323,32 @@ class TestDependencyCycle:
         is_valid, trace, _ = verifier.verify_transition(belief, dag)
         assert is_valid is False
         assert "TopologicalSortError" in trace or "Cycle" in trace
+
+
+# ---------------------------------------------------------------------------
+# Missing Dependency
+# ---------------------------------------------------------------------------
+
+class TestMissingDependency:
+    """Test that dependencies on non-existent nodes are detected."""
+
+    def test_missing_dependency_node(self, verifier: SWEVerifier) -> None:
+        """A node depending on a non-existent node_id should fail verification."""
+        belief = _make_belief(repo_snapshot={"main.py": "code"})
+        dag = _make_dag([
+            IntentionNode(
+                node_id="n1",
+                action_type="file_edit",
+                parameters={
+                    "target_file": "main.py",
+                    "search_string": "c",
+                    "replace_string": "d",
+                },
+                dependencies=["ghost_node"],
+            ),
+        ])
+        is_valid, trace, _ = verifier.verify_transition(belief, dag)
+        assert is_valid is False
+        assert "ghost_node" in trace
+        assert "does not exist" in trace or "TopologicalSortError" in trace
+

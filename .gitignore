@@ -105,6 +105,6 @@ BDI_Paper/
 # Unrelated projects
 activation_functions/
 AI-Research-SKILLs/
-runs/planbench_results/
-runs/legacy/planbench_results_20260211/
+runs/
 swe_bench_workspace/
+

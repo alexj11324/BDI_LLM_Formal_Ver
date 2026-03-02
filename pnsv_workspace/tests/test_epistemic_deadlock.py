@@ -387,3 +387,48 @@ class TestRetryWithoutDeadlock:
         engine.run()
 
         recovery_teacher.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# All-Retries-Fail Before DAG Parse (Bug Fix Regression)
+# ---------------------------------------------------------------------------
+
+
+class TestAllRetriesFailBeforeParse:
+    """Regression test: engine must not crash when dag_dict was never assigned."""
+
+    def test_deadlock_when_all_retries_fail_json_parse(self) -> None:
+        """If every attempt fails at JSON extraction, _handle_deadlock should
+        still work without raising UnboundLocalError."""
+        verifier = AlwaysPassVerifier()  # would pass if reached, but won't
+        teacher = MagicMock()
+
+        # Teacher always returns garbage JSON
+        bad_output = MagicMock()
+        bad_output.reasoning = "thinking..."
+        bad_output.intention_dag_json = "NOT VALID JSON {{{{"
+        teacher.return_value = bad_output
+
+        recovery_teacher = MagicMock()
+        recovery_output = MagicMock()
+        recovery_output.recovery_plan_json = "{}"
+        recovery_teacher.return_value = recovery_output
+
+        engine = BDIEngine(
+            verifier=verifier,
+            teacher=teacher,
+            max_retries=2,
+            recovery_teacher=recovery_teacher,
+        )
+
+        engine.add_desire({"goal": "json-parse-fail"})
+
+        # This should NOT raise UnboundLocalError
+        engine.run()
+
+        # Should have triggered deadlock and suspended
+        assert len(engine.belief_state.suspended_intentions) == 1
+        assert len(engine.golden_trajectories) == 0
+        # Recovery teacher should have been called
+        recovery_teacher.assert_called_once()
+

@@ -194,3 +194,20 @@ class TestErrorHandling:
         dag = _make_dag([])
         is_valid, trace, hint = verifier.verify_transition(belief, dag)
         assert is_valid is True
+
+    def test_missing_dependency_node(self, verifier: PlanBenchVerifier) -> None:
+        """A node depending on a non-existent node_id should fail verification."""
+        belief = _make_belief(["clear(A)", "ontable(A)", "arm-empty"])
+        dag = _make_dag([
+            IntentionNode(
+                node_id="n1",
+                action_type="pick-up",
+                parameters={"block": "A"},
+                dependencies=["nonexistent_node"],
+            ),
+        ])
+        is_valid, trace, _ = verifier.verify_transition(belief, dag)
+        assert is_valid is False
+        assert "nonexistent_node" in trace
+        assert "does not exist" in trace or "TopologicalSortError" in trace
+

@@ -166,18 +166,12 @@ def _topological_sort(nodes: List[IntentionNode]) -> List[IntentionNode]:
 
     for node in nodes:
         for dep_id in node.dependencies:
-            if dep_id in in_degree:
-                in_degree[node.node_id] = in_degree.get(node.node_id, 0)
-                # Increment the in-degree of the *current* node for each
-                # dependency that exists in the graph.
-                pass  # in_degree was already counted; recalculate below.
-
-    # Recalculate in-degrees precisely.
-    in_degree = {n.node_id: 0 for n in nodes}
-    for node in nodes:
-        for dep_id in node.dependencies:
-            if dep_id in node_map:
-                in_degree[node.node_id] += 1
+            if dep_id not in node_map:
+                raise ValueError(
+                    f"Node '{node.node_id}' depends on '{dep_id}' "
+                    f"which does not exist in the DAG."
+                )
+            in_degree[node.node_id] += 1
 
     queue: deque[str] = deque(
         nid for nid, deg in in_degree.items() if deg == 0
