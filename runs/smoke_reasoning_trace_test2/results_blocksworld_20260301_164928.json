@@ -1,0 +1,95 @@
+{
+  "domain": "blocksworld",
+  "timestamp": "2026-03-01T16:49:10.551368",
+  "total_instances": 1,
+  "results": [
+    {
+      "instance_file": "/Users/alexjiang/Desktop/BDI_LLM_Formal_Ver/planbench_data/plan-bench/instances/blocksworld/generated/instance-1.pddl",
+      "instance_name": "instance-1",
+      "timestamp": "2026-03-01T16:49:10.566113",
+      "pddl_data": {
+        "problem_name": "BW-generalization-4",
+        "num_objects": 8,
+        "num_init": 17,
+        "num_goals": 7
+      },
+      "beliefs": "BLOCKSWORLD DOMAIN\n\n=== CURRENT STATE ===\nAvailable blocks (8): b, d, f, g, h, i, j, l\nCurrent stacks: None (all blocks are on table)\nBlocks on table: b, d, f, g, h, i, j, l\nClear blocks (nothing on t...",
+      "desire": "Build the following tower(s) from BOTTOM to TOP:\n\n  Tower (base=l): l -> h -> b -> d -> g -> i -> f -> j  (bottom to top)\n  Construction steps:\n    Step 1: pick-up h, then stack h on l\n    Step 2: pic...",
+      "bdi_metrics": {
+        "generation_time": 17.863760709762573,
+        "verification_layers": {
+          "structural": {
+            "valid": true,
+            "errors": [],
+            "hard_errors": [],
+            "warnings": []
+          },
+          "symbolic": {
+            "valid": true,
+            "errors": []
+          },
+          "physics": {
+            "valid": true,
+            "errors": []
+          }
+        },
+        "auto_repair": {
+          "triggered": false,
+          "success": false,
+          "repairs_applied": []
+        },
+        "val_repair": {
+          "attempts": 0,
+          "success": false,
+          "history": []
+        },
+        "overall_valid": true,
+        "num_nodes": 14,
+        "num_edges": 13,
+        "retries": 0,
+        "reasoning_trace": {
+          "enabled": true,
+          "max_chars": 2000,
+          "generation": {
+            "phase": "generation",
+            "model": "openai/gpt-oss-120b",
+            "prediction_fields": [
+              "plan",
+              "reasoning"
+            ],
+            "prediction_text_fields": {
+              "reasoning": "**Initial State Table**\n\n| Block | Position   | Clear? | Hand |\n|-------|------------|--------|------|\n| b     | table      | yes    | empty |\n| d     | table      | yes    | empty |\n| f     | table      | yes    | empty |\n| g     | table      | yes    | empty |\n| h     | table      | yes    | empty |\n| i     | table      | yes    | empty |\n| j     | table      | yes    | empty |\n| l     | table      | yes    | empty |\n\n**Goal**  \nConstruct a single tower (bottom\u2192top): `l \u2192 h \u2192 b \u2192 d \u2192 g \u2192 i \u2192 f \u2192 j`.\n\n**Execution Order (Linearisation)**\n\n```\nEXECUTION ORDER:\n1. pick-up h\n2. stack h l\n3. pick-up b\n4. stack b h\n5. pick-up d\n6. stack d b\n7. pick-up g\n8. stack g d\n9. pick-up i\n10. stack i g\n11. pick-up f\n12. stack f i\n13. pick-up j\n14. stack j f\n```\n\n**Verification Checklist**\n- [x] No duplicate actions (each step is unique).\n- [x] Every action moves a block closer to its final position in the tower.\n- [x] No step reverts a previously achieved state.\n- [x] The final action (`stack j f`) places the last block on the tower, achieving the goal.\n\n**State Tracking & Logical Checks (selected steps)**  \n\n1. **pick-up h**  \n   - Goal: Hold `h`.  \n   - Preconditions: `h` clear, on table, hand empty \u2192 \u2705.  \n   - Update: Hand holds `h`; `h` no longer on table.\n\n2. **stack h l**  \n   - Goal: Place `h` on `l`.  \n   - Preconditions: Holding `h` \u2705; `l` clear \u2705.  \n   - Update: `on(h,l)`, `h` clear, `l` not clear, hand empty.\n\n3. **pick-up b** \u2013 similar preconditions satisfied (b on table, clear, hand empty).  \n\n... continue analogously until step 14.\n\nAll preconditions are satisfied at each step because after each `stack` the newly placed block becomes clear, enabling the next `stack` onto it.\n\n**Conclusion**  \nThe linear chain satisfies all P0\u20111 (state tracking) and P0\u20113 (logical verification) requirements and can be directly translated into a connected DAG."
+            },
+            "chain_of_thought_text": "**Initial State Table**\n\n| Block | Position   | Clear? | Hand |\n|-------|------------|--------|------|\n| b     | table      | yes    | empty |\n| d     | table      | yes    | empty |\n| f     | table      | yes    | empty |\n| g     | table      | yes    | empty |\n| h     | table      | yes    | empty |\n| i     | table      | yes    | empty |\n| j     | table      | yes    | empty |\n| l     | table      | yes    | empty |\n\n**Goal**  \nConstruct a single tower (bottom\u2192top): `l \u2192 h \u2192 b \u2192 d \u2192 g \u2192 i \u2192 f \u2192 j`.\n\n**Execution Order (Linearisation)**\n\n```\nEXECUTION ORDER:\n1. pick-up h\n2. stack h l\n3. pick-up b\n4. stack b h\n5. pick-up d\n6. stack d b\n7. pick-up g\n8. stack g d\n9. pick-up i\n10. stack i g\n11. pick-up f\n12. stack f i\n13. pick-up j\n14. stack j f\n```\n\n**Verification Checklist**\n- [x] No duplicate actions (each step is unique).\n- [x] Every action moves a block closer to its final position in the tower.\n- [x] No step reverts a previously achieved state.\n- [x] The final action (`stack j f`) places the last block on the tower, achieving the goal.\n\n**State Tracking & Logical Checks (selected steps)**  \n\n1. **pick-up h**  \n   - Goal: Hold `h`.  \n   - Preconditions: `h` clear, on table, hand empty \u2192 \u2705.  \n   - Update: Hand holds `h`; `h` no longer on table.\n\n2. **stack h l**  \n   - Goal: Place `h` on `l`.  \n   - Preconditions: Holding `h` \u2705; `l` clear \u2705.  \n   - Update: `on(h,l)`, `h` clear, `l` not clear, hand empty.\n\n3. **pick-up b** \u2013 similar preconditions satisfied (b on table, clear, hand empty).  \n\n... continue analogously until step 14.\n\nAll preconditions are satisfied at each step because after each `stack` the newly placed block becomes clear, enabling the next `stack` onto it.\n\n**Conclusion**  \nThe linear chain satisfies all P0\u20111 (state tracking) and P0\u20113 (logical verification) requirements and can be directly translated into a connected DAG.",
+            "chain_of_thought_source": "prediction.reasoning",
+            "lm_reasoning_content": "We need to produce reasoning and plan. Need to list execution order first as per instruction. Let's examine problem.\n\nBlocks: b,d,f,g,h,i,j,l all on table, clear, hand empty. Goal tower base=l: l bottom, then h, then b, then d, then g, then i, then f, then j on top. So final stack: l (on table), h on l, b on h, d on b, g on d, i on g, f on i, j on f. Sequence steps given: Step1 pick-up h, stack on l; Step2 pick-up b, stack on h; etc.\n\nSince all blocks on table currently, we can directly pick up each and stack. Ensure hand empty before each pick-up (we will put down previous block onto stack, so after stacking hand becomes empty). So sequence:\n\n1. pick-up h\n2. stack h l\n3. pick-up b\n4. stack b h\n5. pick-up d\n6. stack d b\n7. pick-up g\n8. stack g d\n9. pick-up i\n10. stack i g\n11. pick-up f\n12. stack f i\n13. pick-up j\n14. stack j f\n\nCheck preconditions:\n\n- pick-up X: X clear, on table, hand empty. All are initially on table and clear.\n- after stacking, X is on target, target no longer clear, X is clear (top) but that's fine for next actions because they stack on X later? Wait stacking puts X onto target; X becomes clear (nothing on top), target becomes not clear. In sequence, we stack subsequent block onto previous block (which is now clear). Eg after stacking h on l, h is clear, l not clear. Next pick-up b: b is clear on table, hand empty (since after stack hand empty). Good. Stacking b on h requires h clear, which it is. Works.\n\nThus the plan is simple.\n\nNow need to produce reasoning: include state tracking details maybe? The instructions: In reasoning we need to discuss chain-of-thought; we must include execution order list with verification.\n\nThen produce plan JSON BDIPlan with goal_description, nodes, edges.\n\nWe need unique IDs for each action: s1...s14 perhaps.\n\nNodes list each with id, action_type, description, params.\n\nEdges sequential.\n\nGoal description restate: Build tower l-h-b-d-g-i-f-j.\n\nNow produce final output.\n\nNeed to ensure plan is connected and DAG wit\n...[truncated 162 chars]",
+            "lm_output_text": "[[ ## reasoning ## ]]\n**Initial State Table**\n\n| Block | Position   | Clear? | Hand |\n|-------|------------|--------|------|\n| b     | table      | yes    | empty |\n| d     | table      | yes    | empty |\n| f     | table      | yes    | empty |\n| g     | table      | yes    | empty |\n| h     | table      | yes    | empty |\n| i     | table      | yes    | empty |\n| j     | table      | yes    | empty |\n| l     | table      | yes    | empty |\n\n**Goal**  \nConstruct a single tower (bottom\u2192top): `l \u2192 h \u2192 b \u2192 d \u2192 g \u2192 i \u2192 f \u2192 j`.\n\n**Execution Order (Linearisation)**\n\n```\nEXECUTION ORDER:\n1. pick-up h\n2. stack h l\n3. pick-up b\n4. stack b h\n5. pick-up d\n6. stack d b\n7. pick-up g\n8. stack g d\n9. pick-up i\n10. stack i g\n11. pick-up f\n12. stack f i\n13. pick-up j\n14. stack j f\n```\n\n**Verification Checklist**\n- [x] No duplicate actions (each step is unique).\n- [x] Every action moves a block closer to its final position in the tower.\n- [x] No step reverts a previously achieved state.\n- [x] The final action (`stack j f`) places the last block on the tower, achieving the goal.\n\n**State Tracking & Logical Checks (selected steps)**  \n\n1. **pick-up h**  \n   - Goal: Hold `h`.  \n   - Preconditions: `h` clear, on table, hand empty \u2192 \u2705.  \n   - Update: Hand holds `h`; `h` no longer on table.\n\n2. **stack h l**  \n   - Goal: Place `h` on `l`.  \n   - Preconditions: Holding `h` \u2705; `l` clear \u2705.  \n   - Update: `on(h,l)`, `h` clear, `l` not clear, hand empty.\n\n3. **pick-up b** \u2013 similar preconditions satisfied (b on table, clear, hand empty).  \n\n... continue analogously until step 14.\n\nAll preconditions are satisfied at each step because after each `stack` the newly placed block becomes clear, enabling the next `stack` onto it.\n\n**Conclusion**  \nThe linear chain satisfies all P0\u20111 (state tracking) and P0\u20113 (logical verification) requirements and can be directly translated into a connected DAG.\n\n[[ ## plan ## ]]\n{\n  \"goal_description\": \"Build a tower with base l and order l -> h -> b -> d -> g -> i \n...[truncated 2796 chars]"
+          },
+          "repairs": []
+        }
+      },
+      "success": true
+    }
+  ],
+  "summary": {
+    "total_evaluated": 1,
+    "success_count": 1,
+    "failed_count": 0,
+    "success_rate": 1.0,
+    "avg_generation_time": 17.863760709762573,
+    "structural_only_success": 1,
+    "symbolic_caught_errors": 0,
+    "physics_caught_errors": 0,
+    "auto_repair": {
+      "triggered": 0,
+      "successful": 0,
+      "success_rate": 0
+    },
+    "val_repair": {
+      "triggered": 0,
+      "successful": 0,
+      "total_attempts": 0,
+      "success_rate": 0
+    }
+  }
+}
