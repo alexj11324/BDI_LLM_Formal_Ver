@@ -1,0 +1,29 @@
+## Task 1: Project Scaffolding — COMPLETED (2026-03-02)
+
+Created the full `pnsv_workspace/` directory tree as specified in PRD.md:
+
+```
+pnsv_workspace/
+├── requirements.txt          (pydantic>=2.0, dspy-ai, openai, pytest)
+├── src/
+│   ├── __init__.py
+│   ├── core/
+│   │   ├── __init__.py
+│   │   ├── schemas.py          (placeholder)
+│   │   ├── verification_bus.py (placeholder)
+│   │   ├── exceptions.py       (placeholder)
+│   │   └── bdi_engine.py       (placeholder)
+│   ├── plugins/
+│   │   ├── __init__.py
+│   │   ├── planbench_verifier.py (placeholder)
+│   │   └── swe_verifier.py       (placeholder)
+│   └── dspy_pipeline/
+│       ├── __init__.py
+│       ├── teacher_config.py   (placeholder)
+│       ├── signatures.py       (placeholder)
+│       └── r1_formatter.py     (placeholder)
+└── tests/
+    └── __init__.py
+```
+
+Verified: All module imports pass (`python -c "import src.core.schemas"` etc.).
