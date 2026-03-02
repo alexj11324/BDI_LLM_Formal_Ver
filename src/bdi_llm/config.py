@@ -21,6 +21,10 @@ class Config:
     MAX_TOKENS = int(os.environ.get("LLM_MAX_TOKENS", "4000"))
     TEMPERATURE = float(os.environ.get("LLM_TEMPERATURE", "0.2"))
     REASONING_EFFORT = os.environ.get("REASONING_EFFORT", "low")
+    SAVE_REASONING_TRACE = os.environ.get("SAVE_REASONING_TRACE", "false").lower() in {
+        "1", "true", "yes", "on"
+    }
+    REASONING_TRACE_MAX_CHARS = int(os.environ.get("REASONING_TRACE_MAX_CHARS", "8000"))
 
     # Vertex AI Configuration
     VERTEXAI_PROJECT = os.environ.get("VERTEXAI_PROJECT")

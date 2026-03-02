@@ -34,6 +34,7 @@ from threading import Lock
 sys.path.insert(0, str(Path(__file__).parents[1]))
 
 from src.bdi_llm.planner import BDIPlanner
+from src.bdi_llm.config import Config
 from src.bdi_llm.schemas import BDIPlan
 from src.bdi_llm.verifier import PlanVerifier
 from src.bdi_llm.plan_repair import repair_and_verify, PlanRepairer
@@ -1172,14 +1173,24 @@ def generate_bdi_plan(
         'num_edges': 0,
         'retries': 0
     }
+    if Config.SAVE_REASONING_TRACE:
+        metrics['reasoning_trace'] = {
+            'enabled': True,
+            'max_chars': Config.REASONING_TRACE_MAX_CHARS,
+            'generation': None,
+            'repairs': [],
+        }
 
     last_error = None
     for attempt in range(max_retries):
         try:
             planner = BDIPlanner(auto_repair=auto_repair, domain=domain)
             result = planner.generate_plan(beliefs=beliefs, desire=desire)
+            planner.record_generation_trace(result)
             plan = result.plan
             metrics['retries'] = attempt
+            if Config.SAVE_REASONING_TRACE:
+                metrics['reasoning_trace']['generation'] = planner.get_last_generation_trace()
 
             metrics['generation_time'] = time.time() - start_time
 
@@ -1308,6 +1319,11 @@ def generate_bdi_plan(
                                 instance_id=instance_id,  # For budget tracking
                                 domain=domain,  # For cache keying
                             )
+                            if Config.SAVE_REASONING_TRACE:
+                                repair_trace = planner.get_last_repair_trace()
+                                if repair_trace:
+                                    repair_trace['attempt'] = val_repair_attempt
+                                    metrics['reasoning_trace']['repairs'].append(repair_trace)
                             plan = repair_result.plan
 
                             # Re-verify structure after repair
