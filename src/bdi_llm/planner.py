@@ -4,7 +4,7 @@ import hashlib
 import json
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 import networkx as nx
 from .schemas import BDIPlan, ActionNode, DependencyEdge
 from .verifier import PlanVerifier
@@ -66,6 +66,7 @@ class ResponsesAPILM(dspy.BaseLM):
         self.num_retries = num_retries
         self.use_chat_completions = use_chat_completions
         self._last_reasoning_content = None  # Store reasoning for logging
+        self._last_output_text = None  # Store raw model output text for audit
 
     def _messages_to_input(self, messages):
         """Convert DSPy message list to Responses API format.
@@ -143,6 +144,8 @@ class ResponsesAPILM(dspy.BaseLM):
         resp = requests.post(url, json=payload, headers=headers, stream=True, timeout=self.timeout)
         resp.raise_for_status()
 
+        self._last_reasoning_content = None
+        self._last_output_text = None
         reasoning_parts = []
         content_parts = []
 
@@ -175,7 +178,8 @@ class ResponsesAPILM(dspy.BaseLM):
                 content_parts.append(delta['content'])
 
         self._last_reasoning_content = ''.join(reasoning_parts)
-        return ''.join(content_parts)
+        self._last_output_text = ''.join(content_parts)
+        return self._last_output_text
 
     def _call_once(self, input_items, instructions=None):
         """Call Responses API (infiniteai style)."""
@@ -195,6 +199,8 @@ class ResponsesAPILM(dspy.BaseLM):
         }
         if instructions:
             payload['instructions'] = instructions
+        self._last_reasoning_content = None
+        self._last_output_text = None
         resp = requests.post(url, json=payload, headers=headers,
                              stream=False, timeout=self.timeout)
         resp.raise_for_status()
@@ -212,6 +218,7 @@ class ResponsesAPILM(dspy.BaseLM):
                 for part in item.get('content', []):
                     if part.get('type') == 'output_text':
                         self._last_reasoning_content = None  # Responses API doesn't return reasoning separately
+                        self._last_output_text = part['text']
                         return part['text']
 
         if 'response' in data:
@@ -221,6 +228,7 @@ class ResponsesAPILM(dspy.BaseLM):
                     for part in item.get('content', []):
                         if part.get('type') == 'output_text':
                             self._last_reasoning_content = None
+                            self._last_output_text = part['text']
                             return part['text']
 
         raise RuntimeError('ResponsesAPILM: no output_text found in response')
@@ -1131,6 +1139,8 @@ class BDIPlanner(dspy.Module):
         self.generate_plan = dspy.ChainOfThought(sig_class)
         self.repair_plan = dspy.ChainOfThought(RepairPlan)
         self.auto_repair = auto_repair
+        self._last_generation_trace: Dict[str, Any] = {}
+        self._last_repair_trace: Dict[str, Any] = {}
 
         # Add few-shot demonstrations for Logistics domain
         if domain == "logistics":
@@ -1250,9 +1260,87 @@ class BDIPlanner(dspy.Module):
             return False, "; ".join(errors)
         return True, ""
 
+    @staticmethod
+    def _truncate_trace_text(text: Optional[str], max_chars: int) -> Optional[str]:
+        if text is None:
+            return None
+        if max_chars <= 0 or len(text) <= max_chars:
+            return text
+        extra = len(text) - max_chars
+        return f"{text[:max_chars]}\n...[truncated {extra} chars]"
+
+    def _capture_prediction_trace(self, pred: dspy.Prediction, phase: str) -> Dict[str, Any]:
+        """Capture CoT/trace artifacts from DSPy prediction + LM adapter state."""
+        max_chars = max(0, int(getattr(Config, "REASONING_TRACE_MAX_CHARS", 8000)))
+        trace: Dict[str, Any] = {
+            "phase": phase,
+            "model": Config.MODEL_NAME,
+            "prediction_fields": [],
+        }
+
+        try:
+            pred_dict = pred.toDict() if hasattr(pred, "toDict") else {}
+            if isinstance(pred_dict, dict):
+                trace["prediction_fields"] = sorted(pred_dict.keys())
+                text_fields = {}
+                for key, value in pred_dict.items():
+                    if key == "plan":
+                        continue
+                    if isinstance(value, str) and value.strip():
+                        text_fields[key] = self._truncate_trace_text(value, max_chars)
+
+                if text_fields:
+                    trace["prediction_text_fields"] = text_fields
+                    preferred_fields = (
+                        "reasoning",
+                        "rationale",
+                        "analysis",
+                        "chain_of_thought",
+                        "thought_process",
+                        "explanation",
+                    )
+                    for key in preferred_fields:
+                        if key in text_fields:
+                            trace["chain_of_thought_text"] = text_fields[key]
+                            trace["chain_of_thought_source"] = f"prediction.{key}"
+                            break
+
+                    if "chain_of_thought_text" not in trace:
+                        longest_key = max(text_fields.keys(), key=lambda k: len(text_fields[k]))
+                        trace["chain_of_thought_text"] = text_fields[longest_key]
+                        trace["chain_of_thought_source"] = f"prediction.{longest_key}"
+        except Exception as e:
+            trace["prediction_trace_error"] = str(e)
+
+        lm = getattr(dspy.settings, "lm", None)
+        if lm is not None:
+            lm_reasoning = getattr(lm, "_last_reasoning_content", None)
+            lm_output = getattr(lm, "_last_output_text", None)
+            if isinstance(lm_reasoning, str) and lm_reasoning.strip():
+                trace["lm_reasoning_content"] = self._truncate_trace_text(lm_reasoning, max_chars)
+            if isinstance(lm_output, str) and lm_output.strip():
+                trace["lm_output_text"] = self._truncate_trace_text(lm_output, max_chars)
+
+        return trace
+
+    def get_last_generation_trace(self) -> Dict[str, Any]:
+        if not self._last_generation_trace:
+            return {}
+        return json.loads(json.dumps(self._last_generation_trace))
+
+    def get_last_repair_trace(self) -> Dict[str, Any]:
+        if not self._last_repair_trace:
+            return {}
+        return json.loads(json.dumps(self._last_repair_trace))
+
+    def record_generation_trace(self, pred: dspy.Prediction) -> None:
+        """Record generation trace when caller invokes `generate_plan` directly."""
+        self._last_generation_trace = self._capture_prediction_trace(pred, phase="generation")
+
     def forward(self, beliefs: str, desire: str) -> dspy.Prediction:
         # Generate the plan
         pred = self.generate_plan(beliefs=beliefs, desire=desire)
+        self.record_generation_trace(pred)
 
         try:
             plan_obj = pred.plan
@@ -1504,6 +1592,7 @@ class BDIPlanner(dspy.Module):
                 repair_history=history_str,
                 verification_feedback=verifier_feedback_str,
             )
+            self._last_repair_trace = self._capture_prediction_trace(pred, phase="val_repair")
 
             # RECORD CALL against budget
             if instance_id:
