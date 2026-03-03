@@ -36,67 +36,11 @@ import re
 import shutil
 import subprocess
 import tempfile
-from collections import deque
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from src.core.schemas import BeliefState, IntentionDAG, IntentionNode
 from src.core.verification_bus import BaseDomainVerifier
-
-
-# ---------------------------------------------------------------------------
-# Topological Sort Helper (identical logic to planbench_verifier)
-# ---------------------------------------------------------------------------
-
-def _topological_sort(nodes: List[IntentionNode]) -> List[IntentionNode]:
-    """Return nodes in topological (dependency-respecting) order.
-
-    Uses Kahn's algorithm.  Raises ``ValueError`` if a cycle is detected.
-
-    Parameters
-    ----------
-    nodes : List[IntentionNode]
-        The DAG nodes with inter-node dependencies.
-
-    Returns
-    -------
-    List[IntentionNode]
-        Nodes ordered so that every node appears after all of its
-        dependencies.
-
-    Raises
-    ------
-    ValueError
-        If the dependency graph contains a cycle.
-    """
-    node_map: Dict[str, IntentionNode] = {n.node_id: n for n in nodes}
-    in_degree: Dict[str, int] = {n.node_id: 0 for n in nodes}
-
-    for node in nodes:
-        for dep_id in node.dependencies:
-            if dep_id in node_map:
-                in_degree[node.node_id] += 1
-
-    queue: deque[str] = deque(
-        nid for nid, deg in in_degree.items() if deg == 0
-    )
-    sorted_ids: List[str] = []
-
-    while queue:
-        current_id = queue.popleft()
-        sorted_ids.append(current_id)
-        for node in nodes:
-            if current_id in node.dependencies:
-                in_degree[node.node_id] -= 1
-                if in_degree[node.node_id] == 0:
-                    queue.append(node.node_id)
-
-    if len(sorted_ids) != len(nodes):
-        raise ValueError(
-            "Cycle detected in IntentionDAG.  Sorted "
-            f"{len(sorted_ids)} of {len(nodes)} nodes."
-        )
-
-    return [node_map[nid] for nid in sorted_ids]
+from src.plugins._dag_utils import topological_sort as _topological_sort
 
 
 # ---------------------------------------------------------------------------
