@@ -1,5 +1,7 @@
 import random
 import os
+import subprocess
+from pathlib import Path
 
 
 def get_action_text(action, data):
@@ -442,8 +444,15 @@ def reformat_feedback(feedback):
 
 def get_val_feedback(domain_file, instance_file, plan_file):
     val = os.environ.get('VAL')
-    cmd = f'{val}/validate -v {domain_file} {instance_file} {plan_file}'
-    response = os.popen(cmd).read()
+    if not val:
+        raise RuntimeError("VAL environment variable is not set")
+    cmd = [str(Path(val) / "validate"), "-v", domain_file, instance_file, plan_file]
+    result = subprocess.run(cmd, capture_output=True, text=True)  # noqa: S603
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"VAL validator failed (rc={result.returncode}): {result.stderr}"
+        )
+    response = result.stdout
     plan_valid = 'Plan valid' in response
     feedback = []
     repair = False

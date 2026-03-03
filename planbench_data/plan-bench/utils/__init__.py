@@ -1,4 +1,6 @@
 import os
+import subprocess
+from pathlib import Path
 import random
 import openai
 import numpy as np
@@ -158,7 +160,6 @@ class BWGenerator:
         n = self.data['n_instances'] + 2
         n_objs = range(4, len(self.data["encoded_objects"]) + 1)
         ORIG = os.getcwd()
-        CMD = "./blocksworld 4 {}"
         start = self.add_existing_files_to_hash_set(self.data['instance_dir'])
 
         os.chdir("pddlgenerators/blocksworld/")
@@ -166,10 +167,15 @@ class BWGenerator:
         domain = f"{ORIG}/instances/{self.data['domain_file']}"
         c = start
         for obj in n_objs:
-            cmd_exec = CMD.format(obj)
+            cmd_exec = ["./blocksworld", "4", str(obj)]
             for i in range(1, n):
                 with open(instance_file.format(c), "w+") as fd:
-                    pddl = os.popen(cmd_exec).read()
+                    result = subprocess.run(cmd_exec, capture_output=True, text=True)  # noqa: S603
+                    if result.returncode != 0:
+                        raise RuntimeError(
+                            f"blocksworld generator failed (rc={result.returncode}): {result.stderr}"
+                        )
+                    pddl = result.stdout
                     hash_of_instance = hashlib.md5(pddl.encode('utf-8')).hexdigest()
                     if hash_of_instance in self.hashset:
                         print("[+]: Same instance, skipping...")
@@ -254,11 +260,18 @@ def treat_on(letters_dict, atom):
 
 def validate_plan(domain, instance, plan_file):
     val_path = os.getenv("VAL")
-    cmd = f"{val_path}/validate {domain} {instance} {plan_file}"
-    response = os.popen(cmd).read()
+    if not val_path:
+        raise RuntimeError("VAL environment variable is not set")
+    cmd = [str(Path(val_path) / "validate"), domain, instance, plan_file]
+    result = subprocess.run(cmd, capture_output=True, text=True)  # noqa: S603
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"VAL validator failed (rc={result.returncode}): {result.stderr}"
+        )
+    response = result.stdout
     if 'Problem in domain' in response:
         raise Exception('Problem in domain: Check PDDL Writer')
-    return True if "Plan valid" in response else False
+    return "Plan valid" in response
 
 
 
