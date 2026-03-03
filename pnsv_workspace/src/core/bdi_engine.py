@@ -301,6 +301,7 @@ class BDIEngine:
             The goal / desire to resolve.
         """
         retries: int = 0
+        dag_dict: Optional[Dict[str, Any]] = None
         error_traces: List[str] = []
         correction_hints: List[str] = []
         error_correction_history: List[Dict[str, Any]] = []
@@ -441,7 +442,7 @@ class BDIEngine:
         # ── Epistemic Deadlock – retries exhausted ──
         self._handle_deadlock(
             desire=desire,
-            dag_dict=dag_dict,  # type: ignore[possibly-undefined]
+            dag_dict=dag_dict if dag_dict is not None else {},
             error_traces=error_traces,
             correction_hints=correction_hints,
         )
