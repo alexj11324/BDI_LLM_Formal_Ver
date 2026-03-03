@@ -258,17 +258,43 @@ def treat_on(letters_dict, atom):
 
 
 
-def validate_plan(domain, instance, plan_file):
+def run_val(args, domain_file, instance_file, plan_file, extra_flags=None):
+    """Shared helper to invoke the VAL validator via subprocess.
+
+    Handles environment-variable lookup, path construction,
+    subprocess execution, and return-code checking in one place.
+
+    Args:
+        args: unused legacy parameter (kept for API compat)
+        domain_file: path to the PDDL domain file
+        instance_file: path to the PDDL instance file
+        plan_file: path to the plan file
+        extra_flags: optional list of extra CLI flags (e.g. ["-v"])
+
+    Returns:
+        stdout output from the validator
+
+    Raises:
+        RuntimeError: if VAL is not set or the validator exits non-zero
+    """
     val_path = os.getenv("VAL")
     if not val_path:
         raise RuntimeError("VAL environment variable is not set")
-    cmd = [str(Path(val_path) / "validate"), domain, instance, plan_file]
+    validate_bin = str(Path(val_path) / "validate")
+    cmd = [validate_bin]
+    if extra_flags:
+        cmd.extend(extra_flags)
+    cmd.extend([domain_file, instance_file, plan_file])
     result = subprocess.run(cmd, capture_output=True, text=True)  # noqa: S603
     if result.returncode != 0:
         raise RuntimeError(
             f"VAL validator failed (rc={result.returncode}): {result.stderr}"
         )
-    response = result.stdout
+    return result.stdout
+
+
+def validate_plan(domain, instance, plan_file):
+    response = run_val(None, domain, instance, plan_file)
     if 'Problem in domain' in response:
         raise Exception('Problem in domain: Check PDDL Writer')
     return "Plan valid" in response
