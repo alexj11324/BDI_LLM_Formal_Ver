@@ -1,0 +1,12 @@
+{
+  "timestamp": "20260302_123830",
+  "domain": "blocksworld",
+  "num_instances_requested": 5,
+  "num_instances_selected": 5,
+  "model": "z-ai/glm5",
+  "api_base": "https://integrate.api.nvidia.com/v1",
+  "save_reasoning_trace": "true",
+  "reasoning_trace_max_chars": 12000,
+  "execution_mode": "FULL_VERIFIED",
+  "workers": 3
+}
