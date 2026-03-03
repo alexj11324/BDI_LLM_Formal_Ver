@@ -301,6 +301,7 @@ class BDIEngine:
             The goal / desire to resolve.
         """
         retries: int = 0
+        dag_dict: Dict[str, Any] = {}
         error_traces: List[str] = []
         correction_hints: List[str] = []
         error_correction_history: List[Dict[str, Any]] = []

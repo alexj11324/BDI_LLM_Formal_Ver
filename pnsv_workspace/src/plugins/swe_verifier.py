@@ -73,8 +73,12 @@ def _topological_sort(nodes: List[IntentionNode]) -> List[IntentionNode]:
 
     for node in nodes:
         for dep_id in node.dependencies:
-            if dep_id in node_map:
-                in_degree[node.node_id] += 1
+            if dep_id not in node_map:
+                raise ValueError(
+                    f"Node '{node.node_id}' depends on '{dep_id}' "
+                    f"which does not exist in the DAG."
+                )
+            in_degree[node.node_id] += 1
 
     queue: deque[str] = deque(
         nid for nid, deg in in_degree.items() if deg == 0
