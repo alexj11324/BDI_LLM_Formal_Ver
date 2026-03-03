@@ -1,4 +1,6 @@
 import os
+import subprocess
+from pathlib import Path
 import random
 import openai
 import numpy as np
@@ -81,11 +83,13 @@ class Instance_Generator():
 
     def plan_length_validity(self, domain, instance):        
         fast_downward_path = os.getenv("FAST_DOWNWARD")
-        # print(fast_downward_path)
-        # Remove > /dev/null to see the output of fast-downward
-        assert os.path.exists(f"{fast_downward_path}/fast-downward.py")
-        cmd = f"timeout 20s {fast_downward_path}/fast-downward.py {domain} {instance} --search \"astar(lmcut())\" > /dev/null"
-        os.system(cmd)
+        if not fast_downward_path:
+            raise RuntimeError("FAST_DOWNWARD environment variable is not set")
+        # Remove stdout capture to see the output of fast-downward
+        fd_script = str(Path(fast_downward_path) / "fast-downward.py")
+        assert os.path.exists(fd_script)
+        cmd = ["timeout", "20s", fd_script, domain, instance, "--search", "astar(lmcut())"]
+        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)  # noqa: S603
         plan_file = "sas_plan"
         try:
             with open(plan_file) as f:
@@ -136,7 +140,6 @@ class Instance_Generator():
             raise NotImplementedError
     
     def gen_goal_directed_instances_sokoban(self, n_instances):
-        CMD = "timeout 2s ./pddlgenerators/sokoban/random/sokoban-generator-typed -n {} -b {} -w {} -s"+f" {self.seed}"
         start, missing = self.add_existing_files_to_hash_set()
         c = missing.pop() if missing else start
         all_instances = []
@@ -150,9 +153,15 @@ class Instance_Generator():
             n_grid = random.randint(4,10)
             n_boxes = random.randint(1, 4)
             n_walls = random.randint(1, 4)
-            cmd_exec = CMD.format(n_grid, n_boxes, n_walls)
+            cmd_exec = [
+                "timeout", "2s",
+                "./pddlgenerators/sokoban/random/sokoban-generator-typed",
+                "-n", str(n_grid), "-b", str(n_boxes), "-w", str(n_walls),
+                "-s", str(self.seed),
+            ]
             count = 0
-            pddl = os.popen(cmd_exec).read()
+            result = subprocess.run(cmd_exec, capture_output=True, text=True)  # noqa: S603
+            pddl = result.stdout
             if '(define' not in pddl:
                 continue
             pddl = [i for i in pddl.split('\n') if not i.startswith(';')]
@@ -174,7 +183,6 @@ class Instance_Generator():
             n = self.data['n_instances'] + 1
         n_objs = range(3, max_objs+1)
         CWD = os.getcwd()
-        CMD = "./blocksworld 4 {}"
         start, missing = self.add_existing_files_to_hash_set()
 
         os.chdir("pddlgenerators/blocksworld/")
@@ -185,12 +193,13 @@ class Instance_Generator():
         for obj in n_objs:
             print(f'==================== Number of blocks {obj} ====================')
             count = 0
-            cmd_exec = CMD.format(obj)
+            cmd_exec = ["./blocksworld", "4", str(obj)]
             if c>n:
                 break
             while count<50:
                 with open(instance_file.format(c), "w+") as fd:
-                    pddl = os.popen(cmd_exec).read()
+                    result = subprocess.run(cmd_exec, capture_output=True, text=True)  # noqa: S603
+                    pddl = result.stdout
                     hash_of_instance = self.convert_pddl(pddl)
                     # hash_of_instance = hashlib.md5(pddl.encode('utf-8')).hexdigest()
                     if hash_of_instance in self.hashset:
@@ -245,7 +254,6 @@ class Instance_Generator():
     def gen_goal_directed_instances_logistics(self, n_instances):
         
         CWD = os.getcwd()
-        CMD = "./pddlgenerators/logistics/logistics -a {} -c {} -s {} -p {}"
         all_instances = []
         
         instance_file = f"{CWD}/{self.instances_template}"
@@ -272,11 +280,16 @@ class Instance_Generator():
                 global_count+=1
                 continue
             print("[INFO]: Instance label: ", instance_label)
-            cmd_exec = CMD.format(airplanes, cities, city_size, packages)
+            cmd_exec = [
+                "./pddlgenerators/logistics/logistics",
+                "-a", str(airplanes), "-c", str(cities),
+                "-s", str(city_size), "-p", str(packages),
+            ]
             count = 0
             while count<50:
                 with open(instance_file.format(c), "w+") as fd:
-                    pddl = os.popen(cmd_exec).read()
+                    result = subprocess.run(cmd_exec, capture_output=True, text=True)  # noqa: S603
+                    pddl = result.stdout
                     # print(pddl)
                     hash_of_instance = self.convert_pddl(pddl)
                     if hash_of_instance in self.hashset:

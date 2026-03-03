@@ -1,4 +1,5 @@
 import os
+import subprocess
 import random
 
 import yaml
@@ -44,10 +45,13 @@ class PromptGenerator:
     
     def compute_plan(self, domain, instance):
         fast_downward_path = os.getenv("FAST_DOWNWARD")
-        # Remove > /dev/null to see the output of fast-downward
-        assert os.path.exists(f"{fast_downward_path}/fast-downward.py")
-        cmd = f"{fast_downward_path}/fast-downward.py {domain} {instance} --search \"astar(lmcut())\" > /dev/null 2>&1"
-        os.system(cmd)
+        if not fast_downward_path:
+            raise RuntimeError("FAST_DOWNWARD environment variable is not set")
+        # Remove stdout/stderr capture to see the output of fast-downward
+        fd_script = str(Path(fast_downward_path) / "fast-downward.py")
+        assert os.path.exists(fd_script)
+        cmd = [fd_script, domain, instance, "--search", "astar(lmcut())"]
+        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)  # noqa: S603
 
         if not os.path.exists(self.plan_file):
             return ""
