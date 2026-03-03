@@ -1,5 +1,6 @@
 import random
 import os
+from . import run_val
 
 
 def get_action_text(action, data):
@@ -441,9 +442,7 @@ def reformat_feedback(feedback):
         return unmet_precond, unmet_goal
 
 def get_val_feedback(domain_file, instance_file, plan_file):
-    val = os.environ.get('VAL')
-    cmd = f'{val}/validate -v {domain_file} {instance_file} {plan_file}'
-    response = os.popen(cmd).read()
+    response = run_val(None, domain_file, instance_file, plan_file, extra_flags=["-v"])
     plan_valid = 'Plan valid' in response
     feedback = []
     repair = False
