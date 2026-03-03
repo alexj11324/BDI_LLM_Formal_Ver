@@ -19,6 +19,7 @@ BDI-LLM addresses the hallucination and logical inconsistency problems in LLM-ge
 - **MCP Server**: Exposes `generate_verified_plan` as an MCP tool for use by Claude Code, Cursor, and other agents.
 - **Coding Domain**: Specialized planner for SWE-bench software engineering tasks (`read-file` → `edit-file` → `run-test` action types).
 - **Ablation Support**: `--execution_mode` flag (NAIVE / BDI_ONLY / FULL_VERIFIED) for controlled experiments.
+- **PNSV Framework**: Pluggable Neuro-Symbolic Verification engine with domain-agnostic BDI reasoning, shared DAG utilities (`_dag_utils.py`), and R1 distillation formatter for student model fine-tuning.
 
 ## PlanBench Results
 
@@ -119,14 +120,21 @@ Exposes `generate_verified_plan(goal, domain, context, pddl_domain_file, pddl_pr
 
 ```
 BDI_LLM_Formal_Ver/
-├── src/bdi_llm/          # Core modules (planner, verifier, schemas, repair)
-├── src/mcp_server_bdi.py # MCP server entry point
-├── scripts/              # Evaluation and benchmark scripts
-├── tests/                # Unit and integration tests
-├── planbench_data/       # PlanBench PDDL instances + VAL binary (macOS arm64)
-├── runs/                 # Mutable benchmark outputs (not authoritative for paper)
-├── artifacts/            # Frozen paper evidence snapshots (do not modify)
-└── BDI_Paper/            # LaTeX source (AAAI 2026 format)
+├── src/bdi_llm/              # Core modules (planner, verifier, schemas, repair)
+├── src/mcp_server_bdi.py     # MCP server entry point
+├── scripts/                  # Evaluation and benchmark scripts
+├── tests/                    # Unit and integration tests
+├── planbench_data/           # PlanBench PDDL instances + VAL binary (macOS arm64)
+│   └── plan-bench/utils/     # Secure subprocess wrappers (run_val helper)
+├── pnsv_workspace/           # PNSV Framework (Pluggable Neuro-Symbolic Verification)
+│   ├── src/core/             # Domain-agnostic BDI engine, schemas, verification bus
+│   ├── src/plugins/          # Domain verifiers (PlanBench, SWE-bench)
+│   │   └── _dag_utils.py     # Shared topological sort (centralized)
+│   ├── src/dspy_pipeline/    # DSPy signatures, teacher config, R1 formatter
+│   └── tests/                # 90 unit tests (schemas, verifiers, engine, formatter)
+├── runs/                     # Mutable benchmark outputs (not authoritative for paper)
+├── artifacts/                # Frozen paper evidence snapshots (do not modify)
+└── BDI_Paper/                # LaTeX source (AAAI 2026 format)
 ```
 
 ## Documentation
@@ -134,6 +142,16 @@ BDI_LLM_Formal_Ver/
 - [User Guide](docs/USER_GUIDE.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Benchmarks](docs/BENCHMARKS.md)
+
+## Recent Changes
+
+### 2026-03-03
+
+- **Security**: Replaced all `os.popen`/`os.system` calls in `planbench_data/` with `subprocess.run` using explicit argument lists, `pathlib.Path` for path construction, return code checking, and environment variable validation ([PR #45](https://github.com/alexj11324/BDI_LLM_Formal_Ver/pull/45)).
+- **Refactor**: Extracted shared `run_val()` helper to centralize VAL validator invocation across `validate_plan` and `get_val_feedback`.
+- **Refactor**: Extracted shared `_dag_utils.topological_sort()` to eliminate duplicated topological sort logic between `swe_verifier.py` and `planbench_verifier.py` ([PR #43](https://github.com/alexj11324/BDI_LLM_Formal_Ver/pull/43)).
+- **Bugfix**: Fixed `dag_dict` initialization in BDI engine to use `None` instead of `{}`, properly distinguishing "no DAG produced" from "empty DAG".
+- **PNSV**: All 11 implementation tasks completed with 90 passing unit tests.
 
 ## License
 
