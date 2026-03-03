@@ -224,11 +224,20 @@ class SWEVerifier(BaseDomainVerifier):
         try:
             sorted_nodes = _topological_sort(intention_dag.nodes)
         except ValueError as exc:
+            message = str(exc)
+            hint = (
+                "Your plan references a dependency that does not exist. "
+                "Ensure every dependency points to a valid node_id in the DAG."
+            )
+            if "cycle" in message.lower():
+                hint = (
+                    "Your plan contains a dependency cycle.  Ensure that node "
+                    "dependencies form a valid DAG with no circular references."
+                )
             return (
                 False,
                 f"TopologicalSortError: {exc}",
-                "Your plan contains a dependency cycle.  Ensure that node "
-                "dependencies form a valid DAG with no circular references.",
+                hint,
             )
 
         # ── 3. Create sandbox and apply edits ──

@@ -206,8 +206,9 @@ class TestErrorHandling:
                 dependencies=["nonexistent_node"],
             ),
         ])
-        is_valid, trace, _ = verifier.verify_transition(belief, dag)
+        is_valid, trace, hint = verifier.verify_transition(belief, dag)
         assert is_valid is False
         assert "nonexistent_node" in trace
         assert "does not exist" in trace or "TopologicalSortError" in trace
-
+        assert "dependency" in hint.lower()
+        assert "node_id" in hint.lower()
