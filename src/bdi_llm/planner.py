@@ -52,7 +52,8 @@ class ResponsesAPILM(dspy.BaseLM):
     """
     def __init__(self, model, api_key, api_base, reasoning_effort='low',
                  max_tokens=16000, timeout=120, num_retries=5,
-                 use_chat_completions=False):
+                 use_chat_completions=False,
+                 chat_template_kwargs: Optional[Dict[str, Any]] = None):
         """
         Args:
             use_chat_completions: If True, use /v1/chat/completions endpoint (NVIDIA).
@@ -65,6 +66,7 @@ class ResponsesAPILM(dspy.BaseLM):
         self.timeout = timeout
         self.num_retries = num_retries
         self.use_chat_completions = use_chat_completions
+        self.chat_template_kwargs = chat_template_kwargs or {}
         self._last_reasoning_content = None  # Store reasoning for logging
         self._last_output_text = None  # Store raw model output text for audit
 
@@ -135,6 +137,8 @@ class ResponsesAPILM(dspy.BaseLM):
             'top_p': 1.0,
             'stream': True,
         }
+        if self.chat_template_kwargs:
+            payload['chat_template_kwargs'] = self.chat_template_kwargs
 
         # For reasoning models, add reasoning_effort if supported
         if self.reasoning_effort:
@@ -282,18 +286,20 @@ def configure_dspy():
     credentials = Config.validate(require_credentials=False)
 
     # Check if model is a reasoning model (gpt-5, o1, etc.)
-    is_reasoning_model = any(model_type in Config.MODEL_NAME.lower()
-                             for model_type in ['gpt-5', 'gpt-oss', 'o1', 'o3'])
+    model_name_lower = Config.MODEL_NAME.lower()
+    is_reasoning_model = any(model_type in model_name_lower
+                             for model_type in ['gpt-5', 'gpt-oss', 'o1', 'o3', 'glm5', 'glm-5', 'z-ai/glm'])
 
     # Check if model is a Gemini model
-    is_gemini_model = 'gemini' in Config.MODEL_NAME.lower()
+    is_gemini_model = 'gemini' in model_name_lower
 
     # Check if model uses Vertex AI (vertex_ai/ prefix)
-    is_vertex_ai = Config.MODEL_NAME.lower().startswith('vertex_ai/')
+    is_vertex_ai = model_name_lower.startswith('vertex_ai/')
 
     # Check if model uses NVIDIA API (nvidia/ prefix or integrate.api.nvidia.com)
-    is_nvidia_api = (Config.MODEL_NAME.lower().startswith('nvidia/') or
+    is_nvidia_api = (model_name_lower.startswith('nvidia/') or
                      (Config.OPENAI_API_BASE and 'nvidia' in Config.OPENAI_API_BASE.lower()))
+    is_glm_model = any(tag in model_name_lower for tag in ('glm5', 'glm-5', 'z-ai/glm'))
 
     # Prepare LM configuration based on model type
     lm_config = {
@@ -324,6 +330,11 @@ def configure_dspy():
                 timeout=120,
                 num_retries=5,
                 use_chat_completions=True,  # Use Chat Completions API for NVIDIA
+                chat_template_kwargs=(
+                    {'enable_thinking': True, 'clear_thinking': False}
+                    if is_glm_model
+                    else None
+                ),
             )
             dspy.configure(lm=lm)
             _dspy_configured = True
