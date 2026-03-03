@@ -1,3 +1,5 @@
+import subprocess
+import shlex
 import os
 import random
 import openai
@@ -169,7 +171,7 @@ class BWGenerator:
             cmd_exec = CMD.format(obj)
             for i in range(1, n):
                 with open(instance_file.format(c), "w+") as fd:
-                    pddl = os.popen(cmd_exec).read()
+                    pddl = subprocess.run(shlex.split(cmd_exec), shell=False, capture_output=True, text=True).stdout
                     hash_of_instance = hashlib.md5(pddl.encode('utf-8')).hexdigest()
                     if hash_of_instance in self.hashset:
                         print("[+]: Same instance, skipping...")
@@ -255,7 +257,7 @@ def treat_on(letters_dict, atom):
 def validate_plan(domain, instance, plan_file):
     val_path = os.getenv("VAL")
     cmd = f"{val_path}/validate {domain} {instance} {plan_file}"
-    response = os.popen(cmd).read()
+    response = subprocess.run(shlex.split(cmd), shell=False, capture_output=True, text=True).stdout
     if 'Problem in domain' in response:
         raise Exception('Problem in domain: Check PDDL Writer')
     return True if "Plan valid" in response else False
