@@ -444,8 +444,8 @@ def reformat_feedback(feedback):
 
 def get_val_feedback(domain_file, instance_file, plan_file):
     val = os.environ.get('VAL')
-    cmd = f'{val}/validate -v {domain_file} {instance_file} {plan_file}'
-    response = subprocess.run(shlex.split(cmd), shell=False, capture_output=True, text=True).stdout
+    cmd = [f'{val}/validate', '-v', domain_file, instance_file, plan_file]
+    response = subprocess.run(cmd, shell=False, capture_output=True, text=True).stdout
     plan_valid = 'Plan valid' in response
     feedback = []
     repair = False
