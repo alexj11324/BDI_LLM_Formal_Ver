@@ -1,13 +1,1 @@
-# Verification-Only Evaluation Progress
-
-## Task 1: Smoke Test Verification Script ✅
-- **Date**: 2026-03-03T14:10
-- **Status**: PASSED
-- **Command**: `PYTHONUNBUFFERED=1 python -u scripts/run_verification_only.py --domain blocksworld --max_instances 5`
-- **Results**: All 5 Blocksworld instances evaluated successfully
-  - Generation success: 5/5
-  - LLM accuracy (VAL): 100.0%
-  - Structural/VAL agreement: 5/5 (100.0%)
-  - No code fixes needed — script ran cleanly on first attempt
-- **Output file**: `runs/verification_results/verify_blocksworld_20260303_141045.json`
-- **Verification**: JSON output contains `summary` and `results` keys with all expected metrics
+[2026-03-05 06:16] Completed: Task 1 - Batch 1: 清理数据和临时文件。从 Git 移除了 swe_bench_workspace*/, runs/, mlruns/ 等实验数据(--cached)；删除了 PR21_FIXES.md, PROJECT_OVERVIEW.md, task_spec.md, tasks/PRD-tasks-*.md, docs/ARCHITECTURE.md 等已删除未提交文件；清理了 demo_mcp_client.py, jules_awaiting.txt, tests/test_mcp_server.py.bak 等杂项；移除了空目录 BDI_LLM_Formal_Ver/, prd/, swe_bench_data/ 等。共 98 文件被移除。Commit: f6beec2
