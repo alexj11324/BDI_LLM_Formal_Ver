@@ -1,11 +1,10 @@
 import os
-import json
 import logging
 from typing import Dict, List, Optional
 from openai import OpenAI
 
 from src.bdi_llm.config import Config
-from src.bdi_llm.schemas import BDIPlan, ActionNode, DependencyEdge
+from src.bdi_llm.schemas import BDIPlan
 from src.bdi_llm.dynamic_replanner.executor import ExecutionResult
 
 
@@ -19,15 +18,20 @@ class DynamicReplanner:
     where supported (e.g. qwen3.5-plus).
     """
 
-    def __init__(self, model_name: str = "qwen3.5-plus", max_retries: int = 3):
+    def __init__(self, model_name: str = None, max_retries: int = 3):
         # We explicitly want to use a model that supports caching.
+        if model_name is None:
+            model_name = Config.MODEL_NAME
         self.model_name = model_name
         self.max_retries = max_retries
         
-        # We use standard OpenAI client for DashScope compatible API
+        # Use Config for API key and base URL so it works with both
+        # DashScope and standard OpenAI environments
+        api_key = Config.DASHSCOPE_API_KEY or Config.OPENAI_API_KEY
+        base_url = Config.OPENAI_API_BASE or 'https://dashscope.aliyuncs.com/compatible-mode/v1'
         self.client = OpenAI(
-            api_key=Config.DASHSCOPE_API_KEY,
-            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            api_key=api_key,
+            base_url=base_url,
         )
 
     def generate_recovery_plan(
@@ -118,21 +122,11 @@ Output ONLY a valid JSON string (matching the BDIPlan schema: {{"goal_descriptio
 
                 content = response.choices[0].message.content.strip()
 
-                # Clean up markdown
-                if content.startswith("```json"):
-                    content = content[7:]
-                if content.startswith("```"):
-                    content = content[3:]
-                if content.endswith("```"):
-                    content = content[:-3]
-                content = content.strip()
-
-                plan_dict = json.loads(content)
-                
-                # Parse to BDIPlan
-                nodes = [ActionNode(**n) for n in plan_dict.get('nodes', [])]
-                edges = [DependencyEdge(**e) for e in plan_dict.get('edges', [])]
-                return BDIPlan(goal_description=plan_dict.get('goal_description', "Recovery plan"), nodes=nodes, edges=edges)
+                # Delegate all JSON parsing + field normalisation to BDIPlan
+                plan = BDIPlan.from_llm_text(content)
+                if plan is not None:
+                    return plan
+                logger.warning(f"Replanning attempt {attempt+1}: from_llm_text returned None")
 
             except Exception as e:
                 logger.warning(f"Replanning attempt {attempt+1} failed: {e}")

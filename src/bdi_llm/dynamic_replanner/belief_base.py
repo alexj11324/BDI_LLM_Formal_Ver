@@ -67,7 +67,10 @@ class BeliefBase:
 
     def query(self, predicate_name: str) -> List[str]:
         """Return all propositions matching a predicate name."""
-        return [p for p in self.propositions if p.startswith(f"({predicate_name} ")]
+        return [
+            p for p in self.propositions
+            if p.startswith(f"({predicate_name} ") or p == f"({predicate_name})"
+        ]
 
     # ------------------------------------------------------------------ #
     # State updates

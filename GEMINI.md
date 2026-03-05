@@ -17,7 +17,7 @@
 
 ## Workflow & Guidelines
 - **Development Workflow:** Evaluate the complete BDI closed loop — plan generation → 3-layer verification → auto-repair → re-verification. Compare across ablation modes (NAIVE / BDI_ONLY / FULL_VERIFIED / FULL_VERIFIED+REPAIR).
-- **Testing:** Run test sets across Blocksworld, Logistics, and Depots domains using `scripts/run_planbench_full.py` with `--execution_mode FULL_VERIFIED`. Also use `scripts/run_verification_only.py` for verification-only baselines and `scripts/run_dynamic_replanning.py` for the replanning pipeline.
+- **Testing:** Run test sets across Blocksworld, Logistics, and Depots domains using `scripts/evaluation/run_planbench_full.py` with `--execution_mode FULL_VERIFIED`. Also use `scripts/evaluation/run_verification_only.py` for verification-only baselines and `scripts/replanning/run_dynamic_replanning.py` for the replanning pipeline.
 - **API Use:** All Batch inference configurations must use the `DASHSCOPE_API_KEY`.
 - **Note:** Never run actions without an explicit, verifiable objective to avoid unintended side effects. Keep logic simple, strictly verified.
 

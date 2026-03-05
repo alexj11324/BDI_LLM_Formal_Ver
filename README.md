@@ -93,16 +93,20 @@ chmod +x planbench_data/planner_tools/VAL/validate
 ```text
 BDI_LLM_Formal_Ver/
 ├── src/
-│   ├── bdi_llm/             # Legacy namespace core modules
-│   └── mcp_server_bdi.py    # Standard MCP server entrypoint
-├── pnsv_workspace/          # Core Pluggable Neuro-Symbolic Verification Engine
-│   ├── src/core/            # Verifier Bus and BDI Engine orchestrator
-│   ├── src/plugins/         # Implementations of Domain Verifiers (PlanBench, SWE)
-│   └── src/dspy_pipeline/   # DSPy Logic, Prompts, Signatures, R1 Formatter
-├── scripts/                 # Entrypoints for benchmarking and evaluations
-├── tests/                   # Pytest suite
-├── planbench_data/          # PDDL datasets (Blocksworld, Logistics, etc.)
-└── conductor/               # AI Documentation context configurations
+│   ├── bdi_llm/             # Core planning, verification, and repair modules
+│   └── interfaces/          # MCP server and CLI entry points
+├── scripts/                 # Categorized evaluation/batch/replanning/paper scripts
+│   ├── evaluation/          # PlanBench evaluation scripts
+│   ├── batch/               # Batch inference scripts
+│   ├── replanning/          # Dynamic replanning scripts
+│   └── paper/               # Paper figure generation scripts
+├── tests/                   # Categorized test suite
+│   ├── unit/                # Unit tests
+│   ├── integration/         # Integration tests
+│   └── smoke/               # Smoke tests
+├── docs/                    # All documentation (C4, Conductor, archives)
+├── configs/                 # Configuration files and code style guides
+└── planbench_data/          # PDDL datasets (Blocksworld, Logistics, etc.)
 ```
 
 ### The PNSV Verification Loop
@@ -145,10 +149,10 @@ You must provide *at least one* LLM provider key to use the DSPy planner.
 
 | Command | Description |
 | ------- | ----------- |
-| `python scripts/run_planbench_full.py --domain blocksworld` | Execute the full 100+ blocksworld domain benchmarks |
-| `python scripts/run_evaluation.py --mode demo` | Run a live CLI demo where you input a prompt and watch the engine verify it |
-| `python scripts/run_verification_only.py` | Run pure ground-truth validation offline (no LLMs pinged) |
-| `python src/mcp_server_bdi.py` | Launch the server as a Model Context Protocol endpoint |
+| `python scripts/evaluation/run_planbench_full.py --domain blocksworld` | Execute the full 100+ blocksworld domain benchmarks |
+| `python scripts/evaluation/run_evaluation.py --mode demo` | Run a live CLI demo where you input a prompt and watch the engine verify it |
+| `python scripts/evaluation/run_verification_only.py` | Run pure ground-truth validation offline (no LLMs pinged) |
+| `python src/interfaces/mcp_server.py` | Launch the server as a Model Context Protocol endpoint |
 
 *Pass `--execution_mode FULL_VERIFIED` to benchmark scripts to trigger the full 3-layer architecture, or `--execution_mode NAIVE` for plain LLM un-verified generation.*
 
@@ -228,8 +232,8 @@ The server exposes `generate_verified_plan` ensuring tools invoke commands only 
 
 ## Further Documentation
 
-- [**Conductor Setup**](conductor/index.md): Design guidelines, Git strategies, and project intent.
-- [**C4 Architecture**](C4-Documentation/c4-context.md): Deep-dive into Context & Container boundaries.
+- [**Conductor Setup**](docs/conductor/index.md): Design guidelines, Git strategies, and project intent. *(moved from `conductor/`)*
+- [**C4 Architecture**](docs/c4/c4-context.md): Deep-dive into Context & Container boundaries.
 - [**Technical Reference**](docs/TECHNICAL_REFERENCE.md): 10-chapter technical development manual.
 - [**Benchmarking Status**](docs/BENCHMARKS.md): Historical execution outcomes against PlanBench.
-- [**Wiki Catalogue**](wiki-catalogue.md): Full top-level repository index.
+- [**Wiki Catalogue**](docs/wiki-catalogue.md): Full top-level repository index.
