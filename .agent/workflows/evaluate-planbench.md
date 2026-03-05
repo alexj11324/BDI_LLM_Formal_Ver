@@ -4,7 +4,7 @@ description: Evaluate the BDI planner against PlanBench domains and report succe
 
 # Evaluate PlanBench Workflow
 
-1. Check that the VAL binary is available at `workspaces/planbench_data/planner_tools/VAL/validate`.
+1. Check that the VAL binary is available at `planbench_data/planner_tools/VAL/validate`.
 2. Run the evaluation script against the target domain:
 ```bash
 # Evaluate Blocksworld with 400 workers for max throughput
