@@ -7,14 +7,8 @@ beliefs and desires, and verifies the resulting plan structure.
 Usage:
     python src/interfaces/cli.py
 """
-import sys
-import os
-
-# Add src to python path to allow imports
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
-
-from src.bdi_llm.planner import BDIPlanner
-from src.bdi_llm.verifier import PlanVerifier
+from bdi_llm.planner import BDIPlanner
+from bdi_llm.verifier import PlanVerifier
 
 def main():
     print("Initializing BDI Planner with DSPy...")

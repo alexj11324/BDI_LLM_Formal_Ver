@@ -1,8 +1,5 @@
-import sys
-import os
-from pathlib import Path
+"""Shared test configuration.
 
-# Add src to python path for all tests
-src_path = str(Path(__file__).parent.parent / "src")
-if src_path not in sys.path:
-    sys.path.insert(0, src_path)
+The bdi_llm package is available via ``pip install -e .`` (editable install).
+No sys.path manipulation is required.
+"""

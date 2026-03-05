@@ -38,10 +38,10 @@ Do NOT try to fix everything at once. Focus on highest-impact fixes.
 ## Step 4: Implement Fix
 
 Based on the analysis:
-- **Prompt issue** → Edit DSPy signatures in `src/bdi_llm/planner.py`
+- **Prompt issue** → Edit DSPy signatures in `src/bdi_llm/planner/` (sub-package)
 - **Verification error** → Fix `src/bdi_llm/symbolic_verifier.py`
 - **Domain gap** → Update PDDL domain files in `planbench_data/`
-- **Tool description** → Improve `src/mcp_server_bdi.py` tool schema
+- **Tool description** → Improve `src/interfaces/mcp_server.py` tool schema
 
 Make the minimal change needed. Run `/run-tests` after each fix to verify no regressions.
 
