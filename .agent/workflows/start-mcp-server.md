@@ -13,7 +13,7 @@ source .venv/bin/activate
 
 2. Start the MCP server in stdio mode:
 ```bash
-python -m src.mcp_server_bdi
+python src/interfaces/mcp_server.py
 ```
 
 3. The server is now running and ready to accept `generate_verified_plan` tool calls.
