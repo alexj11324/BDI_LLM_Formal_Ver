@@ -36,8 +36,8 @@ from src.bdi_llm.schemas import BDIPlan
 from src.bdi_llm.dynamic_replanner.executor import PlanExecutor, ExecutionResult
 from src.bdi_llm.dynamic_replanner.replanner import DynamicReplanner
 
-# Reuse PDDL parsing and NL conversion
-from scripts.evaluation.run_planbench_full import (
+# Reuse PDDL parsing and NL conversion from planbench_utils
+from scripts.evaluation.planbench_utils import (
     parse_pddl_problem,
     pddl_to_natural_language,
     resolve_domain_file,
@@ -45,27 +45,8 @@ from scripts.evaluation.run_planbench_full import (
     find_all_instances,
 )
 
-IS_TTY = sys.stdout.isatty()
-if IS_TTY:
-    from tqdm import tqdm
-else:
-    class tqdm:
-        def __init__(self, iterable=None, total=None, desc="", **kwargs):
-            self.iterable = iterable
-            self.total = total or (len(iterable) if iterable else 0)
-            self.desc = desc
-            self.n = 0
-        def __iter__(self):
-            for item in self.iterable:
-                yield item
-                self.n += 1
-                if self.n % 10 == 0 or self.n == self.total:
-                    print(f"{self.desc}: {self.n}/{self.total}")
-        def update(self, n=1):
-            self.n += n
-        def close(self): pass
-        @staticmethod
-        def write(s): print(s)
+# Background-safe progress: unified tqdm compat from planbench_utils
+from scripts.evaluation.planbench_utils.tqdm_compat import tqdm
 
 
 def generate_and_replan(

@@ -122,7 +122,8 @@ def main() -> None:
     os.environ["REASONING_TRACE_MAX_CHARS"] = str(args.reasoning_trace_max_chars)
     os.environ["AGENT_EXECUTION_MODE"] = "FULL_VERIFIED"
 
-    from scripts.evaluation.run_planbench_full import evaluate_single_instance, find_all_instances
+    from scripts.evaluation.run_planbench_full import evaluate_single_instance
+    from scripts.evaluation.planbench_utils import find_all_instances
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_dir = Path(args.output_dir) if args.output_dir else REPO_ROOT / "runs" / f"glm5_planbench_{args.num_instances}_eval_{timestamp}"

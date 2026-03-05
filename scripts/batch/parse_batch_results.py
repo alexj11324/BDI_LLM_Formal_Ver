@@ -25,7 +25,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from src.bdi_llm.schemas import BDIPlan
 from src.bdi_llm.verifier import PlanVerifier
 from src.bdi_llm.symbolic_verifier import PDDLSymbolicVerifier
-from scripts.evaluation.run_planbench_full import (
+from scripts.evaluation.planbench_utils import (
     parse_pddl_problem,
     pddl_to_natural_language,
     resolve_domain_file,

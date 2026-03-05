@@ -33,33 +33,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
 import argparse
 
-# Background-safe progress: use tqdm only when stdout is a tty
-IS_TTY = sys.stdout.isatty()
-if IS_TTY:
-    from tqdm import tqdm
-else:
-    # Dummy tqdm for nohup/background execution
-    class tqdm:
-        def __init__(self, iterable=None, total=None, desc="", **kwargs):
-            self.iterable = iterable
-            self.total = total or (len(iterable) if iterable else 0)
-            self.desc = desc
-            self.n = 0
-            if self.total:
-                print(f"{desc}: 0/{self.total}")
-        def __iter__(self):
-            for item in self.iterable:
-                yield item
-                self.n += 1
-                if self.n % 10 == 0 or self.n == self.total:
-                    print(f"{self.desc}: {self.n}/{self.total}")
-        def update(self, n=1):
-            self.n += n
-            if self.n % 10 == 0 or self.n == self.total:
-                print(f"{self.desc}: {self.n}/{self.total}")
-        def close(self): pass
-        @staticmethod
-        def write(s): print(s)
+# Background-safe progress: unified tqdm compat from planbench_utils
+from scripts.evaluation.planbench_utils.tqdm_compat import tqdm
 
 # Setup path
 sys.path.insert(0, str(Path(__file__).parents[1]))
@@ -69,8 +44,8 @@ from src.bdi_llm.config import Config
 from src.bdi_llm.schemas import BDIPlan
 from src.bdi_llm.verifier import PlanVerifier
 
-# Reuse PDDL parsing and NL conversion from existing script
-from scripts.evaluation.run_planbench_full import (
+# Reuse PDDL parsing and NL conversion from planbench_utils
+from scripts.evaluation.planbench_utils import (
     parse_pddl_problem,
     pddl_to_natural_language,
     resolve_domain_file,

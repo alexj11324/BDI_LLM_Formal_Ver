@@ -43,8 +43,8 @@ from src.bdi_llm.batch_engine import (
 )
 from src.bdi_llm.dynamic_replanner.executor import PlanExecutor
 
-# Reuse PDDL utilities from existing evaluation script
-from scripts.evaluation.run_planbench_full import (
+# Reuse PDDL utilities from planbench_utils
+from scripts.evaluation.planbench_utils import (
     parse_pddl_problem,
     pddl_to_natural_language,
     resolve_domain_file,
