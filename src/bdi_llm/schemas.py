@@ -1,5 +1,10 @@
-from pydantic import BaseModel, Field
+import json
+import logging
 from typing import List, Dict, Any, Optional
+
+from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
 
 class ActionNode(BaseModel):
     """
@@ -39,3 +44,71 @@ class BDIPlan(BaseModel):
         for edge in self.edges:
             G.add_edge(edge.source, edge.target, relationship=edge.relationship)
         return G
+
+    @classmethod
+    def from_llm_text(cls, text: str) -> Optional["BDIPlan"]:
+        """Parse raw LLM text output into a *BDIPlan*, with field normalisation.
+
+        Handles:
+        - Markdown code-fence stripping (```json ... ```)
+        - Node field normalisation ('action'/'type' → 'action_type', auto-id)
+        - Edge field normalisation ('from_id'/'from'/'to_id'/'to' → 'source'/'target')
+
+        Returns *None* if the text cannot be parsed or validated.
+        """
+        content = text.strip()
+
+        # Strip markdown fences
+        if content.startswith("```json"):
+            content = content[7:]
+        if content.startswith("```"):
+            content = content[3:]
+        if content.endswith("```"):
+            content = content[:-3]
+        content = content.strip()
+
+        try:
+            plan_dict = json.loads(content)
+        except json.JSONDecodeError:
+            logger.warning("Failed to parse JSON from LLM output")
+            return None
+
+        # Normalise nodes
+        raw_nodes = plan_dict.get("nodes", [])
+        normalised_nodes = []
+        for n in raw_nodes:
+            if "action_type" not in n:
+                n["action_type"] = n.pop("action", n.pop("type", "unknown"))
+            if "description" not in n:
+                n["description"] = f"{n.get('action_type', '')} {n.get('params', '')}"
+            if "id" not in n:
+                n["id"] = f"s{len(normalised_nodes) + 1}"
+            normalised_nodes.append(n)
+
+        # Normalise edges
+        raw_edges = plan_dict.get("edges", [])
+        normalised_edges = []
+        for e in raw_edges:
+            if "source" not in e:
+                e["source"] = e.pop("from_id", e.pop("from", ""))
+            if "target" not in e:
+                e["target"] = e.pop("to_id", e.pop("to", ""))
+            normalised_edges.append(e)
+
+        try:
+            nodes = [ActionNode(**n) for n in normalised_nodes]
+            edges = [DependencyEdge(**e) for e in normalised_edges]
+            return cls(
+                goal_description=plan_dict.get("goal_description", "Generated plan"),
+                nodes=nodes,
+                edges=edges,
+            )
+        except Exception as e:
+            logger.warning(f"Pydantic validation failed: {e}")
+            return None
+
+
+# Backward-compatible module-level alias
+def parse_plan_from_text(text: str) -> Optional[BDIPlan]:
+    """Thin wrapper kept for backward compatibility — delegates to *BDIPlan.from_llm_text*."""
+    return BDIPlan.from_llm_text(text)

@@ -15,7 +15,7 @@ description: Core project context for BDI LLM Formal Verification. Always loaded
 ## Architecture
 - **Planner**: DSPy-based `BDIPlanner` (`src/bdi_llm/planner.py`)
 - **Verifier**: PDDL + VAL (`src/bdi_llm/symbolic_verifier.py`)
-- **MCP Server**: `src/mcp_server_bdi.py` exposes `generate_verified_plan` tool
+- **MCP Server**: `src/interfaces/mcp_server.py` exposes `generate_verified_plan` tool
 - **Domains**: blocksworld, logistics, depots (existing), coding (planned)
 
 ## Key Files

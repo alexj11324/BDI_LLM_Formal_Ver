@@ -91,16 +91,20 @@ chmod +x planbench_data/planner_tools/VAL/validate
 ```text
 BDI_LLM_Formal_Ver/
 ├── src/
-│   ├── bdi_llm/             # 早期的核心模块层 (为向后兼容保留)
-│   └── mcp_server_bdi.py    # MCP 服务网关挂载点
-├── pnsv_workspace/          # 最新可插拔联合符号验证器（PNSV）业务舱
-│   ├── src/core/            # 验证总线设计与异步 BDI 的调度微核心
-│   ├── src/plugins/         # 领域特化注入器代码（目前已实现 PlanBench 与 SWE）
-│   └── src/dspy_pipeline/   # 与 LLM 交互提示的格式管理、Signature 定义及学生模型蒸馏输出器
-├── scripts/                 # 用于一键批量触发评估系统跑分的总控制器
-├── tests/                   # 近百个标准测试断言单元组件
-├── planbench_data/          # 静态的大型基础 Blocksworld/Logistics PDDL 参照数据集
-└── conductor/               # 存放所有 AI 架构和工作流定义的标准化文档舱
+│   ├── bdi_llm/             # 核心模块层
+│   └── interfaces/          # MCP 服务网关与 CLI
+├── scripts/                 # 按功能分类的评估/批量/重规划/论文脚本
+│   ├── evaluation/          # PlanBench 评估脚本
+│   ├── batch/               # 批量推理脚本
+│   ├── replanning/          # 动态重规划脚本
+│   └── paper/               # 论文图表生成脚本
+├── tests/                   # 按类型分类的测试
+│   ├── unit/                # 单元测试
+│   ├── integration/         # 集成测试
+│   └── smoke/               # 冒烟测试
+├── docs/                    # 所有文档（C4架构、Conductor、归档等）
+├── configs/                 # 配置文件与代码风格指南
+└── planbench_data/          # 静态的大型基础 Blocksworld/Logistics PDDL 参照数据集
 ```
 
 ### PNSV 运行全生命周期
@@ -121,10 +125,10 @@ BDI_LLM_Formal_Ver/
 
 | 指令 | 描述 |
 | ------- | ----------- |
-| `python scripts/run_planbench_full.py --domain blocksworld` | 触发所有积木世界数据集并自动开启自我对抗评估跑分 |
-| `python scripts/run_evaluation.py --mode demo` | 启用实时 CLI 会话模式。输入日常对话让验证器当场执行任务判断 |
-| `python scripts/run_verification_only.py` | 纯净的线下校验模式。用以断开网络连接专门检查给定的静态输出能否过审 |
-| `python src/mcp_server_bdi.py` | 把该工作流作为一个守护进程端口暴露出基于 MCP 路由的智能服务 |
+| `python scripts/evaluation/run_planbench_full.py --domain blocksworld` | 触发所有积木世界数据集并自动开启自我对抗评估跑分 |
+| `python scripts/evaluation/run_evaluation.py --mode demo` | 启用实时 CLI 会话模式。输入日常对话让验证器当场执行任务判断 |
+| `python scripts/evaluation/run_verification_only.py` | 纯净的线下校验模式。用以断开网络连接专门检查给定的静态输出能否过审 |
+| `python src/interfaces/mcp_server.py` | 把该工作流作为一个守护进程端口暴露出基于 MCP 路由的智能服务 |
 
 *支持向部分跑分命令附加 `--execution_mode FULL_VERIFIED` 来触发完整的三层防伪机制，或是采用 `--execution_mode NAIVE` 开启纯野生大模型幻觉率对比测算。*
 
@@ -200,8 +204,8 @@ docker run -i --rm -e OPENAI_API_KEY=$OPENAI_API_KEY bdi-verifier
 
 欲了解详尽设计逻辑和代码设计缘由请查阅我们的核心知识图谱体系：
 
-- [**Conductor 设计档案**](conductor/index.md): 工作习惯与设计初衷
-- [**C4 级别系统全架构定义**](C4-Documentation/c4-context.md): 快速鸟瞰各大类容器关系链图
+- [**Conductor 设计档案**](docs/conductor/index.md): 工作习惯与设计初衷
+- [**C4 级别系统全架构定义**](docs/c4/c4-context.md): 快速鸟瞰各大类容器关系链图
 - [**终极技术白皮书卷宗**](docs/TECHNICAL_REFERENCE.md): 共十个章节总计上万字的极端详细工程师入职读物
 - [**跑分成绩公告板**](docs/BENCHMARKS.md): 记录在纯自然状态和受系统拦截干预情况下的具体 AI 评测差额
-- [**项目文档综合导航引擎 (Wiki)**](wiki-catalogue.md): 全仓储文件的中心引导目录位
+- [**项目文档综合导航引擎 (Wiki)**](docs/wiki-catalogue.md): 全仓储文件的中心引导目录位

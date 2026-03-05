@@ -56,10 +56,10 @@ The server exposes the following tools to the agent:
 
 ```bash
 # Run with physics validation on 3 instances
-python scripts/run_planbench_full.py --domain blocksworld --max_instances 3
+python scripts/evaluation/run_planbench_full.py --domain blocksworld --max_instances 3
 
 # Run full 100-instance benchmark
-python scripts/run_planbench_full.py --domain blocksworld --max_instances 100
+python scripts/evaluation/run_planbench_full.py --domain blocksworld --max_instances 100
 ```
 
 ### Interpreting Results
@@ -191,7 +191,7 @@ if not is_valid:
 from run_planbench_full import parse_pddl_problem
 
 # Parse PDDL problem file
-pddl_data = parse_pddl_problem('planbench_data/plan-bench/instances/blocksworld/generated/instance-10.pddl')
+pddl_data = parse_pddl_problem('workspaces/planbench_data/plan-bench/instances/blocksworld/generated/instance-10.pddl')
 
 # Access init_state
 init_state = pddl_data['init_state']
@@ -313,7 +313,7 @@ pytest tests/test_integration.py -q
 pytest tests/test_val_integration.py -q
 
 # Run small batch
-python scripts/run_planbench_full.py --domain blocksworld --max_instances 3
+python scripts/evaluation/run_planbench_full.py --domain blocksworld --max_instances 3
 ```
 
 `tests/test_integration.py` now skips automatically when provider credentials are missing/invalid.
@@ -330,9 +330,9 @@ python scripts/run_planbench_full.py --domain blocksworld --max_instances 3
 ### 2. VAL Verifier Platform Dependency
 
 **Issue**: VAL binary is platform-specific
-**Status**: Repository currently includes a macOS arm64 binary at `planbench_data/planner_tools/VAL/validate`
+**Status**: Repository currently includes a macOS arm64 binary at `workspaces/planbench_data/planner_tools/VAL/validate`
 **Workaround**: On unsupported platforms, compile VAL locally or use Docker
-**Solution**: Keep a platform-matched VAL binary in `planbench_data/planner_tools/VAL/`
+**Solution**: Keep a platform-matched VAL binary in `workspaces/planbench_data/planner_tools/VAL/`
 
 ### 3. Provider Credentials Required for API-Dependent Testing
 
@@ -399,9 +399,9 @@ plan, valid, metrics = generate_bdi_plan(beliefs, desire, init_state)
 
 ## References
 
-- **Conductor Setup**: `conductor/index.md`
+- **Conductor Setup**: `docs/conductor/index.md`
 - [Wiki Catalogue](../wiki-catalogue.md)
-- **C4 Architecture**: `C4-Documentation/c4-context.md`
+- **C4 Architecture**: `docs/c4/c4-context.md`
 - **Technical Reference**: `docs/TECHNICAL_REFERENCE.md`
 - **Benchmarks**: `docs/BENCHMARKS.md`
 - **Test Suite**: `tests/test_integrated_verification.py`, `tests/test_integration_phase2.py`
