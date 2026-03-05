@@ -1,7 +1,14 @@
 
 import dspy
 from typing import Set, Dict
-from .planner import BDIPlanner, _GRAPH_STRUCTURE_COMMON, _STATE_TRACKING_HEADER, _LOGICOT_HEADER, _LOGICOT_PROTOCOL_DETAILED, _REMINDER
+from .planner import BDIPlanner
+from .planner.prompts import (
+    _GRAPH_STRUCTURE_COMMON,
+    _STATE_TRACKING_HEADER,
+    _LOGICOT_HEADER,
+    _LOGICOT_PROTOCOL_DETAILED,
+    _REMINDER,
+)
 from .schemas import BDIPlan
 
 class GeneratePlanCoding(dspy.Signature):

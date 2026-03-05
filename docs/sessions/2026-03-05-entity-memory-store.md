@@ -33,7 +33,7 @@
 | **replanner.py** | `src/bdi_llm/dynamic_replanner/replanner.py` | Replanning orchestrator |
 | **executor.py** | `src/bdi_llm/dynamic_replanner/executor.py` | Plan step execution + divergence detection |
 | **planner.py** | `src/bdi_llm/planner.py` | Main LLM plan generation; timeout = 600s |
-| **run_dynamic_replanning.py** | `scripts/run_dynamic_replanning.py` | E2E evaluator with checkpoint resume |
+| **run_dynamic_replanning.py** | `scripts/replanning/run_dynamic_replanning.py` | E2E evaluator with checkpoint resume |
 | **.env** | `.env` | Model config, API endpoint, timeout settings |
 
 ### 🌍 Domains
@@ -67,5 +67,5 @@ Evaluator (run_dynamic_replanning.py)
 - `Config.TIMEOUT` = 600 seconds (unified across all LLM calls)
 - `python-dotenv` does NOT support `${VAR}` shell expansion
 - Auto-repair features live on `feature/repair` branch, never on `main`
-- Evaluation script is `scripts/run_verification_only.py` (verification) or `scripts/run_dynamic_replanning.py` (replanning)
+- Evaluation script is `scripts/evaluation/run_verification_only.py` (verification) or `scripts/replanning/run_dynamic_replanning.py` (replanning)
 - VAL binary path: system-installed, invoked via `subprocess.run`

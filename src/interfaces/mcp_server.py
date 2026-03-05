@@ -11,18 +11,16 @@ The server uses FastMCP for easy MCP tool registration and supports multiple pla
 """
 
 from mcp.server.fastmcp import FastMCP
-import sys
 import subprocess
 import os
 import tempfile
 import shlex
 from typing import List, Tuple
 
-# Add src to python path to allow imports
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
-
-from src.bdi_llm.planner import BDIPlanner
-from src.bdi_llm.symbolic_verifier import IntegratedVerifier
+# Imports rely on the project being installed (pip install -e .)
+# or PYTHONPATH including the repository root.
+from bdi_llm.planner import BDIPlanner
+from bdi_llm.symbolic_verifier import IntegratedVerifier
 
 mcp = FastMCP("BDI-LLM Verifier")
 

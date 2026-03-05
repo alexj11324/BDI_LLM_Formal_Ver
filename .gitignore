@@ -105,12 +105,28 @@ BDI_Paper/
 # Unrelated projects
 activation_functions/
 AI-Research-SKILLs/
-runs/
-swe_bench_workspace/
-
 
 # RA meeting transcripts (private)
 RA*.txt
 RA 第二次_原文.txt
 RA第一次会议.txt
 *.resolved
+
+# === Reorg additions (2026-03-05) ===
+
+# All experiment workspaces and data (consolidated)
+workspaces/
+
+# Generated outputs
+artifacts/
+reports/
+exports/
+tmp_ws*/
+runs/
+
+# Local artifacts
+firebase-debug.log
+*.db
+
+# Evaluation logs
+logs/

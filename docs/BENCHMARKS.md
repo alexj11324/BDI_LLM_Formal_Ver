@@ -62,10 +62,10 @@ To run the benchmarks locally:
 
 ```bash
 # Run a subset of PlanBench (requires provider credentials)
-python scripts/run_planbench_full.py --domain blocksworld --max_instances 10
+python scripts/evaluation/run_planbench_full.py --domain blocksworld --max_instances 10
 
 # Run evaluation unit tests (offline)
-python scripts/run_evaluation.py --mode unit
+python scripts/evaluation/run_evaluation.py --mode unit
 
 # API-dependent integration tests (auto-skip when credentials unavailable)
 pytest tests/test_integration.py -q

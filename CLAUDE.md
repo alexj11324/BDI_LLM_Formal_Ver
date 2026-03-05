@@ -18,31 +18,31 @@ pip install -r requirements.txt
 pytest
 
 # Run a single test file
-pytest tests/test_verifier.py -v
+pytest tests/unit/test_verifier.py -v
 
 # Evaluation modes
-python scripts/run_evaluation.py --mode unit          # offline unit tests
-python scripts/run_evaluation.py --mode demo-offline  # offline demo
-python scripts/run_evaluation.py --mode demo          # needs API key
-python scripts/run_evaluation.py --mode benchmark     # needs API key
+python scripts/evaluation/run_evaluation.py --mode unit          # offline unit tests
+python scripts/evaluation/run_evaluation.py --mode demo-offline  # offline demo
+python scripts/evaluation/run_evaluation.py --mode demo          # needs API key
+python scripts/evaluation/run_evaluation.py --mode benchmark     # needs API key
 
 # PlanBench full evaluation
-python scripts/run_planbench_full.py --domain blocksworld --max_instances 100
-python scripts/run_planbench_full.py --all_domains --max_instances 50
-python scripts/run_planbench_full.py --domain blocksworld --resume runs/checkpoint.json
+python scripts/evaluation/run_planbench_full.py --domain blocksworld --max_instances 100
+python scripts/evaluation/run_planbench_full.py --all_domains --max_instances 50
+python scripts/evaluation/run_planbench_full.py --domain blocksworld --resume runs/checkpoint.json
 
 # Ablation modes (NAIVE / BDI_ONLY / FULL_VERIFIED) — sets AGENT_EXECUTION_MODE internally
-python scripts/run_planbench_full.py --all_domains --execution_mode NAIVE --output_dir runs/ablation_NAIVE --parallel --workers 30
-python scripts/run_planbench_full.py --all_domains --execution_mode BDI_ONLY --output_dir runs/ablation_BDI_ONLY --parallel --workers 30
+python scripts/evaluation/run_planbench_full.py --all_domains --execution_mode NAIVE --output_dir runs/ablation_NAIVE --parallel --workers 30
+python scripts/evaluation/run_planbench_full.py --all_domains --execution_mode BDI_ONLY --output_dir runs/ablation_BDI_ONLY --parallel --workers 30
 
 # MCP server (exposes generate_verified_plan tool to Claude Code / Cursor / etc.)
-python src/mcp_server_bdi.py
+python src/interfaces/mcp_server.py
 
 # SWE-bench harness
-python scripts/swe_bench_harness.py
+python scripts/swe_bench/swe_bench_harness.py
 
 # Verify frozen paper data integrity
-python scripts/verify_paper_eval_snapshot.py
+python scripts/evaluation/verify_paper_eval_snapshot.py
 ```
 
 ## Architecture
@@ -60,11 +60,11 @@ python scripts/verify_paper_eval_snapshot.py
 
 ### MCP Server
 
-`src/mcp_server_bdi.py` exposes a `generate_verified_plan` FastMCP tool. External agents (Claude Code, Cursor, etc.) call it with a `PlanRequest` (goal, domain, context, PDDL paths) and receive a verified plan or error report. Entry point for production use.
+`src/interfaces/mcp_server.py` exposes a `generate_verified_plan` FastMCP tool. External agents (Claude Code, Cursor, etc.) call it with a `PlanRequest` (goal, domain, context, PDDL paths) and receive a verified plan or error report. Entry point for production use.
 
 ### SWE-bench Path
 
-`scripts/swe_bench_harness.py` uses `CodingBDIPlanner` + `PlanVerifier` to run BDI-LLM on SWE-bench instances. Clones repos locally, applies edits, runs tests. `scripts/run_swe_bench_batch.py` batches multiple instances.
+`scripts/swe_bench/swe_bench_harness.py` uses `CodingBDIPlanner` + `PlanVerifier` to run BDI-LLM on SWE-bench instances. Clones repos locally, applies edits, runs tests. `scripts/swe_bench/run_swe_bench_batch.py` batches multiple instances.
 
 ### Ablation Modes
 
@@ -159,13 +159,13 @@ PROJ=/Users/alexjiang/Desktop/BDI_LLM_Formal_Ver
 cd $PROJ
 
 tmux new-session -d -s bdi_bench -n full_verified
-tmux send-keys -t bdi_bench:full_verified "$PYTHON scripts/run_planbench_full.py --all_domains --execution_mode FULL_VERIFIED --output_dir runs/benchmark_gpt5_full --parallel --workers 30" Enter
+tmux send-keys -t bdi_bench:full_verified "$PYTHON scripts/evaluation/run_planbench_full.py --all_domains --execution_mode FULL_VERIFIED --output_dir runs/benchmark_gpt5_full --parallel --workers 30" Enter
 
 tmux new-window -t bdi_bench -n ablation_naive
-tmux send-keys -t bdi_bench:ablation_naive "$PYTHON scripts/run_planbench_full.py --all_domains --execution_mode NAIVE --output_dir runs/ablation_NAIVE --parallel --workers 30" Enter
+tmux send-keys -t bdi_bench:ablation_naive "$PYTHON scripts/evaluation/run_planbench_full.py --all_domains --execution_mode NAIVE --output_dir runs/ablation_NAIVE --parallel --workers 30" Enter
 
 tmux new-window -t bdi_bench -n ablation_bdi_only
-tmux send-keys -t bdi_bench:ablation_bdi_only "$PYTHON scripts/run_planbench_full.py --all_domains --execution_mode BDI_ONLY --output_dir runs/ablation_BDI_ONLY --parallel --workers 30" Enter
+tmux send-keys -t bdi_bench:ablation_bdi_only "$PYTHON scripts/evaluation/run_planbench_full.py --all_domains --execution_mode BDI_ONLY --output_dir runs/ablation_BDI_ONLY --parallel --workers 30" Enter
 ```
 
 checkpoint 会自动 resume，只补跑失败的实例。
@@ -187,14 +187,14 @@ cd $PROJ
 
 # 全量
 tmux new-session -d -s bdi_bench -n full_verified
-tmux send-keys -t bdi_bench:full_verified "$PYTHON scripts/run_planbench_full.py --all_domains --execution_mode FULL_VERIFIED --output_dir runs/benchmark_gpt5_full --workers 50 2>&1 | tee runs/benchmark_gpt5_full.log" Enter
+tmux send-keys -t bdi_bench:full_verified "$PYTHON scripts/evaluation/run_planbench_full.py --all_domains --execution_mode FULL_VERIFIED --output_dir runs/benchmark_gpt5_full --workers 50 2>&1 | tee runs/benchmark_gpt5_full.log" Enter
 
 # 消融
 tmux new-window -t bdi_bench -n ablation_naive
-tmux send-keys -t bdi_bench:ablation_naive "$PYTHON scripts/run_planbench_full.py --all_domains --execution_mode NAIVE --output_dir runs/ablation_NAIVE --workers 50 2>&1 | tee runs/ablation_NAIVE.log" Enter
+tmux send-keys -t bdi_bench:ablation_naive "$PYTHON scripts/evaluation/run_planbench_full.py --all_domains --execution_mode NAIVE --output_dir runs/ablation_NAIVE --workers 50 2>&1 | tee runs/ablation_NAIVE.log" Enter
 
 tmux new-window -t bdi_bench -n ablation_bdi_only
-tmux send-keys -t bdi_bench:ablation_bdi_only "$PYTHON scripts/run_planbench_full.py --all_domains --execution_mode BDI_ONLY --output_dir runs/ablation_BDI_ONLY --workers 50 2>&1 | tee runs/ablation_BDI_ONLY.log" Enter
+tmux send-keys -t bdi_bench:ablation_bdi_only "$PYTHON scripts/evaluation/run_planbench_full.py --all_domains --execution_mode BDI_ONLY --output_dir runs/ablation_BDI_ONLY --workers 50 2>&1 | tee runs/ablation_BDI_ONLY.log" Enter
 ```
 
 ## ResponsesAPILM（infiniteai + gpt-5）
