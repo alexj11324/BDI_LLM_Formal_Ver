@@ -1,4 +1,0 @@
-pydantic>=2.0
-dspy-ai
-openai
-pytest

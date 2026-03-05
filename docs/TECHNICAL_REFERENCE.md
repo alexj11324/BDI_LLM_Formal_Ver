@@ -72,7 +72,7 @@ The codebase contains two parallel implementations:
 
 | Layer | Location | Purpose |
 |-------|----------|---------|
-| **PNSV (new)** | `pnsv_workspace/src/` | Domain-agnostic, plugin-based, designed for extensibility |
+| **PNSV (new)** | `workspaces/pnsv_workspace/src/` | Domain-agnostic, plugin-based, designed for extensibility |
 | **Legacy** | `src/bdi_llm/` | Full-featured, battle-tested, used for production evaluations |
 
 Both share the same 3-layer verification philosophy. The legacy layer contains the complete planner (`planner.py`, 77K+ lines) with multi-provider support, checkpoint/resume, and parallel execution.
@@ -127,7 +127,7 @@ Both share the same 3-layer verification philosophy. The legacy layer contains t
 
 ### 4.1 BDI Engine
 
-**File**: `pnsv_workspace/src/core/bdi_engine.py` (24K)
+**File**: `workspaces/pnsv_workspace/src/core/bdi_engine.py` (24K)
 
 The orchestrator implementing the Belief-Desire-Intention reasoning loop:
 
@@ -151,7 +151,7 @@ Key behaviors:
 
 ### 4.2 Verification Bus
 
-**File**: `pnsv_workspace/src/core/verification_bus.py` (3.2K)
+**File**: `workspaces/pnsv_workspace/src/core/verification_bus.py` (3.2K)
 
 3-layer routing pipeline:
 
@@ -165,7 +165,7 @@ Key behaviors:
 
 ### 4.3 PlanBench Verifier
 
-**File**: `pnsv_workspace/src/plugins/planbench_verifier.py` (10.3K)
+**File**: `workspaces/pnsv_workspace/src/plugins/planbench_verifier.py` (10.3K)
 
 Implements `BaseDomainVerifier` for PDDL planning domains:
 - **Layer 2 (Symbolic)**: Calls VAL binary via secure `subprocess.run()`, parses structured output
@@ -173,7 +173,7 @@ Implements `BaseDomainVerifier` for PDDL planning domains:
 
 ### 4.4 SWE-bench Verifier
 
-**File**: `pnsv_workspace/src/plugins/swe_verifier.py` (17.5K)
+**File**: `workspaces/pnsv_workspace/src/plugins/swe_verifier.py` (17.5K)
 
 Implements `BaseDomainVerifier` for software engineering tasks:
 - **Action types**: `read-file`, `edit-file`, `run-test`
@@ -181,7 +181,7 @@ Implements `BaseDomainVerifier` for software engineering tasks:
 
 ### 4.5 DSPy Signatures
 
-**File**: `pnsv_workspace/src/dspy_pipeline/signatures.py` (8.1K)
+**File**: `workspaces/pnsv_workspace/src/dspy_pipeline/signatures.py` (8.1K)
 
 DSPy ChainOfThought signature definitions:
 - Plan generation signature: goal → IntentionDAG
@@ -189,7 +189,7 @@ DSPy ChainOfThought signature definitions:
 
 ### 4.6 R1 Distillation Formatter
 
-**File**: `pnsv_workspace/src/dspy_pipeline/r1_formatter.py` (11.2K)
+**File**: `workspaces/pnsv_workspace/src/dspy_pipeline/r1_formatter.py` (11.2K)
 
 Converts successful BDI reasoning loops into training data:
 
@@ -222,7 +222,7 @@ Full-featured production planner with:
 
 ## 5. Data Models
 
-### 5.1 Core Schemas (`pnsv_workspace/src/core/schemas.py`)
+### 5.1 Core Schemas (`workspaces/pnsv_workspace/src/core/schemas.py`)
 
 ```python
 class IntentionNode(BaseModel):
@@ -281,7 +281,7 @@ VerificationResult (per layer)
 
 ### 6.2 VAL Binary
 
-- **Location**: `planbench_data/plan-bench/utils/`
+- **Location**: `workspaces/planbench_data/plan-bench/utils/`
 - **Invocation**: `subprocess.run()` with explicit argument lists (no `os.popen`)
 - **Platform**: macOS arm64 binary bundled
 - **Input**: PDDL domain + problem + plan files
@@ -361,7 +361,7 @@ nohup python -u scripts/evaluation/run_planbench_full.py \
 
 - **Count**: 90+ passing unit tests
 - **Coverage**: Schemas, verifiers (PlanBench + SWE-bench), BDI engine, R1 formatter
-- **Location**: `pnsv_workspace/tests/`
+- **Location**: `workspaces/pnsv_workspace/tests/`
 
 ---
 
@@ -419,15 +419,15 @@ All external process invocations use secure patterns:
 
 | File | Size | Purpose |
 |------|------|---------|
-| `pnsv_workspace/src/core/bdi_engine.py` | 24K | Core BDI reasoning engine |
-| `pnsv_workspace/src/core/schemas.py` | 4.2K | Pydantic V2 data models |
-| `pnsv_workspace/src/core/verification_bus.py` | 3.2K | 3-layer verification router |
-| `pnsv_workspace/src/plugins/planbench_verifier.py` | 10.3K | PlanBench domain verifier |
-| `pnsv_workspace/src/plugins/swe_verifier.py` | 17.5K | SWE-bench domain verifier |
-| `pnsv_workspace/src/plugins/_dag_utils.py` | 2.2K | Shared DAG utilities |
-| `pnsv_workspace/src/dspy_pipeline/signatures.py` | 8.1K | DSPy signature definitions |
-| `pnsv_workspace/src/dspy_pipeline/teacher_config.py` | 6.9K | Multi-provider LLM config |
-| `pnsv_workspace/src/dspy_pipeline/r1_formatter.py` | 11.2K | R1 distillation formatter |
+| `workspaces/pnsv_workspace/src/core/bdi_engine.py` | 24K | Core BDI reasoning engine |
+| `workspaces/pnsv_workspace/src/core/schemas.py` | 4.2K | Pydantic V2 data models |
+| `workspaces/pnsv_workspace/src/core/verification_bus.py` | 3.2K | 3-layer verification router |
+| `workspaces/pnsv_workspace/src/plugins/planbench_verifier.py` | 10.3K | PlanBench domain verifier |
+| `workspaces/pnsv_workspace/src/plugins/swe_verifier.py` | 17.5K | SWE-bench domain verifier |
+| `workspaces/pnsv_workspace/src/plugins/_dag_utils.py` | 2.2K | Shared DAG utilities |
+| `workspaces/pnsv_workspace/src/dspy_pipeline/signatures.py` | 8.1K | DSPy signature definitions |
+| `workspaces/pnsv_workspace/src/dspy_pipeline/teacher_config.py` | 6.9K | Multi-provider LLM config |
+| `workspaces/pnsv_workspace/src/dspy_pipeline/r1_formatter.py` | 11.2K | R1 distillation formatter |
 | `src/bdi_llm/planner.py` | 77.7K | Legacy full-featured planner |
 | `src/bdi_llm/symbolic_verifier.py` | 25.5K | Legacy symbolic verifier |
 | `src/bdi_llm/plan_repair.py` | 15.6K | Plan auto-repair engine |

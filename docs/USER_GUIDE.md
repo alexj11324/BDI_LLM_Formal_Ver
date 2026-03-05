@@ -191,7 +191,7 @@ if not is_valid:
 from run_planbench_full import parse_pddl_problem
 
 # Parse PDDL problem file
-pddl_data = parse_pddl_problem('planbench_data/plan-bench/instances/blocksworld/generated/instance-10.pddl')
+pddl_data = parse_pddl_problem('workspaces/planbench_data/plan-bench/instances/blocksworld/generated/instance-10.pddl')
 
 # Access init_state
 init_state = pddl_data['init_state']
@@ -330,9 +330,9 @@ python scripts/evaluation/run_planbench_full.py --domain blocksworld --max_insta
 ### 2. VAL Verifier Platform Dependency
 
 **Issue**: VAL binary is platform-specific
-**Status**: Repository currently includes a macOS arm64 binary at `planbench_data/planner_tools/VAL/validate`
+**Status**: Repository currently includes a macOS arm64 binary at `workspaces/planbench_data/planner_tools/VAL/validate`
 **Workaround**: On unsupported platforms, compile VAL locally or use Docker
-**Solution**: Keep a platform-matched VAL binary in `planbench_data/planner_tools/VAL/`
+**Solution**: Keep a platform-matched VAL binary in `workspaces/planbench_data/planner_tools/VAL/`
 
 ### 3. Provider Credentials Required for API-Dependent Testing
 

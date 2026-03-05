@@ -179,7 +179,7 @@ def run_verification_eval(
     print(f"  Model: {Config.MODEL_NAME}")
     print(f"{'='*70}\n")
 
-    base_path = Path(__file__).resolve().parent.parent / "planbench_data/plan-bench"
+    base_path = Path(__file__).resolve().parent.parent / "workspaces/planbench_data/plan-bench"
     os.makedirs(output_dir, exist_ok=True)
 
     # Find instances

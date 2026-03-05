@@ -59,7 +59,7 @@ class Config:
     # Auto-detect VAL in PlanBench if not provided in env
     # Base is repo root: src/bdi_llm/config.py -> src/bdi_llm -> src -> root
     _base_dir = Path(__file__).parent.parent.parent
-    _default_val_path = _base_dir / "planbench_data/planner_tools/VAL/validate"
+    _default_val_path = _base_dir / "workspaces/planbench_data/planner_tools/VAL/validate"
 
     VAL_VALIDATOR_PATH = os.environ.get("VAL_VALIDATOR_PATH") or os.environ.get("VAL") or str(_default_val_path)
 

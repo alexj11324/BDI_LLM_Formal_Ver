@@ -139,7 +139,7 @@ def run_dynamic_replanning_eval(
     resume: bool = False,
 ):
     os.makedirs(output_dir, exist_ok=True)
-    base_path = str(Path(__file__).parents[1] / "planbench_data" / "plan-bench")
+    base_path = str(Path(__file__).parents[1] / "workspaces" / "planbench_data" / "plan-bench")
     all_instances = find_all_instances(base_path, domain=domain)
     if max_instances:
         all_instances = all_instances[:max_instances]

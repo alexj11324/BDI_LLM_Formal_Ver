@@ -143,7 +143,7 @@ def resolve_domain_file(domain_name: str, base_path: str = None) -> str:
     Falls back to pddlgenerators/ domain.pddl otherwise.
     """
     if base_path is None:
-        base_path = str(Path(__file__).resolve().parent.parent / "planbench_data/plan-bench")
+        base_path = str(Path(__file__).resolve().parent.parent / "workspaces/planbench_data/plan-bench")
 
     # Map PDDL domain name -> instance directory name
     dir_map = {
@@ -1538,7 +1538,7 @@ def run_batch_evaluation(
     print(f"{'='*80}\n")
 
     # Setup
-    base_path = Path(__file__).resolve().parent.parent / "planbench_data/plan-bench"
+    base_path = Path(__file__).resolve().parent.parent / "workspaces/planbench_data/plan-bench"
     os.makedirs(output_dir, exist_ok=True)
 
     # Find instances

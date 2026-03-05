@@ -124,7 +124,7 @@ def run_batch_replanning(
     start_time = time.time()
 
     # 1. Load instances
-    base_path = str(Path(__file__).parents[1] / "planbench_data" / "plan-bench")
+    base_path = str(Path(__file__).parents[1] / "workspaces" / "planbench_data" / "plan-bench")
     all_inst_files = find_all_instances(base_path, domain=domain)
     if max_instances:
         all_inst_files = all_inst_files[:max_instances]

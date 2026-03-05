@@ -37,7 +37,7 @@ class PDDLSymbolicVerifier:
         """
         Args:
             val_path: Path to VAL validator executable
-                     Default: planbench_data/planner_tools/VAL/validate
+                     Default: workspaces/planbench_data/planner_tools/VAL/validate
         """
         if val_path is None:
             val_path = Config.VAL_VALIDATOR_PATH
