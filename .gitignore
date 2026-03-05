@@ -108,3 +108,9 @@ AI-Research-SKILLs/
 runs/
 swe_bench_workspace/
 
+
+# RA meeting transcripts (private)
+RA*.txt
+RA 第二次_原文.txt
+RA第一次会议.txt
+*.resolved
