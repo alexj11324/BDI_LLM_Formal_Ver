@@ -12,13 +12,11 @@ Author: BDI-LLM Research
 Date: 2026-02-03
 """
 
-import subprocess
-import tempfile
 import os
 import re
-from pathlib import Path
 from typing import Any, Tuple, List, Dict
 from .config import Config
+from .val_runner import run_val
 
 
 class PDDLSymbolicVerifier:
@@ -31,20 +29,9 @@ class PDDLSymbolicVerifier:
     - Goal state reachable
     - Action parameters valid
     - Type constraints met
-    """
 
-    # Compiled regex patterns
-    _re_precond_verbose = re.compile(
-        r"Plan failed because of unsatisfied precondition in:\s*\n\s*(\(.+?\))",
-        re.DOTALL
-    )
-    _re_repair_advice = re.compile(
-        r"Plan Repair Advice:\s*\n(.*?)(?:\n\s*\n|\nFailed plans:|\Z)",
-        re.DOTALL
-    )
-    _re_precond_legacy = re.compile(r"Precondition not satisfied: (.+)")
-    _re_invalid_action = re.compile(r"Invalid action: (.+)")
-    _re_type_error = re.compile(r"Type error: (.+)")
+    Low-level VAL subprocess management is delegated to :mod:`val_runner`.
+    """
 
     def __init__(self, val_path: str = None):
         """
@@ -80,6 +67,8 @@ class PDDLSymbolicVerifier:
             problem_file: Path to PDDL problem file
             plan_actions: List of PDDL actions, e.g., ["(pick-up a)", "(stack a b)"]
             verbose: If True, include full VAL output in errors
+            check_goal: If False (prefix verification), treat
+                "executed but goal not satisfied" as success.
 
         Returns:
             (is_valid, error_messages)
@@ -93,184 +82,14 @@ class PDDLSymbolicVerifier:
             ... )
             >>> print(f"Valid: {is_valid}, Errors: {errors}")
         """
-        if not plan_actions:
-            return False, ["Empty plan - no actions to verify"]
-
-        # Create temporary plan file
-        plan_file = self._create_plan_file(plan_actions)
-
-        try:
-            # Run VAL validator with -v for verbose output
-            # -v provides: specific failed action, unsatisfied preconditions,
-            # and Plan Repair Advice with concrete predicates to fix
-            result = subprocess.run(
-                [self.val_path, '-v', domain_file, problem_file, plan_file],
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-
-            output = result.stdout + result.stderr
-
-            # Parse VAL output
-            is_valid, errors = self._parse_val_output(output, verbose)
-
-            # When check_goal=False (prefix verification), treat
-            # "executed but goal not satisfied" as success — the
-            # goal not being met is expected for partial plans.
-            if not check_goal and not is_valid:
-                goal_only_errors = all(
-                    "goal not satisfied" in e.lower()
-                    or "plan executed but goal" in e.lower()
-                    for e in errors
-                )
-                if goal_only_errors and "Plan executed successfully" in output:
-                    return True, []
-
-            return is_valid, errors
-
-        except subprocess.TimeoutExpired:
-            return False, ["VAL validation timeout (>30s)"]
-
-        except FileNotFoundError:
-            return False, [f"VAL executable not found: {self.val_path}"]
-
-        except OSError as e:
-            # Handle "Exec format error" (e.g. Linux binary on Mac)
-            if e.errno == 8:
-                return False, [f"VAL executable incompatible with current OS (Exec format error): {self.val_path}"]
-            return False, [f"VAL execution error (OSError): {str(e)}"]
-
-        except Exception as e:
-            return False, [f"VAL execution error: {str(e)}"]
-
-        finally:
-            # Clean up temp file
-            if os.path.exists(plan_file):
-                os.unlink(plan_file)
-
-    def _create_plan_file(self, actions: List[str]) -> str:
-        """Create temporary PDDL plan file"""
-        with tempfile.NamedTemporaryFile(
-            mode='w',
-            suffix='.pddl',
-            delete=False,
-            prefix='bdi_plan_'
-        ) as f:
-            # Write plan actions
-            def formatted_actions():
-                for action in actions:
-                    action_str = action.strip()
-                    if not action_str.startswith('('):
-                        action_str = f"({action_str})"
-                    yield f"{action_str}\n"
-
-            f.writelines(formatted_actions())
-
-            return f.name
-
-    def _parse_val_output(self, output: str, verbose: bool) -> Tuple[bool, List[str]]:
-        """
-        Parse VAL validator output (with -v verbose flag)
-
-        VAL -v outputs patterns like:
-        - "Plan executed successfully - checking goal" + no "Goal not satisfied" → Valid
-        - "Plan failed because of unsatisfied precondition in:" → Precondition failure
-        - "Goal not satisfied" / "Plan invalid" → Goal not achieved
-        - "Error in type-checking!" → Type error in action parameters
-        - "Bad plan" / "Bad problem file!" → Structural PDDL error
-        """
-        errors = []
-
-        # Check for full success: plan executed AND goal satisfied
-        if "Plan executed successfully" in output and "Goal not satisfied" not in output and "Plan invalid" not in output:
-            return True, []
-
-        # Check for goal not satisfied (plan executes but doesn't reach goal)
-        if "Goal not satisfied" in output or "Plan invalid" in output:
-            errors = self._extract_val_errors(output)
-            if verbose:
-                errors.append(f"\nFull VAL output:\n{output}")
-            return False, errors
-
-        # Check for precondition / execution failure
-        if "Plan failed" in output or "Bad plan" in output:
-            errors = self._extract_val_errors(output)
-            if verbose:
-                errors.append(f"\nFull VAL output:\n{output}")
-            return False, errors
-
-        # Check for type-checking errors
-        if "Error in type-checking" in output or "Bad problem file" in output:
-            errors = self._extract_val_errors(output)
-            if verbose:
-                errors.append(f"\nFull VAL output:\n{output}")
-            return False, errors
-
-        # Unknown output format
-        if verbose:
-            errors.append(f"VAL output unclear:\n{output}")
-        else:
-            errors.append("VAL validation result unclear (enable verbose for details)")
-
-        return False, errors
-
-    def _extract_val_errors(self, output: str) -> List[str]:
-        """Extract specific error messages from VAL -v verbose output.
-
-        With -v flag, VAL provides:
-        - Which action failed and at which step
-        - Unsatisfied preconditions with specific predicates
-        - Plan Repair Advice with concrete fixes
-        """
-        errors = []
-
-        # Pattern 1 (verbose): Unsatisfied precondition with specific action
-        # "Plan failed because of unsatisfied precondition in:\n(action-name args)"
-        precond_verbose = self._re_precond_verbose.search(output)
-        if precond_verbose:
-            failed_action = precond_verbose.group(1).strip()
-            errors.append(f"Unsatisfied precondition in action: {failed_action}")
-
-        # Pattern 2 (verbose): Plan Repair Advice section
-        # Captures the entire repair advice block
-        repair_advice = self._re_repair_advice.search(output)
-        if repair_advice:
-            advice_text = repair_advice.group(1).strip()
-            errors.append(f"VAL Repair Advice: {advice_text}")
-
-        # Pattern 3: Goal not satisfied
-        if "Goal not satisfied" in output:
-            errors.append("Plan executed but goal not satisfied")
-
-        # Pattern 4 (legacy): Precondition not satisfied (non-verbose format)
-        for match in self._re_precond_legacy.finditer(output):
-            errors.append(f"Precondition violation: {match.group(1)}")
-
-        # Pattern 5: Type-checking errors
-        if "Error in type-checking" in output:
-            errors.append("Type-checking error: action parameters have invalid types")
-
-        # Pattern 6: Invalid action parameters
-        for match in self._re_invalid_action.finditer(output):
-            errors.append(f"Invalid action: {match.group(1)}")
-
-        # Pattern 7: Type errors
-        for match in self._re_type_error.finditer(output):
-            errors.append(f"Type error: {match.group(1)}")
-
-        # If no specific errors extracted, provide generic message
-        if not errors:
-            lines = output.split('\n')
-            for line in lines:
-                if 'error' in line.lower() or 'fail' in line.lower():
-                    errors.append(line.strip())
-                    break
-
-            if not errors:
-                errors.append("Plan validation failed (reason unclear)")
-
-        return errors
+        return run_val(
+            self.val_path,
+            domain_file,
+            problem_file,
+            plan_actions,
+            check_goal=check_goal,
+            verbose=verbose,
+        )
 
 
 PHYSICS_VALIDATORS = {}
