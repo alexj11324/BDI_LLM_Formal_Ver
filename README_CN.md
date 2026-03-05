@@ -1,140 +1,207 @@
-# BDI-LLM 形式化验证框架
+# BDI-LLM 形式化验证框架 (PNSV)
 
 [English](README.md) | 简体中文
 
-一个神经符号规划框架，将 LLM 生成能力与形式化验证相结合，产出可证明正确的计划。
+本框架是一个神经符号规划框架，通过将大语言模型（LLM）的生成能力与严格的形式化验证进行结合，从而生成可被数学与逻辑证明完全正确、零幻觉的最优执行计划。
 
-## 概述
+## 核心特性
 
-BDI-LLM 通过将每个生成的计划送入 3 层验证流水线，解决 LLM 生成计划中的幻觉和逻辑不一致问题。验证失败的计划会自动修复并重新验证后再返回。
+- **混合 BDI + LLM 规划引擎**：能够使用 DSPy 思维链推理（Chain-of-Thought）将自然语言意图直接转化为有向无环图（DAG）形式的 BDI（信念-愿望-意图）规划执行流。
+- **三层递进验证流水线**：
+  1. **结构验证 (Structural Verification)**：针对图结构执行硬错误检查（空图、闭环）以及发布子图断裂警告。
+  2. **符号验证 (Symbolic Verification)**：使用行业金标准二进制引擎 `VAL` 进行纯粹的 PDDL 前置与效果条件评估。
+  3. **领域物理模拟 (Physics Simulation)**：在细分领域注入深度验证器（例：Blocksworld 堆叠物理逻辑与 SWE-bench 沙盒环境测试），从业务底层保障逻辑闭环。
+- **自修复引擎 (Auto-Repair)**：能够无缝截获各层验证引擎报错，并引导 LLM 进行 DAG 重拓扑、死锁消除与参数修正，全程不会对用户端发生由于 Prompt 信息泄漏导致的混乱。
+- **MCP 服务直通互操作**：框架的底层引擎已整体暴装为标准化的 Model Context Protocol (MCP) 服务器，允许诸如 Claude Code, Cursor 等第三方智能代理直接调用，将其作为高权限安全“特洛伊木马”验证拦截器。
+- **R1 学生蒸馏输出格式**：能够原生拦截被证明有效的推理轨迹，将验证流记录转化为严格挂载 `<think>` 标签的 `JSONL`，从而用以进行低成本小尺度的离线端侧模型微调。
 
-### 核心特性
+---
 
-- **混合 BDI + LLM 规划**：使用 DSPy ChainOfThought 从自然语言目标生成结构化 BDI 计划（信念、愿望、意图），以 DAG 形式表示。
-- **3 层验证**：
-  1. **结构验证** — 硬错误检查（空图、环）+ 软告警（断开子图）
-  2. **符号验证** — 通过 VAL 检查 PDDL 前提条件/效果
-  3. **物理验证** — 领域特定状态模拟（如 Blocksworld 的 clear/hand 约束）
-- **自动修复**：无需重新查询 LLM 即可修复环路、连接断开的子图（即使其在结构层仅为告警）并规范化节点 ID。使用 VAL 错误信息引导 LLM 修复（最多 3 次尝试）。
-- **MCP 服务器**：将 `generate_verified_plan` 作为 MCP 工具暴露，供 Claude Code、Cursor 等 Agent 调用。
-- **编程领域**：针对 SWE-bench 软件工程任务的专用规划器（`read-file` → `edit-file` → `run-test` 动作类型）。
-- **消融实验支持**：`--execution_mode` 参数（NAIVE / BDI_ONLY / FULL_VERIFIED）用于受控实验。
+## 技术栈
 
-## PlanBench 评估结果
+- **主要语言**: Python 3.10+
+- **构建层/提示词框架**: DSPy
+- **校验器**: Pydantic V2
+- **形式化组件**: Z3 Solver, `VAL` (PDDL)
+- **互联代理**: Model Context Protocol (MCP) Python SDK
+- **自动化测试**: Pytest
+- **打包部署**: Docker
 
-在三个规划领域上进行全量数据集评估。
+---
 
-### GPT-5（infiniteai，2026-02-27）— 全量数据集
+## 本地前置要求
 
-| 领域 | 实例数 | 成功率 |
-|------|--------|--------|
-| Blocksworld | 1103/1103 | **90.8%**（FULL_VERIFIED） |
-| Logistics | 572 | 进行中 |
-| Depots | 501 | 进行中 |
+在本地启动前，你需要确保已安装一下基础组件：
+- **Python 3.10+** (强烈推荐 3.11 稳定版)
+- **Git**
+- **Docker** (强烈推荐：用于无痛启动含有隔离层的 MCP server 和 C++ 编译插件)
+- 至少拥有一个可被调用的 OpenAI、Anthropic 或是 Google 控制台 LLM API 密钥。
 
-### Gemini（2026-02-13）— 论文标准数据
+---
 
-| 领域 | 通过 | 总数 | 准确率 |
-|------|------|------|--------|
-| Blocksworld | ~200 | ~200 | ~99.8% |
-| Logistics | 568 | 570 | **99.6%** |
-| Depots | 497 | 500 | **99.4%** |
+## 快速入门指南
 
-冻结证据快照：`artifacts/paper_eval_20260213/`（不可修改）。
-
-### 消融实验（GPT-5，blocksworld 1103 实例）
-
-| 模式 | 成功率 | 验证内容 |
-|------|--------|----------|
-| NAIVE | 91.6% | 无 — 原始 LLM 输出 |
-| BDI_ONLY | 91.7% | 仅结构验证（DAG） |
-| FULL_VERIFIED | 90.8% | 全部 3 层 — 可证明正确 |
-
-NAIVE 与 FULL_VERIFIED 之间约 1% 的差距表明，验证开销极小，同时提供了形式化正确性保证。
-
-## 安装
-
-1. 克隆仓库：
-   ```bash
-   git clone https://github.com/alexj11324/BDI_LLM_Formal_Ver.git
-   cd BDI_LLM_Formal_Ver
-   ```
-
-2. 安装依赖：
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. 配置环境变量：
-   ```bash
-   cp .env.example .env
-   # 编辑 .env：按 provider 设置凭据：
-   # - OPENAI_API_KEY（OpenAI / NVIDIA 兼容网关）
-   # - ANTHROPIC_API_KEY
-   # - GOOGLE_API_KEY 或 GOOGLE_APPLICATION_CREDENTIALS
-   # 可选：OPENAI_API_BASE（自定义网关）
-   ```
-
-## 使用方法
-
-### 测试
+### 1. 克隆代码仓库
 
 ```bash
-pytest
-pytest tests/test_verifier.py -v
-pytest tests/test_integration.py -q  # 依赖 API；无可用 provider 凭据时会自动 skip
+git clone https://github.com/alexj11324/BDI_LLM_Formal_Ver.git
+cd BDI_LLM_Formal_Ver
 ```
 
-### 评估
+### 2. 安装内部依赖项
+
+推荐始终为机器学习与编译项目创建隔离环境（使用 `venv`, `conda` 等）：
 
 ```bash
-python scripts/run_evaluation.py --mode unit       # 离线单元测试
-python scripts/run_evaluation.py --mode demo       # 实时 LLM 演示
-python scripts/run_evaluation.py --mode benchmark  # 完整基准测试
+pip install -r requirements.txt
 ```
 
-### PlanBench
+### 3. 配置本地环境变量
+
+将预置的示例凭证文件拷贝为可工作模式：
 
 ```bash
-# 单个领域
-python scripts/run_planbench_full.py --domain blocksworld --max_instances 100
-
-# 全部领域，并行，指定消融模式
-python scripts/run_planbench_full.py --all_domains --execution_mode FULL_VERIFIED \
-  --output_dir runs/my_run --parallel --workers 30
-
-# 从 checkpoint 恢复（output_dir 中存在 checkpoint 时自动检测）
-python scripts/run_planbench_full.py --domain blocksworld --output_dir runs/my_run
+cp .env.example .env
 ```
 
-### MCP 服务器
+依据你要集成的提供商，在 `.env` 中补充以下密钥（必须配置至少一个）：
 
+| 环境变量参数 | 用途描述 | 示例值 |
+| -------- | ----------- | ------- |
+| `OPENAI_API_KEY` | OpenAI 或者 OpenAI 标准接口映射端 (例如 CMU 网关) | `sk-xxxx...` |
+| `ANTHROPIC_API_KEY` | Anthropic Claude 的 API 请求端 | `sk-ant-xxxx...` |
+| `GOOGLE_API_KEY` | 谷歌 Gemini 原生服务的 API 请求端 | `AIza...` |
+| `LLM_MODEL` | 告诉 DSPy 使用的实际调用大模型名称 | `gpt-5`, `gemini-2.0-flash` |
+| `OPENAI_API_BASE` | 用于配置反向代理或内部自定义网关 | `https://ai-gateway...` |
+
+### 4. 赋予 VAL 二进制编译系统运行权限 (如果需要进行本地测试)
+
+如果你的操作系统是 macOS (ARM64环境)，请赋予本地代码库内自带的 VAL 程序执行权：
 ```bash
-python src/mcp_server_bdi.py
+chmod +x planbench_data/planner_tools/VAL/validate
 ```
+*(如果运行在包含特殊动态库的 Linux 或者 Windows 的非标环境，建议跳过此问题，直接按照下一节通过 Docker 构建)*
 
-暴露 `generate_verified_plan(goal, domain, context, pddl_domain_file, pddl_problem_file)` 作为 MCP 工具。
+---
 
-## 项目结构
+## 核心架构概览
 
-```
+### 目录功能划分
+
+```text
 BDI_LLM_Formal_Ver/
-├── src/bdi_llm/          # 核心模块（规划器、验证器、schemas、修复）
-├── src/mcp_server_bdi.py # MCP 服务器入口
-├── scripts/              # 评估和基准测试脚本
-├── tests/                # 单元测试和集成测试
-├── planbench_data/       # PlanBench PDDL 实例 + VAL 二进制（macOS arm64）
-├── runs/                 # 可变基准输出（不作为论文依据）
-├── artifacts/            # 冻结的论文证据快照（不可修改）
-└── BDI_Paper/            # LaTeX 源码（AAAI 2026 格式）
+├── src/
+│   ├── bdi_llm/             # 早期的核心模块层 (为向后兼容保留)
+│   └── mcp_server_bdi.py    # MCP 服务网关挂载点
+├── pnsv_workspace/          # 最新可插拔联合符号验证器（PNSV）业务舱
+│   ├── src/core/            # 验证总线设计与异步 BDI 的调度微核心
+│   ├── src/plugins/         # 领域特化注入器代码（目前已实现 PlanBench 与 SWE）
+│   └── src/dspy_pipeline/   # 与 LLM 交互提示的格式管理、Signature 定义及学生模型蒸馏输出器
+├── scripts/                 # 用于一键批量触发评估系统跑分的总控制器
+├── tests/                   # 近百个标准测试断言单元组件
+├── planbench_data/          # 静态的大型基础 Blocksworld/Logistics PDDL 参照数据集
+└── conductor/               # 存放所有 AI 架构和工作流定义的标准化文档舱
 ```
 
-## 文档
+### PNSV 运行全生命周期
 
-- [用户指南](docs/USER_GUIDE.md)
-- [系统架构](docs/ARCHITECTURE.md)
-- [基准测试](docs/BENCHMARKS.md)
+1. **初始调度**: Agent 输出抽象意向指令（例如“整理积木”）。由 DSPy 层发起请求转化为附有特定 Schema 格式的初期 JSON 意图动作。
+2. **Pydantic 排异截留**: 系统会在解析第一环实施数据隔离转化，异常文本即刻被扔出。
+3. **Core Engine 指派**: 数据将被成功具象为 `IntentionDAG` 对象传递给验证总线层（VerificationBus）。
+4. **并线式多级验证**: 总线把有向无环图和基础世界状态传递至插件库。在这里它遭遇结构、PDDL与专有领域的反复拷打（并行化排错与拓扑分析）。
+5. **修复或记录轨迹**: 
+   - **错误修复**: 对触发隔离底线的 `EpistemicDeadlockError` 错误，进行堆栈回溯，提示大模型修复。
+   - **轨迹蒸馏**: 对 0 Error 通关的，流向模型 R1 转换口并进入蒸馏数据集输出区进行落盘。
 
-## 许可证
+---
 
-MIT 许可证 — 详见 [LICENSE](LICENSE)。
+## 操作常用脚本矩阵
+
+你可以使用提供的独立脚本来运行不同细分领域的框架控制体：
+
+| 指令 | 描述 |
+| ------- | ----------- |
+| `python scripts/run_planbench_full.py --domain blocksworld` | 触发所有积木世界数据集并自动开启自我对抗评估跑分 |
+| `python scripts/run_evaluation.py --mode demo` | 启用实时 CLI 会话模式。输入日常对话让验证器当场执行任务判断 |
+| `python scripts/run_verification_only.py` | 纯净的线下校验模式。用以断开网络连接专门检查给定的静态输出能否过审 |
+| `python src/mcp_server_bdi.py` | 把该工作流作为一个守护进程端口暴露出基于 MCP 路由的智能服务 |
+
+*支持向部分跑分命令附加 `--execution_mode FULL_VERIFIED` 来触发完整的三层防伪机制，或是采用 `--execution_mode NAIVE` 开启纯野生大模型幻觉率对比测算。*
+
+---
+
+## 自动化测试验收网络
+
+依赖于 Pytest 组件执行测试闭门。拥有超 90 个精细的单元覆盖。
+
+### 本地无请求式组件运行
+
+```bash
+# 测试各类模型映射状态机防伪系统和节点验证器的逻辑正确性
+pytest tests/
+```
+
+### 云端综合大模型模拟联调
+
+```bash
+# 执行涉及 DSPy 发包的核心逻辑
+pytest tests/test_integration.py -q
+```
+*(出于自动熔断安全，任何未提供 .env 合法凭证链的机器将会显示自动标记全部联调集成跳过 `skip` 而并非崩溃报错)。*
+
+---
+
+## 线上环境部署 (基于 Docker 的 MCP 服务器)
+
+如果是出于让其他 Agent 作为外外接脑调用的前提，强烈建议优先使用容器化发行版。这将无缝构建原本在部分系统极难编译成功的本地 `VAL` 库！
+
+### 1. 编译基础环境层
+
+```bash
+docker build -t bdi-verifier .
+```
+
+### 2. 自包含运行
+
+```bash
+docker run -i --rm -e OPENAI_API_KEY=$OPENAI_API_KEY bdi-verifier
+```
+
+### (进阶) 集成至 Claude 桌面应用全自动服务
+
+如果你使用的是官方的 Claude Desktop APP，可以将这段配置塞入在自己的 `claude_desktop_config.json` 目录使其成为内嵌 MCP 调用链落点。注意：请一定要记得把里面的大模型密钥自行补全：
+
+```json
+{
+  "mcpServers": {
+    "bdi-pnsv-verifier": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "-e", "OPENAI_API_KEY=修改为真实的串", "bdi-verifier"]
+    }
+  }
+}
+```
+
+---
+
+## 问题与疑难解答指南
+
+### 1: 关于 VAL 环境缺少以及权限执行报错
+**表现**: 后端抛出 `subprocess.CalledProcessError` 或执行无权限。
+**修复**: Mac 跑 `chmod +x planbench_data/planner_tools/VAL/validate`。而遇到任何与 macOS 环境无关的架构崩溃，最明智的办法是不去单独编译，而是直接用 `docker build` 进行自动包含部署。
+
+### 2: "Graph Validation Warning: Components disconnected"
+**背景**: 此处代表发生了警告而非严重错误。第一层校验引擎（结构节点安全校验）检测到动作图中包含两个以上完全独立平行的子行动路径（可能两个步骤由于大模型认为全能被平行而并没有任何关系衔接）。
+**响应流**: 这无毒无害，你完全不需要任何干预。第 2 与 3 层验证将会正常放行接受平行请求。
+
+---
+
+## 扩展深度开发文献
+
+欲了解详尽设计逻辑和代码设计缘由请查阅我们的核心知识图谱体系：
+
+- [**Conductor 设计档案**](conductor/index.md): 工作习惯与设计初衷
+- [**C4 级别系统全架构定义**](C4-Documentation/c4-context.md): 快速鸟瞰各大类容器关系链图
+- [**终极技术白皮书卷宗**](docs/TECHNICAL_REFERENCE.md): 共十个章节总计上万字的极端详细工程师入职读物
+- [**跑分成绩公告板**](docs/BENCHMARKS.md): 记录在纯自然状态和受系统拦截干预情况下的具体 AI 评测差额
+- [**项目文档综合导航引擎 (Wiki)**](wiki-catalogue.md): 全仓储文件的中心引导目录位

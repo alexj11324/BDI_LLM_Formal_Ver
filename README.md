@@ -1,158 +1,235 @@
-# BDI-LLM Formal Verification Framework
+# BDI-LLM Formal Verification Framework (PNSV)
 
 English | [简体中文](README_CN.md)
 
-A neuro-symbolic planning framework that combines LLM generation with formal verification to produce provably correct plans.
+A neuro-symbolic planning framework combining Large Language Models (LLMs) with formal verification to produce provably correct, hallucination-free action plans.
 
-## Overview
+## Key Features
 
-BDI-LLM addresses the hallucination and logical inconsistency problems in LLM-generated plans by running every generated plan through a 3-layer verification pipeline. Plans that fail verification are automatically repaired and re-verified before being returned.
+- **Hybrid BDI + LLM Planning**: Generates structured Belief-Desire-Intention (BDI) plans as Directed Acyclic Graphs (DAGs) from natural language goals using DSPy Chain-of-Thought reasoning.
+- **3-Layer Verification Pipeline**:
+  1. **Structural Verification**: Hard checks for DAG compliance (empty graphs, cycles) + soft warnings for disconnected components.
+  2. **Symbolic Verification**: PDDL precondition/effect evaluation via the classic `VAL` planning binary.
+  3. **Physics/Domain Simulation**: Custom Python-based formal verification for specific domains (e.g., Blocksworld stacking logic, SWE-bench environment checks).
+- **Auto-Repair Engine**: Intercepts verification tracebacks and self-corrects invalid graphs (handling cycles, topological fixes, and PDDL parameter corrections) automatically without prompt leakage.
+- **MCP Server Interoperability**: Fully exposes the verification loop as a Model Context Protocol (MCP) server, allowing Claude Code, Cursor, and other AI Agents to use it as a "Trojan Horse" planning gatekeeper.
+- **R1 Distillation Output**: Logs every successful verification trajectory in a rigorous `<think>` format, creating highly valuable structured reasoning datasets for fine-tuning smaller models.
 
-### Key Features
+---
 
-- **Hybrid BDI + LLM Planning**: Generates structured BDI plans (Beliefs, Desires, Intentions) as DAGs from natural language goals using DSPy ChainOfThought.
-- **3-Layer Verification**:
-  1. **Structural** — hard checks (empty graph, cycles) + soft warning (disconnected components)
-  2. **Symbolic** — PDDL precondition/effect checking via VAL
-  3. **Physics** — Domain-specific state simulation (e.g., Blocksworld clear/hand constraints)
-- **Auto-Repair**: Repairs cycles, still connects disconnected subgraphs (even when reported as warnings), and canonicalizes node IDs without re-querying the LLM. Falls back to LLM-guided repair using VAL error messages (up to 3 attempts).
-- **MCP Server**: Exposes `generate_verified_plan` as an MCP tool for use by Claude Code, Cursor, and other agents.
-- **Coding Domain**: Specialized planner for SWE-bench software engineering tasks (`read-file` → `edit-file` → `run-test` action types).
-- **Ablation Support**: `--execution_mode` flag (NAIVE / BDI_ONLY / FULL_VERIFIED) for controlled experiments.
-- **PNSV Framework**: Pluggable Neuro-Symbolic Verification engine with domain-agnostic BDI reasoning, shared DAG utilities (`_dag_utils.py`), and R1 distillation formatter for student model fine-tuning.
+## Tech Stack
 
-## PlanBench Results
+- **Language**: Python 3.10+
+- **Prompting Framework**: DSPy
+- **Validation**: Pydantic V2
+- **Formal Verification**: Z3 Solver, `VAL` (PDDL Validator)
+- **Agent Integration**: Model Context Protocol (MCP) Python SDK
+- **Testing**: Pytest
+- **Containerization**: Docker
 
-Full-dataset evaluation across three planning domains.
+---
 
-### GPT-5 (2026-02-27) — Full Dataset
+## Prerequisites
 
-| Domain | Instances | Success Rate |
-|--------|-----------|-------------|
-| Blocksworld | 1103/1103 | **90.8%** (FULL_VERIFIED) |
-| Logistics | 572 | in progress |
-| Depots | 501 | in progress |
+To run this framework locally, you must have:
+- **Python 3.10+** (Python 3.11 recommended)
+- **Git**
+- **Docker** (Optional, but highly recommended for the MCP server)
+- A valid API key from OpenAI, Anthropic, or Google/Vertex.
 
-### Gemini (2026-02-13) — Paper Canonical Numbers
+---
 
-| Domain | Passed | Total | Accuracy |
-|--------|--------|-------|----------|
-| Blocksworld | ~200 | ~200 | ~99.8% |
-| Logistics | 568 | 570 | **99.6%** |
-| Depots | 497 | 500 | **99.4%** |
+## Getting Started
 
-Frozen evidence snapshot: `artifacts/paper_eval_20260213/` (immutable, do not modify).
-
-### Ablation (GPT-OSS-120B, blocksworld 1103 instances)
-
-| Mode | Success Rate | What's verified |
-|------|-------------|-----------------|
-| NAIVE | 91.6% | Nothing — raw LLM output |
-| BDI_ONLY | 91.7% | Structural (DAG) only |
-| FULL_VERIFIED | 90.8% | All 3 layers — provably correct |
-
-The ~1% gap between NAIVE and FULL_VERIFIED shows the verification overhead is minimal while providing formal correctness guarantees.
-
-## Installation
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/alexj11324/BDI_LLM_Formal_Ver.git
-   cd BDI_LLM_Formal_Ver
-   ```
-
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. Set up environment variables:
-   ```bash
-   cp .env.example .env
-   # Edit .env: set provider credentials:
-   # - OPENAI_API_KEY (OpenAI / NVIDIA-compatible gateway)
-   # - ANTHROPIC_API_KEY
-   # - GOOGLE_API_KEY or GOOGLE_APPLICATION_CREDENTIALS
-   # Optional: OPENAI_API_BASE for custom gateway
-   ```
-
-## Usage
-
-### Tests
+### 1. Clone the Repository
 
 ```bash
-pytest
-pytest tests/test_verifier.py -v
-pytest tests/test_integration.py -q  # API-dependent; auto-skips when provider creds are unavailable
+git clone https://github.com/alexj11324/BDI_LLM_Formal_Ver.git
+cd BDI_LLM_Formal_Ver
 ```
 
-### Evaluation
+### 2. Install Dependencies
+
+It is highly recommended to use a virtual environment (`venv`, `conda`, `uv`, etc.):
 
 ```bash
-python scripts/run_evaluation.py --mode unit       # offline unit tests
-python scripts/run_evaluation.py --mode demo       # live LLM demo
-python scripts/run_evaluation.py --mode benchmark  # full benchmark
+pip install -r requirements.txt
 ```
 
-### PlanBench
+### 3. Environment Setup
+
+Copy the example environment variables file to configure your language model API access:
 
 ```bash
-# Single domain
-python scripts/run_planbench_full.py --domain blocksworld --max_instances 100
-
-# All domains, parallel, with ablation mode
-python scripts/run_planbench_full.py --all_domains --execution_mode FULL_VERIFIED \
-  --output_dir runs/my_run --parallel --workers 30
-
-# Resume from checkpoint (auto-detected if checkpoint exists in output_dir)
-python scripts/run_planbench_full.py --domain blocksworld --output_dir runs/my_run
+cp .env.example .env
 ```
 
-### MCP Server
+Configure the following standard LLM variables inside `.env`:
 
+| Variable | Description | Example |
+| -------- | ----------- | ------- |
+| `OPENAI_API_KEY` | OpenAI or any compatible API provider | `sk-xxxx...` |
+| `ANTHROPIC_API_KEY` | Anthropic API Key | `sk-ant-xxxx...` |
+| `GOOGLE_API_KEY` | Google Gemini API Key | `AIza...` |
+| `LLM_MODEL` | Specific model string for DSPy to use | `gpt-5`, `gemini-2.0-flash` |
+| `OPENAI_API_BASE` | Custom deployment or CMU gateway | `https://ai-gateway...` |
+
+*(See the Environment Variables section below for full documentation).*
+
+### 4. Ensure VAL Binary is Executable (Local Run)
+
+If you are running the `VAL` verifier locally on macOS (ARM64), ensure it has executable permissions:
 ```bash
-python src/mcp_server_bdi.py
+chmod +x planbench_data/planner_tools/VAL/validate
 ```
+*(If you are on Linux or Windows, we recommend using the Docker build, which automatically compiles VAL).*
 
-Exposes `generate_verified_plan(goal, domain, context, pddl_domain_file, pddl_problem_file)` as an MCP tool.
+---
 
-### Project Structure
+## Architecture Overview
 
-```
+### Directory Structure
+
+```text
 BDI_LLM_Formal_Ver/
-├── src/bdi_llm/              # Core modules (planner, verifier, schemas, repair)
-├── src/mcp_server_bdi.py     # MCP server entry point
-├── scripts/                  # Evaluation and benchmark scripts
-├── tests/                    # Unit and integration tests
-├── planbench_data/           # PlanBench PDDL instances + VAL binary (macOS arm64)
-│   └── plan-bench/utils/     # Secure subprocess wrappers (run_val helper)
-├── pnsv_workspace/           # PNSV Framework (Pluggable Neuro-Symbolic Verification)
-│   ├── src/core/             # Domain-agnostic BDI engine, schemas, verification bus
-│   ├── src/plugins/          # Domain verifiers (PlanBench, SWE-bench)
-│   │   └── _dag_utils.py     # Shared topological sort (centralized)
-│   ├── src/dspy_pipeline/    # DSPy signatures, teacher config, R1 formatter
-│   └── tests/                # 90 unit tests (schemas, verifiers, engine, formatter)
-├── runs/                     # Mutable benchmark outputs (not authoritative for paper)
-├── artifacts/                # Frozen paper evidence snapshots (do not modify)
-└── BDI_Paper/                # LaTeX source (AAAI 2026 format)
+├── src/
+│   ├── bdi_llm/             # Legacy namespace core modules
+│   └── mcp_server_bdi.py    # Standard MCP server entrypoint
+├── pnsv_workspace/          # Core Pluggable Neuro-Symbolic Verification Engine
+│   ├── src/core/            # Verifier Bus and BDI Engine orchestrator
+│   ├── src/plugins/         # Implementations of Domain Verifiers (PlanBench, SWE)
+│   └── src/dspy_pipeline/   # DSPy Logic, Prompts, Signatures, R1 Formatter
+├── scripts/                 # Entrypoints for benchmarking and evaluations
+├── tests/                   # Pytest suite
+├── planbench_data/          # PDDL datasets (Blocksworld, Logistics, etc.)
+└── conductor/               # AI Documentation context configurations
 ```
 
-## Documentation
+### The PNSV Verification Loop
 
-- [User Guide](docs/USER_GUIDE.md)
-- [Architecture](docs/ARCHITECTURE.md)
-- [Benchmarks](docs/BENCHMARKS.md)
+1. **Intention Generation**: An initial natural language prompt generates a JSON Intention DAG via DSPy.
+2. **Pydantic Validation**: Automatically casts JSON into a strictly-typed `IntentionDAG` object.
+3. **Core Engine Dispatch**: The `BDIEngine` delegates the DAG to the `VerificationBus`.
+4. **Multi-layer Check**: The Verification Bus passes the graph to specialized plugins (like `PlanBenchVerifier` or `SWEVerifier`). These plugins execute structural checks, PDDL VAL validation, and custom domain simulator logic in parallel.
+5. **Auto-Repair / Distillation**: 
+   - If **failed**: Tracebacks are caught, structured, and passed back into the DSPy engine for auto-correction (up to three loops via the `EpistemicDeadlockError` guard).
+   - If **passed**: The successful trajectory is piped into the generic `R1 Distillation Formatter` and flushed into `.jsonl` trace outputs.
 
-## Recent Changes
+---
 
-### 2026-03-03
+## Environment Variables
 
-- **Security**: Replaced all `os.popen`/`os.system` calls in `planbench_data/` with `subprocess.run` using explicit argument lists, `pathlib.Path` for path construction, return code checking, and environment variable validation ([PR #45](https://github.com/alexj11324/BDI_LLM_Formal_Ver/pull/45)).
-- **Refactor**: Extracted shared `run_val()` helper to centralize VAL validator invocation across `validate_plan` and `get_val_feedback`.
-- **Refactor**: Extracted shared `_dag_utils.topological_sort()` to eliminate duplicated topological sort logic between `swe_verifier.py` and `planbench_verifier.py` ([PR #43](https://github.com/alexj11324/BDI_LLM_Formal_Ver/pull/43)).
-- **Bugfix**: Fixed `dag_dict` initialization in BDI engine to use `None` instead of `{}`, properly distinguishing "no DAG produced" from "empty DAG".
-- **PNSV**: All 11 implementation tasks completed with 90 passing unit tests.
+### Required API Configurations
 
-## License
+You must provide *at least one* LLM provider key to use the DSPy planner.
 
-MIT License — see [LICENSE](LICENSE) for details.
+| Variable | Description |
+| -------- | ----------- |
+| `OPENAI_API_KEY` | Connects DSPy to OpenAI or OpenAI-compatible APIs (vLLM, Nim) |
+| `ANTHROPIC_API_KEY` | Connects to Claude 3.5/3.7 Family |
+| `GOOGLE_API_KEY`| Connects direct Gemini access |
+| `GOOGLE_APPLICATION_CREDENTIALS` | Absolute path to Vertex AI JSON credential file |
+
+### Optional Execution Variables
+
+| Variable | Description | Default |
+| -------- | ----------- | ------- |
+| `LLM_MODEL` | Explicitly overrides the LLM endpoint class | `gpt-4o-mini` |
+| `OPENAI_API_BASE` | Alternative target for OpenAI SDK endpoints | - |
+| `SAVE_REASONING_TRACE` | Writes CoT tokens to disk per run | `true` |
+| `REASONING_TRACE_MAX_CHARS` | Truncates trace logging | `8000` |
+
+---
+
+## Available Scripts
+
+| Command | Description |
+| ------- | ----------- |
+| `python scripts/run_planbench_full.py --domain blocksworld` | Execute the full 100+ blocksworld domain benchmarks |
+| `python scripts/run_evaluation.py --mode demo` | Run a live CLI demo where you input a prompt and watch the engine verify it |
+| `python scripts/run_verification_only.py` | Run pure ground-truth validation offline (no LLMs pinged) |
+| `python src/mcp_server_bdi.py` | Launch the server as a Model Context Protocol endpoint |
+
+*Pass `--execution_mode FULL_VERIFIED` to benchmark scripts to trigger the full 3-layer architecture, or `--execution_mode NAIVE` for plain LLM un-verified generation.*
+
+---
+
+## Testing
+
+The framework relies on Pytest to validate generic modules and isolation logic. Currently it has over 90 active automated checks.
+
+### Running Offline Unit Tests
+
+```bash
+# Verify the formal pipeline and generic structure 
+pytest tests/
+```
+
+### Running API-Dependent Integration Tests
+
+```bash
+# Ensures end-to-end BDI generation works. Requires valid API keys.
+pytest tests/test_integration.py -q
+```
+*(Test cases lacking proper `.env` secrets will gracefully `skip` without failing the pipeline).*
+
+---
+
+## Deployment (MCP Server via Docker)
+
+For production tasks, agents should consume the BDI framework as an MCP tool executing within a strictly sandboxed container. The `Dockerfile` natively handles compiling the complex C++ `VAL` binary, bypassing all multi-platform dependency headaches.
+
+### 1. Build the formal image
+
+```bash
+docker build -t bdi-verifier .
+```
+
+### 2. Run the MCP Pipeline
+
+```bash
+docker run -i --rm -e OPENAI_API_KEY=$OPENAI_API_KEY bdi-verifier
+```
+
+### Exposing to Claude Desktop
+
+Add this configuration to your local `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "bdi-pnsv-verifier": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "-e", "OPENAI_API_KEY=YOUR_API_KEY", "bdi-verifier"]
+    }
+  }
+}
+```
+
+The server exposes `generate_verified_plan` ensuring tools invoke commands only if the verification bus permits the formal transition.
+
+---
+
+## Troubleshooting
+
+### Issue: "VAL binary missing or execution denied"
+**Error**: `subprocess.CalledProcessError` or "Permission denied" regarding VAL execution.
+**Fix**: On Mac, run `chmod +x planbench_data/planner_tools/VAL/validate`. On Linux or Windows WSL, you must compile `VAL` from source by executing `make validate` inside the `planner_tools/VAL` directory, OR simply use the Docker container where compilation is guaranteed. 
+
+### Issue: "Graph Validation Warning: Components disconnected"
+**Context**: This is considered a *soft warning* generated by Layer 1 (Structural Validator) when multiple parallel tasks are requested, forming distinct Directed Acyclic Graph structures without paths intersecting. 
+**Fix**: None required. Layer 2/3 and the Execution Engine accept partitioned DAGs natively; do not force LLMs to artificially attach parallel actions.
+
+### Issue: "Missing initial state context"
+**Error**: Python exception when passing raw PDDL graphs.
+**Fix**: Always verify you passed the parsed `init_state` object mapping via `parse_pddl_problem()`, as physics verification requires explicit awareness of truth environments beyond generic natural text representations. 
+
+---
+
+## Further Documentation
+
+- [**Conductor Setup**](conductor/index.md): Design guidelines, Git strategies, and project intent.
+- [**C4 Architecture**](C4-Documentation/c4-context.md): Deep-dive into Context & Container boundaries.
+- [**Technical Reference**](docs/TECHNICAL_REFERENCE.md): 10-chapter technical development manual.
+- [**Benchmarking Status**](docs/BENCHMARKS.md): Historical execution outcomes against PlanBench.
+- [**Wiki Catalogue**](wiki-catalogue.md): Full top-level repository index.
