@@ -145,7 +145,7 @@ class PDDLToBDIConverter:
 class PlanBenchEvaluator:
     """Evaluates BDI-LLM on PlanBench tasks"""
 
-    def __init__(self, planbench_root: str = "planbench_data/plan-bench"):
+    def __init__(self, planbench_root: str = "workspaces/planbench_data/plan-bench"):
         self.planbench_root = Path(planbench_root)
         self.converter = PDDLToBDIConverter()
 

@@ -120,7 +120,7 @@ def test_metrics_structure():
     from scripts.evaluation.run_planbench_full import parse_pddl_problem
 
     # Test with a real PDDL file
-    test_file = "planbench_data/plan-bench/instances/blocksworld/generated/instance-10.pddl"
+    test_file = "workspaces/planbench_data/plan-bench/instances/blocksworld/generated/instance-10.pddl"
 
     if not Path(test_file).exists():
         print(f"Test 4: Metrics Structure - SKIPPED (test file not found)")

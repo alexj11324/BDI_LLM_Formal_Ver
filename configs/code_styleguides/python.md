@@ -30,5 +30,5 @@
 ## Testing
 
 - Use `pytest` with fixtures
-- Test files: `test_*.py` in `tests/` or `pnsv_workspace/tests/`
+- Test files: `test_*.py` in `tests/` or `workspaces/pnsv_workspace/tests/`
 - Integration tests auto-skip when API credentials unavailable

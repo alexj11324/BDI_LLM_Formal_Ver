@@ -40,8 +40,8 @@ async def run_demo():
                     "goal": "stack a on b",
                     "domain": "blocksworld",
                     "context": "on(a, table), on(b, table), clear(a), clear(b), handempty",
-                    "pddl_domain_file": "planbench_data/blocksworld/domain.pddl",
-                    "pddl_problem_file": "planbench_data/blocksworld/problem.pddl"
+                    "pddl_domain_file": "workspaces/planbench_data/blocksworld/domain.pddl",
+                    "pddl_problem_file": "workspaces/planbench_data/blocksworld/problem.pddl"
                 }
             )
             

@@ -48,7 +48,7 @@ def test_pddl_parser_init_state():
     print("="*80 + "\n")
 
     # Use a generated instance file
-    instance_path = Path("planbench_data/plan-bench/instances/blocksworld/generated/instance-2.pddl")
+    instance_path = Path("workspaces/planbench_data/plan-bench/instances/blocksworld/generated/instance-2.pddl")
 
     if not instance_path.exists():
         pytest.skip(f"Instance file not found: {instance_path}")
@@ -180,7 +180,7 @@ def test_multiple_instances():
     print("  Test 4: Multiple Instance Stress Test")
     print("="*80 + "\n")
 
-    base_path = Path("planbench_data/plan-bench/instances/blocksworld/generated")
+    base_path = Path("workspaces/planbench_data/plan-bench/instances/blocksworld/generated")
 
     if not base_path.exists():
         pytest.skip(f"Instance directory not found: {base_path}")

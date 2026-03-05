@@ -112,7 +112,7 @@ def test_val_verifier():
         print(f"   VAL path: {verifier.val_path}\n")
 
         # Check if we have PlanBench data
-        planbench_base = Path("planbench_data/plan-bench")
+        planbench_base = Path("workspaces/planbench_data/plan-bench")
         if not planbench_base.exists():
             print("⚠️  PlanBench data not found - skipping VAL tests")
             print(f"   Expected at: {planbench_base.absolute()}\n")

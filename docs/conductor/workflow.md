@@ -2,7 +2,7 @@
 
 ## TDD Policy
 
-**Moderate** — Tests encouraged for all core logic. The project has 90+ unit tests in `pnsv_workspace/tests/` and integration tests in `tests/`. Tests should be written for verification logic and new domain verifiers.
+**Moderate** — Tests encouraged for all core logic. The project has 90+ unit tests in `workspaces/pnsv_workspace/tests/` and integration tests in `tests/`. Tests should be written for verification logic and new domain verifiers.
 
 ## Commit Strategy
 

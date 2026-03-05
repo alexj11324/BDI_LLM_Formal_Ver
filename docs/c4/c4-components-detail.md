@@ -6,7 +6,7 @@
 | **Name** | BDI Engine |
 | **Type** | Core Library |
 | **Technology** | Python, Pydantic V2 |
-| **Location** | [pnsv_workspace/src/core/bdi_engine.py](../pnsv_workspace/src/core/bdi_engine.py) |
+| **Location** | [workspaces/pnsv_workspace/src/core/bdi_engine.py](../workspaces/pnsv_workspace/src/core/bdi_engine.py) |
 
 ## Purpose
 Core orchestrator implementing the BDI (Belief-Desire-Intention) reasoning loop. Receives a natural language goal, generates an IntentionDAG via DSPy, verifies it through the Verification Bus, and iteratively repairs invalid plans. Manages BeliefState lifecycle with immutable verification (deep copies).
@@ -32,7 +32,7 @@ Core orchestrator implementing the BDI (Belief-Desire-Intention) reasoning loop.
 | **Name** | Verification Bus |
 | **Type** | Core Library |
 | **Technology** | Python |
-| **Location** | [pnsv_workspace/src/core/verification_bus.py](../pnsv_workspace/src/core/verification_bus.py) |
+| **Location** | [workspaces/pnsv_workspace/src/core/verification_bus.py](../workspaces/pnsv_workspace/src/core/verification_bus.py) |
 
 ## Purpose
 Routes IntentionDAGs through a 3-layer verification pipeline. Layer 1 (Structural) runs domain-agnostic checks (empty graph, cycles, disconnected components). Layers 2-3 delegate to the registered BaseDomainVerifier (symbolic + physics). Short-circuits on first failure.
@@ -55,7 +55,7 @@ Routes IntentionDAGs through a 3-layer verification pipeline. Layer 1 (Structura
 | **Name** | Domain Plugins |
 | **Type** | Plugin Library |
 | **Technology** | Python, PDDL, VAL |
-| **Location** | [pnsv_workspace/src/plugins/](../pnsv_workspace/src/plugins/) |
+| **Location** | [workspaces/pnsv_workspace/src/plugins/](../workspaces/pnsv_workspace/src/plugins/) |
 
 ## Sub-components
 
@@ -85,7 +85,7 @@ Routes IntentionDAGs through a 3-layer verification pipeline. Layer 1 (Structura
 | **Name** | DSPy Pipeline |
 | **Type** | LLM Integration Layer |
 | **Technology** | Python, DSPy |
-| **Location** | [pnsv_workspace/src/dspy_pipeline/](../pnsv_workspace/src/dspy_pipeline/) |
+| **Location** | [workspaces/pnsv_workspace/src/dspy_pipeline/](../workspaces/pnsv_workspace/src/dspy_pipeline/) |
 
 ## Sub-components
 
