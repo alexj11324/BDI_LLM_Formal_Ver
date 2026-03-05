@@ -41,7 +41,7 @@ Based on the analysis:
 - **Prompt issue** → Edit DSPy signatures in `src/bdi_llm/planner.py`
 - **Verification error** → Fix `src/bdi_llm/symbolic_verifier.py`
 - **Domain gap** → Update PDDL domain files in `planbench_data/`
-- **Tool description** → Improve `src/mcp_server_bdi.py` tool schema
+- **Tool description** → Improve `src/interfaces/mcp_server.py` tool schema
 
 Make the minimal change needed. Run `/run-tests` after each fix to verify no regressions.
 

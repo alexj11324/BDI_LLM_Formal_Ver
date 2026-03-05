@@ -289,7 +289,7 @@ VerificationResult (per layer)
 
 ### 6.3 MCP Protocol
 
-- **Entry**: `src/mcp_server_bdi.py`
+- **Entry**: `src/interfaces/mcp_server.py`
 - **Tool**: `generate_verified_plan(goal, domain, context, pddl_domain_file, pddl_problem_file)`
 - **Clients**: Claude Code, Cursor, custom agents
 
@@ -312,13 +312,13 @@ pytest                 # Validate setup
 ```dockerfile
 # Dockerfile present in repo root
 docker build -t pnsv .
-docker run -e OPENAI_API_KEY=... pnsv python scripts/run_evaluation.py
+docker run -e OPENAI_API_KEY=... pnsv python scripts/evaluation/run_evaluation.py
 ```
 
 ### 7.3 Long-Running Evaluations
 
 ```bash
-nohup python -u scripts/run_planbench_full.py \
+nohup python -u scripts/evaluation/run_planbench_full.py \
   --all_domains --execution_mode FULL_VERIFIED \
   --workers 30 --output_dir runs/my_run \
   > logs/eval.log 2>&1 &
@@ -431,8 +431,8 @@ All external process invocations use secure patterns:
 | `src/bdi_llm/planner.py` | 77.7K | Legacy full-featured planner |
 | `src/bdi_llm/symbolic_verifier.py` | 25.5K | Legacy symbolic verifier |
 | `src/bdi_llm/plan_repair.py` | 15.6K | Plan auto-repair engine |
-| `src/mcp_server_bdi.py` | 4.0K | MCP server entry point |
-| `scripts/run_planbench_full.py` | 88.6K | Full PlanBench evaluation script |
+| `src/interfaces/mcp_server.py` | 4.0K | MCP server entry point |
+| `scripts/evaluation/run_planbench_full.py` | 88.6K | Full PlanBench evaluation script |
 
 ### 10.3 Command Reference
 
@@ -442,16 +442,16 @@ pytest
 pytest tests/test_verifier.py -v
 
 # Evaluation modes
-python scripts/run_evaluation.py --mode unit
-python scripts/run_evaluation.py --mode demo
-python scripts/run_evaluation.py --mode benchmark
+python scripts/evaluation/run_evaluation.py --mode unit
+python scripts/evaluation/run_evaluation.py --mode demo
+python scripts/evaluation/run_evaluation.py --mode benchmark
 
 # PlanBench with options
-python scripts/run_planbench_full.py --domain blocksworld --max_instances 100
-python scripts/run_planbench_full.py --all_domains --execution_mode FULL_VERIFIED --workers 30
+python scripts/evaluation/run_planbench_full.py --domain blocksworld --max_instances 100
+python scripts/evaluation/run_planbench_full.py --all_domains --execution_mode FULL_VERIFIED --workers 30
 
 # MCP Server
-python src/mcp_server_bdi.py
+python src/interfaces/mcp_server.py
 ```
 
 ---

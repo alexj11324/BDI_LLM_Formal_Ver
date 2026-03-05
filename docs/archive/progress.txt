@@ -1,0 +1,13 @@
+# Verification-Only Evaluation Progress
+
+## Task 1: Smoke Test Verification Script ✅
+- **Date**: 2026-03-03T14:10
+- **Status**: PASSED
+- **Command**: `PYTHONUNBUFFERED=1 python -u scripts/run_verification_only.py --domain blocksworld --max_instances 5`
+- **Results**: All 5 Blocksworld instances evaluated successfully
+  - Generation success: 5/5
+  - LLM accuracy (VAL): 100.0%
+  - Structural/VAL agreement: 5/5 (100.0%)
+  - No code fixes needed — script ran cleanly on first attempt
+- **Output file**: `runs/verification_results/verify_blocksworld_20260303_141045.json`
+- **Verification**: JSON output contains `summary` and `results` keys with all expected metrics

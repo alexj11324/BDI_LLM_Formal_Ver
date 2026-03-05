@@ -56,10 +56,10 @@ The server exposes the following tools to the agent:
 
 ```bash
 # Run with physics validation on 3 instances
-python scripts/run_planbench_full.py --domain blocksworld --max_instances 3
+python scripts/evaluation/run_planbench_full.py --domain blocksworld --max_instances 3
 
 # Run full 100-instance benchmark
-python scripts/run_planbench_full.py --domain blocksworld --max_instances 100
+python scripts/evaluation/run_planbench_full.py --domain blocksworld --max_instances 100
 ```
 
 ### Interpreting Results
@@ -313,7 +313,7 @@ pytest tests/test_integration.py -q
 pytest tests/test_val_integration.py -q
 
 # Run small batch
-python scripts/run_planbench_full.py --domain blocksworld --max_instances 3
+python scripts/evaluation/run_planbench_full.py --domain blocksworld --max_instances 3
 ```
 
 `tests/test_integration.py` now skips automatically when provider credentials are missing/invalid.
@@ -401,7 +401,7 @@ plan, valid, metrics = generate_bdi_plan(beliefs, desire, init_state)
 
 - **Conductor Setup**: `conductor/index.md`
 - [Wiki Catalogue](../wiki-catalogue.md)
-- **C4 Architecture**: `C4-Documentation/c4-context.md`
+- **C4 Architecture**: `docs/c4/c4-context.md`
 - **Technical Reference**: `docs/TECHNICAL_REFERENCE.md`
 - **Benchmarks**: `docs/BENCHMARKS.md`
 - **Test Suite**: `tests/test_integrated_verification.py`, `tests/test_integration_phase2.py`

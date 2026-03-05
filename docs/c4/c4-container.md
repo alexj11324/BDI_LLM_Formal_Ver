@@ -22,7 +22,7 @@
 
 **Interfaces**:
 - Python API: `bdi_engine.generate_plan()`, `bdi_engine.verify_plan()`
-- CLI: `scripts/run_planbench_full.py`, `scripts/run_evaluation.py`
+- CLI: `scripts/evaluation/run_planbench_full.py`, `scripts/evaluation/run_evaluation.py`
 
 ---
 

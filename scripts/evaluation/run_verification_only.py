@@ -12,12 +12,12 @@ clean evaluation loop focused purely on verification metrics.
 
 Usage:
     # Run on blocksworld (10 instances for testing)
-    python scripts/run_verification_only.py --domain blocksworld --max_instances 10
+    python scripts/evaluation/run_verification_only.py --domain blocksworld --max_instances 10
 
     # Full evaluation across all domains
-    python scripts/run_verification_only.py --domain blocksworld
-    python scripts/run_verification_only.py --domain logistics
-    python scripts/run_verification_only.py --domain depots
+    python scripts/evaluation/run_verification_only.py --domain blocksworld
+    python scripts/evaluation/run_verification_only.py --domain logistics
+    python scripts/evaluation/run_verification_only.py --domain depots
 
 Author: BDI-LLM Research
 """
@@ -70,7 +70,7 @@ from src.bdi_llm.schemas import BDIPlan
 from src.bdi_llm.verifier import PlanVerifier
 
 # Reuse PDDL parsing and NL conversion from existing script
-from scripts.run_planbench_full import (
+from scripts.evaluation.run_planbench_full import (
     parse_pddl_problem,
     pddl_to_natural_language,
     resolve_domain_file,

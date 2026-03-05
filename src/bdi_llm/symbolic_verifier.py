@@ -69,7 +69,8 @@ class PDDLSymbolicVerifier:
         domain_file: str,
         problem_file: str,
         plan_actions: List[str],
-        verbose: bool = False
+        verbose: bool = False,
+        check_goal: bool = True,
     ) -> Tuple[bool, List[str]]:
         """
         Verify PDDL plan using VAL
@@ -113,6 +114,18 @@ class PDDLSymbolicVerifier:
 
             # Parse VAL output
             is_valid, errors = self._parse_val_output(output, verbose)
+
+            # When check_goal=False (prefix verification), treat
+            # "executed but goal not satisfied" as success — the
+            # goal not being met is expected for partial plans.
+            if not check_goal and not is_valid:
+                goal_only_errors = all(
+                    "goal not satisfied" in e.lower()
+                    or "plan executed but goal" in e.lower()
+                    for e in errors
+                )
+                if goal_only_errors and "Plan executed successfully" in output:
+                    return True, []
 
             return is_valid, errors
 

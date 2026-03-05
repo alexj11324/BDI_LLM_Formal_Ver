@@ -34,7 +34,7 @@ None / Stateless — Results stored as JSON files in `runs/` and `artifacts/`
 
 - **Local execution** — Primary development and evaluation mode
 - **Docker** — Containerized deployment available (Dockerfile present)
-- **MCP Server** — `src/mcp_server_bdi.py` for agent integration
+- **MCP Server** — `src/interfaces/mcp_server.py` for agent integration
 
 ## Key Dependencies (from requirements.txt)
 

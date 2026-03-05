@@ -60,7 +60,7 @@ PNSV (Pluggable Neuro-Symbolic Verification) addresses the hallucination and log
 
 ### Journey 1: Researcher → PlanBench Evaluation
 1. Configure `.env` with LLM provider credentials
-2. Run `python scripts/run_planbench_full.py --domain blocksworld --all_domains`
+2. Run `python scripts/evaluation/run_planbench_full.py --domain blocksworld --all_domains`
 3. System loads PDDL instances from `planbench_data/`
 4. For each instance: generate plan → verify → record result
 5. Results saved to `runs/` with checkpoint support
@@ -68,7 +68,7 @@ PNSV (Pluggable Neuro-Symbolic Verification) addresses the hallucination and log
 7. Analyze with `scripts/analyze_verification_results.py`
 
 ### Journey 2: AI Agent → MCP Verified Plan
-1. Agent connects to `src/mcp_server_bdi.py`
+1. Agent connects to `src/interfaces/mcp_server.py`
 2. Calls `generate_verified_plan(goal, domain, context, pddl_domain_file, pddl_problem_file)`
 3. Server generates plan via DSPy planner
 4. Plan passes through 3-layer verification

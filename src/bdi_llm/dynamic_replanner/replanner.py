@@ -19,15 +19,20 @@ class DynamicReplanner:
     where supported (e.g. qwen3.5-plus).
     """
 
-    def __init__(self, model_name: str = "qwen3.5-plus", max_retries: int = 3):
+    def __init__(self, model_name: str = None, max_retries: int = 3):
         # We explicitly want to use a model that supports caching.
+        if model_name is None:
+            model_name = getattr(Config, 'LLM_MODEL', 'qwen3.5-plus')
         self.model_name = model_name
         self.max_retries = max_retries
         
-        # We use standard OpenAI client for DashScope compatible API
+        # Use Config for API key and base URL so it works with both
+        # DashScope and standard OpenAI environments
+        api_key = Config.DASHSCOPE_API_KEY or Config.OPENAI_API_KEY
+        base_url = getattr(Config, 'LLM_BASE_URL', 'https://dashscope.aliyuncs.com/compatible-mode/v1')
         self.client = OpenAI(
-            api_key=Config.DASHSCOPE_API_KEY,
-            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            api_key=api_key,
+            base_url=base_url,
         )
 
     def generate_recovery_plan(
@@ -129,9 +134,32 @@ Output ONLY a valid JSON string (matching the BDIPlan schema: {{"goal_descriptio
 
                 plan_dict = json.loads(content)
                 
+                # Normalize node fields: LLM may use 'action' / 'type' instead of 'action_type'
+                raw_nodes = plan_dict.get('nodes', [])
+                normalised_nodes = []
+                for n in raw_nodes:
+                    if 'action_type' not in n:
+                        n['action_type'] = n.pop('action', n.pop('type', 'unknown'))
+                    if 'description' not in n:
+                        n['description'] = f"{n.get('action_type', '')} {n.get('params', '')}"
+                    if 'id' not in n:
+                        n['id'] = f"s{len(normalised_nodes)+1}"
+                    normalised_nodes.append(n)
+                
+                # Normalize edge fields: DependencyEdge uses 'source'/'target'
+                # LLM may return 'from_id'/'to_id' or 'from'/'to' instead
+                raw_edges = plan_dict.get('edges', [])
+                normalised_edges = []
+                for e in raw_edges:
+                    if 'source' not in e:
+                        e['source'] = e.pop('from_id', e.pop('from', ''))
+                    if 'target' not in e:
+                        e['target'] = e.pop('to_id', e.pop('to', ''))
+                    normalised_edges.append(e)
+                
                 # Parse to BDIPlan
-                nodes = [ActionNode(**n) for n in plan_dict.get('nodes', [])]
-                edges = [DependencyEdge(**e) for e in plan_dict.get('edges', [])]
+                nodes = [ActionNode(**n) for n in normalised_nodes]
+                edges = [DependencyEdge(**e) for e in normalised_edges]
                 return BDIPlan(goal_description=plan_dict.get('goal_description', "Recovery plan"), nodes=nodes, edges=edges)
 
             except Exception as e:

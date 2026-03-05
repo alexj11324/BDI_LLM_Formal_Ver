@@ -37,7 +37,7 @@ from src.bdi_llm.dynamic_replanner.executor import PlanExecutor, ExecutionResult
 from src.bdi_llm.dynamic_replanner.replanner import DynamicReplanner
 
 # Reuse PDDL parsing and NL conversion
-from scripts.run_planbench_full import (
+from scripts.evaluation.run_planbench_full import (
     parse_pddl_problem,
     pddl_to_natural_language,
     resolve_domain_file,
@@ -118,7 +118,7 @@ def generate_and_replan(
         return result
         
     # 3. Dynamic Replanning Loop
-    replanner = DynamicReplanner(model_name="qwen3.5-plus") # Hardcoded to cached model
+    replanner = DynamicReplanner()  # Uses Config.LLM_MODEL by default
     current_exec_res = exec_res
     
     for i in range(max_replans):
@@ -221,6 +221,7 @@ def run_dynamic_replanning_eval(
         except Exception as e:
             tqdm.write(f"  {inst_name}: ERROR - {e}")
             return {
+                'instance_file': inst_file,
                 'instance_name': inst_name,
                 'error': str(e)
             }
@@ -254,6 +255,9 @@ def run_dynamic_replanning_eval(
     
     # Analyze
     total = len(results)
+    if total == 0:
+        print("\nNo instances processed. Nothing to report.")
+        return
     init_success = sum(1 for r in results if r.get('initial_execution', {}).get('success', False))
     final_success = sum(1 for r in results if r.get('final_success', False))
     replan_success = final_success - init_success
