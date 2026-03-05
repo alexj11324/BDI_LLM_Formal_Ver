@@ -597,5 +597,44 @@ class TestComplexDAG:
         assert order.index("unlock") < order.index("open")
         assert order.index("open") < order.index("walk_through")
 
+
+class TestVisualizerEdgeCases:
+    """Regression tests for visualizer failure paths."""
+
+    def test_visualize_plan_handles_invalid_graph_errors(self):
+        """Invalid plans should annotate verifier errors instead of raising NameError."""
+        matplotlib = pytest.importorskip("matplotlib")
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        from bdi_llm.visualizer import PlanVisualizer
+
+        plan = BDIPlan(
+            goal_description="Cyclic plan",
+            nodes=[
+                ActionNode(id="a", action_type="Action", description="A"),
+                ActionNode(id="b", action_type="Action", description="B"),
+            ],
+            edges=[
+                DependencyEdge(source="a", target="b"),
+                DependencyEdge(source="b", target="a"),
+            ],
+        )
+
+        fig = PlanVisualizer.visualize_plan(plan, show_execution_order=False)
+        try:
+            annotation_texts = [text.get_text() for text in fig.axes[0].texts]
+            assert any(text.startswith("Errors:") for text in annotation_texts)
+        finally:
+            plt.close(fig)
+
+    def test_compare_plans_rejects_empty_input(self):
+        """Comparing zero plans should raise a clear validation error."""
+        pytest.importorskip("matplotlib")
+        from bdi_llm.visualizer import PlanVisualizer
+
+        with pytest.raises(ValueError, match="must contain at least one plan"):
+            PlanVisualizer.compare_plans({})
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

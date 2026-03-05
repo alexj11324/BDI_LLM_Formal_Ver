@@ -1,14 +1,15 @@
 """DSPy Signature definitions for BDI plan generation and repair."""
 
 import dspy
+
 from ..schemas import BDIPlan
 from .prompts import (
-    _GRAPH_STRUCTURE_COMMON,
-    _STATE_TRACKING_HEADER,
     _COS_REPRESENTATION_HEADER,
+    _GRAPH_STRUCTURE_COMMON,
     _LOGICOT_HEADER,
     _LOGICOT_PROTOCOL_DETAILED,
     _REMINDER,
+    _STATE_TRACKING_HEADER,
 )
 
 
@@ -66,7 +67,9 @@ class GeneratePlan(dspy.Signature):
 
     2. **DAG (Directed Acyclic Graph)**: No cycles allowed.
        If action A → B → C, then C cannot have an edge back to A or B.
-       After generating your plan, VERIFY: "Does any action appear twice in the execution order?" If YES, remove the duplicate.
+       After generating your plan, VERIFY:
+       "Does any action appear twice in the execution order?"
+       If YES, remove the duplicate.
 
     3. **Single Goal**: All actions should ultimately contribute to the goal.
        Every action should have a path connecting it to the goal state.
@@ -89,7 +92,8 @@ class GeneratePlan(dspy.Signature):
        Each action depends on the previous one completing.
 
     6. **Explicit Teardown**:
-       If the beliefs say a block is stacked but the goal requires moving it, you MUST explicitly unstack it first.
+       If the beliefs say a block is stacked but the goal requires moving it,
+       you MUST explicitly unstack it first.
        Do NOT skip unstack/put-down steps.
        Example: If A is on B, and you need A on C:
          1. unstack A B
@@ -210,7 +214,10 @@ class GeneratePlan(dspy.Signature):
     """
     beliefs: str = dspy.InputField(desc="Current state of the world and available tools")
     desire: str = dspy.InputField(desc="The high-level goal to achieve")
-    plan: BDIPlan = dspy.OutputField(desc="Structured execution plan with nodes and edges forming a SINGLE CONNECTED DAG")
+    plan: BDIPlan = dspy.OutputField(
+        desc="Structured execution plan with nodes and edges forming a "
+        "SINGLE CONNECTED DAG"
+    )
 
 
 class GeneratePlanLogistics(dspy.Signature):
@@ -392,7 +399,10 @@ class GeneratePlanLogistics(dspy.Signature):
     """
     beliefs: str = dspy.InputField(desc="Current state of the logistics world")
     desire: str = dspy.InputField(desc="The logistics goal to achieve")
-    plan: BDIPlan = dspy.OutputField(desc="Structured execution plan with nodes and edges forming a SINGLE CONNECTED DAG")
+    plan: BDIPlan = dspy.OutputField(
+        desc="Structured execution plan with nodes and edges forming a "
+        "SINGLE CONNECTED DAG"
+    )
 
 
 class GeneratePlanDepots(dspy.Signature):
@@ -468,14 +478,17 @@ class GeneratePlanDepots(dspy.Signature):
       - hoist is AVAILABLE (not lifting anything)
       - crate is ON surface (pallet or another crate)
       - crate is CLEAR (nothing on top of it)
-      - hoist is at place, crate is at place, surface is at place (all at SAME place)
-      → Effect: hoist is LIFTING crate (no longer available), crate is no longer on surface, surface becomes CLEAR
+      - hoist is at place, crate is at place, surface is at place
+        (all at SAME place)
+      → Effect: hoist is LIFTING crate (no longer available), crate is no
+        longer on surface, surface becomes CLEAR
 
     drop(hoist, crate, surface, place):
       - hoist is LIFTING crate
       - surface is CLEAR (nothing on top of it)
       - hoist is at place, surface is at place (all at SAME place)
-      → Effect: crate is ON surface, hoist is AVAILABLE, crate becomes CLEAR, surface is no longer clear
+      → Effect: crate is ON surface, hoist is AVAILABLE, crate becomes CLEAR,
+        surface is no longer clear
 
     load(hoist, crate, truck, place):
       - hoist is LIFTING crate
@@ -566,12 +579,14 @@ class GeneratePlanDepots(dspy.Signature):
     - ⚠️ t0 is now at distributor0, NOT depot0!
 
     **Action 4:** unload(h1, c0, t0, distributor0)
-    - Preconditions: (1) h1 available? ✓ (2) c0 in t0? ✓ (3) t0 at distributor0? ✓ (4) h1 at distributor0? ✓
+    - Preconditions: (1) h1 available? ✓ (2) c0 in t0? ✓
+      (3) t0 at distributor0? ✓ (4) h1 at distributor0? ✓
     - State Update: h1 LIFTING c0 [UPDATED], c0 no longer in t0 [UPDATED]
     - ⚠️ h1 is now BUSY (lifting c0)
 
     **Action 5:** drop(h1, c0, c1, distributor0)
-    - Preconditions: (1) h1 lifting c0? ✓ (2) c1 clear? ✓ (3) h1 at distributor0? ✓ (4) c1 at distributor0? ✓
+    - Preconditions: (1) h1 lifting c0? ✓ (2) c1 clear? ✓
+      (3) h1 at distributor0? ✓ (4) c1 at distributor0? ✓
     - State Update: c0 ON c1 [UPDATED], h1 AVAILABLE [UPDATED], c0 CLEAR, c1 NOT clear
     - ✓ GOAL ACHIEVED: crate0 on crate1 at distributor0
 
@@ -609,7 +624,8 @@ class GeneratePlanDepots(dspy.Signature):
     - Wrong: drive(t2, depot1, dist0) ... later ... load(h1, c1, t2, depot1)
     - Right: t2 is at dist0 after the drive. You CANNOT use t2 at depot1 anymore.
     - ⚠️ EVERY load/unload MUST use the truck's CURRENT location, not its original location.
-    - ⚠️ After drive(truck, A, B): truck is at B. ALL subsequent load/unload with this truck must use B.
+    - ⚠️ After drive(truck, A, B): truck is at B. ALL subsequent
+      load/unload with this truck must use B.
 
     ❌ ERROR 3: Dropping onto occupied surface
     - Wrong: drop(h0, c0, pallet0, ...) when pallet0 already has c1 on it
@@ -633,7 +649,10 @@ class GeneratePlanDepots(dspy.Signature):
     """
     beliefs: str = dspy.InputField(desc="Current state of the depots world")
     desire: str = dspy.InputField(desc="The depots goal to achieve")
-    plan: BDIPlan = dspy.OutputField(desc="Structured execution plan with nodes and edges forming a SINGLE CONNECTED DAG")
+    plan: BDIPlan = dspy.OutputField(
+        desc="Structured execution plan with nodes and edges forming a "
+        "SINGLE CONNECTED DAG"
+    )
 
 
 class RepairPlan(dspy.Signature):
@@ -685,8 +704,25 @@ class RepairPlan(dspy.Signature):
     """
     beliefs: str = dspy.InputField(desc="Current state of the world")
     desire: str = dspy.InputField(desc="The goal to achieve")
-    previous_plan: str = dspy.InputField(desc="The plan that failed validation (as PDDL action sequence)")
-    val_errors: str = dspy.InputField(desc="Specific validation errors from the PDDL validator (VAL), including which action failed, why, and repair advice")
-    repair_history: str = dspy.InputField(desc="History of ALL previous repair attempts and their errors. Empty string if this is the first attempt. Study this to avoid repeating the same mistakes.", default="")
-    verification_feedback: str = dspy.InputField(desc="Structured multi-layer verifier feedback (failed layers, key errors, and suggested repair focus). Empty string if unavailable.", default="")
-    plan: BDIPlan = dspy.OutputField(desc="Corrected plan fixing the validation errors, as a SINGLE CONNECTED DAG")
+    previous_plan: str = dspy.InputField(
+        desc="The plan that failed validation (as PDDL action sequence)"
+    )
+    val_errors: str = dspy.InputField(
+        desc="Specific validation errors from the PDDL validator (VAL), "
+        "including which action failed, why, and repair advice"
+    )
+    repair_history: str = dspy.InputField(
+        desc="History of ALL previous repair attempts and their errors. "
+        "Empty string if this is the first attempt. Study this to avoid "
+        "repeating the same mistakes.",
+        default="",
+    )
+    verification_feedback: str = dspy.InputField(
+        desc="Structured multi-layer verifier feedback (failed layers, key "
+        "errors, and suggested repair focus). Empty string if unavailable.",
+        default="",
+    )
+    plan: BDIPlan = dspy.OutputField(
+        desc="Corrected plan fixing the validation errors, as a "
+        "SINGLE CONNECTED DAG"
+    )

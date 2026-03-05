@@ -2,7 +2,7 @@
 
 import json
 import time
-from typing import Any, Dict, Optional
+from typing import Any
 
 import dspy
 
@@ -42,7 +42,7 @@ class ResponsesAPILM(dspy.BaseLM):
     def __init__(self, model, api_key, api_base, reasoning_effort='low',
                  max_tokens=16000, timeout=600, num_retries=2,
                  use_chat_completions=False,
-                 chat_template_kwargs: Optional[Dict[str, Any]] = None):
+                 chat_template_kwargs: dict[str, Any] | None = None):
         """
         Args:
             use_chat_completions: If True, use /v1/chat/completions endpoint (NVIDIA).
@@ -84,6 +84,45 @@ class ResponsesAPILM(dspy.BaseLM):
         instructions = '\n\n'.join(system_parts) if system_parts else None
         return input_items, instructions
 
+    @staticmethod
+    def _extract_system_parts(content):
+        """Extract text fragments from system message content."""
+        if isinstance(content, str):
+            return [content]
+        if not isinstance(content, list):
+            return []
+        return [part['text'] for part in content if isinstance(part, dict) and 'text' in part]
+
+    def _build_chat_messages(self, messages):
+        """Build chat-completions messages and fold system text into first user turn."""
+        chat_messages = []
+        system_content = []
+
+        for message in messages:
+            role = message.get('role', 'user')
+            content = message.get('content', '')
+            if role == 'system':
+                system_content.extend(self._extract_system_parts(content))
+            else:
+                chat_messages.append({'role': role, 'content': content})
+
+        if system_content:
+            system_prefix = '\n\n'.join(system_content)
+            if chat_messages:
+                first_content = str(chat_messages[0]['content'])
+                chat_messages[0]['content'] = f"{system_prefix}\n\n{first_content}"
+            else:
+                chat_messages.append({'role': 'user', 'content': system_prefix})
+        return chat_messages
+
+    @staticmethod
+    def _raise_response_error(data):
+        """Raise normalized RuntimeError for Responses API failure payload."""
+        error = data.get('error', {})
+        code = error.get('code', 'unknown')
+        message = error.get('message', 'unknown error')
+        raise RuntimeError(f"ResponsesAPI error: {code} - {message}")
+
     def _call_once_chat_completions(self, messages):
         """Call Chat Completions API (NVIDIA style) with streaming."""
         import requests
@@ -94,29 +133,7 @@ class ResponsesAPILM(dspy.BaseLM):
             'Content-Type': 'application/json',
         }
 
-        # Build messages for Chat Completions
-        chat_messages = []
-        system_content = []
-        for m in messages:
-            role = m.get('role', 'user')
-            content = m.get('content', '')
-            if role == 'system':
-                if isinstance(content, str):
-                    system_content.append(content)
-                else:
-                    for part in content:
-                        if isinstance(part, dict) and 'text' in part:
-                            system_content.append(part['text'])
-            else:
-                chat_messages.append({'role': role, 'content': content})
-
-        # Prepend system content as first user message if present
-        if system_content:
-            # NVIDIA API doesn't support system role, prepend to first user message
-            if chat_messages:
-                chat_messages[0]['content'] = '\n\n'.join(system_content) + '\n\n' + str(chat_messages[0]['content'])
-            else:
-                chat_messages.append({'role': 'user', 'content': '\n\n'.join(system_content)})
+        chat_messages = self._build_chat_messages(messages)
 
         payload = {
             'model': self.model,
@@ -202,8 +219,7 @@ class ResponsesAPILM(dspy.BaseLM):
 
         # Check for error in response
         if data.get('status') == 'failed' or 'error' in data:
-            error = data.get('error', {})
-            raise RuntimeError(f"ResponsesAPI error: {error.get('code', 'unknown')} - {error.get('message', 'unknown error')}")
+            self._raise_response_error(data)
 
         # Extract text from response
         output = data.get('output', [])
@@ -211,7 +227,8 @@ class ResponsesAPILM(dspy.BaseLM):
             if item.get('type') == 'message':
                 for part in item.get('content', []):
                     if part.get('type') == 'output_text':
-                        self._last_reasoning_content = None  # Responses API doesn't return reasoning separately
+                        # Responses API doesn't return reasoning separately.
+                        self._last_reasoning_content = None
                         self._last_output_text = part['text']
                         return part['text']
 

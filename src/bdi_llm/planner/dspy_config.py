@@ -28,8 +28,8 @@ def configure_dspy():
 
     # Check if model is a reasoning model (gpt-5, o1, etc.)
     model_name_lower = Config.MODEL_NAME.lower()
-    is_reasoning_model = any(model_type in model_name_lower
-                             for model_type in ['gpt-5', 'gpt-oss', 'o1', 'o3', 'glm5', 'glm-5', 'z-ai/glm'])
+    reasoning_model_tags = ['gpt-5', 'gpt-oss', 'o1', 'o3', 'glm5', 'glm-5', 'z-ai/glm']
+    is_reasoning_model = any(model_type in model_name_lower for model_type in reasoning_model_tags)
 
     # Check if model is a Gemini model
     is_gemini_model = 'gemini' in model_name_lower
@@ -50,7 +50,9 @@ def configure_dspy():
     # Add API key based on model type
     # Vertex AI models use service account credentials via env vars (no api_key needed)
     if is_vertex_ai:
-        pass  # litellm reads GOOGLE_APPLICATION_CREDENTIALS, VERTEXAI_PROJECT, VERTEXAI_LOCATION from env
+        # litellm reads GOOGLE_APPLICATION_CREDENTIALS, VERTEXAI_PROJECT,
+        # and VERTEXAI_LOCATION from environment variables.
+        pass
     elif is_gemini_model and credentials['google']:
         lm_config['api_key'] = credentials['google']
     elif credentials['openai']:
@@ -109,7 +111,8 @@ def configure_dspy():
         lm_config['max_tokens'] = 16000
 
     # Add timeout and retry settings for rate limiting and reliability
-    lm_config['timeout'] = Config.TIMEOUT  # configurable timeout (default 600s for reasoning models)
+    # Configurable timeout (default 600s for reasoning models).
+    lm_config['timeout'] = Config.TIMEOUT
     lm_config['num_retries'] = 2  # fewer retries to avoid long stalls
     lm_config['extra_headers'] = {'User-Agent': 'python-httpx/0.28.1'}
 

@@ -20,11 +20,11 @@ Expected output:
 """
 
 import sys
-import os
 
-from bdi_llm.schemas import ActionNode, DependencyEdge, BDIPlan
-from bdi_llm.verifier import PlanVerifier
 from bdi_llm.plan_repair import PlanRepairer
+from bdi_llm.schemas import ActionNode, BDIPlan, DependencyEdge
+from bdi_llm.verifier import PlanVerifier
+
 
 def create_simple_cycle():
     """A -> B -> A"""
@@ -269,10 +269,16 @@ def run_smoke_test():
     # Improvement target (after cycle repair implementation)
     improvement_target = 50
     if success_rate >= improvement_target:
-        print(f"  [PASS] Improvement target ({improvement_target}%): {success_rate:.1f}% >= {improvement_target}%")
+        print(
+            f"  [PASS] Improvement target ({improvement_target}%): "
+            f"{success_rate:.1f}% >= {improvement_target}%"
+        )
         print("\n  Cycle repair is working effectively!")
     else:
-        print(f"  [INFO] Improvement target ({improvement_target}%): {success_rate:.1f}% < {improvement_target}%")
+        print(
+            f"  [INFO] Improvement target ({improvement_target}%): "
+            f"{success_rate:.1f}% < {improvement_target}%"
+        )
         print("  Cycle repair implementation needed to achieve >50% success rate")
 
     print()

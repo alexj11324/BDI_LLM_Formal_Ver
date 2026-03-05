@@ -1,6 +1,6 @@
-import networkx as nx
 from dataclasses import dataclass, field
-from typing import List, Tuple
+
+import networkx as nx
 
 
 @dataclass
@@ -12,8 +12,8 @@ class VerificationResult:
     Hard errors block further verification; warnings pass through to Layer 2 (VAL).
     """
     is_valid: bool
-    hard_errors: List[str] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
+    hard_errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
     @property
     def should_block_execution(self) -> bool:
@@ -21,12 +21,12 @@ class VerificationResult:
         return len(self.hard_errors) > 0
 
     @property
-    def all_messages(self) -> List[str]:
+    def all_messages(self) -> list[str]:
         """All errors and warnings combined."""
         return self.hard_errors + self.warnings
 
     @property
-    def errors(self) -> List[str]:
+    def errors(self) -> list[str]:
         """
         Backward-compatible alias for legacy callers expecting a single errors list.
 
@@ -34,7 +34,7 @@ class VerificationResult:
         """
         return self.all_messages
 
-    def as_legacy_tuple(self) -> Tuple[bool, List[str]]:
+    def as_legacy_tuple(self) -> tuple[bool, list[str]]:
         """Return legacy `(is_valid, errors)` tuple representation."""
         return self.is_valid, self.errors
 
@@ -113,7 +113,8 @@ class PlanVerifier:
 
         # Check 4: Dangling Edges
         # (NetworkX usually handles this by adding nodes, but we check logic)
-        # In this implementation, we assume the graph construction from BDIPlan handles node existence.
+        # In this implementation, we assume BDIPlan graph construction already
+        # guarantees node existence.
 
         is_valid = len(hard_errors) == 0
         return VerificationResult(
@@ -123,7 +124,7 @@ class PlanVerifier:
         )
 
     @staticmethod
-    def topological_sort(graph: nx.DiGraph) -> List[str]:
+    def topological_sort(graph: nx.DiGraph) -> list[str]:
         """
         Returns a valid execution order of action IDs.
 

@@ -8,18 +8,23 @@ _GRAPH_STRUCTURE_COMMON = """    CRITICAL GRAPH STRUCTURE REQUIREMENTS:
 
     2. **DAG (Directed Acyclic Graph)**: No cycles allowed.
        If action A → B → C, then C cannot have an edge back to A or B.
-       After generating your plan, VERIFY: "Does any action appear twice in the execution order?" If YES, remove the duplicate.
+       After generating your plan, VERIFY:
+       "Does any action appear twice in the execution order?"
+       If YES, remove the duplicate.
 
     3. **Sequential Chain**: Each action depends on the previous one completing.
        All actions form one connected chain/path.
 
     4. **EXACTLY ONCE EXECUTION**: Each action appears EXACTLY ONCE in the plan.
-       Before finalizing, COUNT: "How many times does each action appear?" Every action must have count = 1.
+       Before finalizing, COUNT:
+       "How many times does each action appear?"
+       Every action must have count = 1.
 
-    5. **NO RETURN TO PREVIOUS STATES**: Once a state change occurs (e.g., block moved, truck driven),
+    5. **NO RETURN TO PREVIOUS STATES**:
+       Once a state change occurs (e.g., block moved, truck driven),
        you CANNOT return to the exact previous configuration. This prevents cycles."""
 
-_STATE_TRACKING_HEADER = """    ═══════════════════════════════════════════════════════════════════════════
+_STATE_TRACKING_HEADER = """    ════════════════════════════════════════════════════════════════════
     CRITICAL: STATE TRACKING AND LOGICAL VERIFICATION (P0 Requirements)
     ═══════════════════════════════════════════════════════════════════════════
 
@@ -32,7 +37,7 @@ _STATE_TRACKING_HEADER = """    ════════════════
 
     Maintain a STATE TABLE throughout planning. Update it after EVERY action."""
 
-_COS_REPRESENTATION_HEADER = """    ┌─────────────────────────────────────────────────────────────────────────┐
+_COS_REPRESENTATION_HEADER = """    ┌──────────────────────────────────────────────────────────────┐
     │ P0-2: CHAIN-OF-SYMBOL (CoS) REPRESENTATION                             │
     └─────────────────────────────────────────────────────────────────────────┘
 

@@ -16,15 +16,17 @@ Author: BDI-LLM Performance Team
 Date: 2026-02-28
 """
 
-import time
 import hashlib
 import json
-import threading
-from typing import Dict, List, Optional, Any, Tuple
-from dataclasses import dataclass, field
-from collections import deque
-from functools import wraps
 import logging
+import threading
+import time
+from collections import deque
+from dataclasses import dataclass
+from functools import wraps
+from typing import Any
+
+from .repair_cache import RepairCache, get_repair_cache  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +54,7 @@ class APICallRecord:
     endpoint: str
     prompt_hash: str
     success: bool
-    status_code: Optional[int] = None
+    status_code: int | None = None
     latency_ms: float = 0.0
     tokens_used: int = 0
 
@@ -73,7 +75,7 @@ class BudgetConfig:
 
     # Budget limits
     max_calls_per_instance: int = 5  # Initial + structural + 3 VAL repairs
-    max_total_calls: Optional[int] = None  # None = unlimited
+    max_total_calls: int | None = None  # None = unlimited
 
     # Caching
     cache_enabled: bool = True
@@ -91,7 +93,7 @@ class APIBudgetManager:
     Thread-safe implementation using locks.
     """
 
-    def __init__(self, config: Optional[BudgetConfig] = None):
+    def __init__(self, config: BudgetConfig | None = None):
         """
         Args:
             config: Budget configuration. Uses defaults if None.
@@ -104,18 +106,18 @@ class APIBudgetManager:
         self._hourly_history: deque = deque()
 
         # Response cache: prompt_hash -> response
-        self._cache: Dict[str, Any] = {}
+        self._cache: dict[str, Any] = {}
         self._cache_access_order: deque = deque()
 
         # Budget tracking
         self._total_calls: int = 0
-        self._calls_per_instance: Dict[str, int] = {}
+        self._calls_per_instance: dict[str, int] = {}
 
         # Backoff state: endpoint -> (next_retry_time, current_backoff_ms)
-        self._backoff_state: Dict[str, Tuple[float, int]] = {}
+        self._backoff_state: dict[str, tuple[float, int]] = {}
 
         # Error pattern tracking for early exit
-        self._error_patterns: Dict[str, List[str]] = {}
+        self._error_patterns: dict[str, list[str]] = {}
 
     def compute_prompt_hash(self, **prompt_kwargs) -> str:
         """Compute SHA256 hash of prompt for caching"""
@@ -123,7 +125,7 @@ class APIBudgetManager:
         canonical = json.dumps(prompt_kwargs, sort_keys=True, default=str)
         return hashlib.sha256(canonical.encode()).hexdigest()[:16]
 
-    def check_rate_limit(self) -> Tuple[bool, Optional[float]]:
+    def check_rate_limit(self) -> tuple[bool, float | None]:
         """
         Check if request is within rate limits.
 
@@ -160,7 +162,7 @@ class APIBudgetManager:
             self._request_history.append(now)
             self._hourly_history.append(now)
 
-    def check_backoff(self, endpoint: str = "default") -> Tuple[bool, float]:
+    def check_backoff(self, endpoint: str = "default") -> tuple[bool, float]:
         """
         Check if endpoint is in backoff state.
 
@@ -207,7 +209,7 @@ class APIBudgetManager:
                 f"Backing off for {new_backoff}ms"
             )
 
-    def get_cached_response(self, prompt_hash: str) -> Optional[Any]:
+    def get_cached_response(self, prompt_hash: str) -> Any | None:
         """Get cached response if available"""
         if not self.config.cache_enabled:
             return None
@@ -230,7 +232,7 @@ class APIBudgetManager:
             self._cache[prompt_hash] = response
             self._cache_access_order.append(prompt_hash)
 
-    def check_budget(self, instance_id: str = "default") -> Tuple[bool, str]:
+    def check_budget(self, instance_id: str = "default") -> tuple[bool, str]:
         """
         Check if call is within budget.
 
@@ -245,7 +247,11 @@ class APIBudgetManager:
             # Check per-instance budget
             instance_calls = self._calls_per_instance.get(instance_id, 0)
             if instance_calls >= self.config.max_calls_per_instance:
-                return False, f"Instance budget exceeded ({instance_calls}/{self.config.max_calls_per_instance})"
+                return (
+                    False,
+                    "Instance budget exceeded "
+                    f"({instance_calls}/{self.config.max_calls_per_instance})",
+                )
 
             return True, "OK"
 
@@ -287,7 +293,7 @@ class APIBudgetManager:
 
             return False
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Get current budget statistics"""
         with self._lock:
             now = time.time()
@@ -312,11 +318,11 @@ class APIBudgetManager:
 
 
 # Global budget manager instance
-_global_budget: Optional[APIBudgetManager] = None
+_global_budget: APIBudgetManager | None = None
 _budget_lock = threading.Lock()
 
 
-def get_budget_manager(config: Optional[BudgetConfig] = None) -> APIBudgetManager:
+def get_budget_manager(config: BudgetConfig | None = None) -> APIBudgetManager:
     """Get or create global budget manager"""
     global _global_budget
 
@@ -367,7 +373,7 @@ def rate_limited_call(max_retries: int = 3):
                     # Make the actual call
                     start_time = time.time()
                     result = func(*args, **kwargs)
-                    latency_ms = (time.time() - start_time) * 1000
+                    (time.time() - start_time) * 1000
 
                     return result
 
@@ -385,10 +391,4 @@ def rate_limited_call(max_retries: int = 3):
 
         return wrapper
     return decorator
-
-
-# ---------------------------------------------------------------------------
-# Backward-compatible re-export of RepairCache (extracted to repair_cache.py)
-# ---------------------------------------------------------------------------
-from .repair_cache import RepairCache, get_repair_cache  # noqa: F401
 

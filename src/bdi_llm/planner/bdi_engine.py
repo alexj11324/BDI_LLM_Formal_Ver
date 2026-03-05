@@ -1,23 +1,23 @@
 """BDIPlanner – the core BDI planning module built on DSPy."""
 
-import dspy
-import yaml
 import hashlib
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from ..schemas import BDIPlan, ActionNode, DependencyEdge
-from ..verifier import PlanVerifier
-from ..api_budget import get_budget_manager, get_repair_cache, BudgetConfig
+import dspy
+import yaml
+
+from ..api_budget import get_budget_manager, get_repair_cache
 from ..config import Config
-
+from ..schemas import ActionNode, BDIPlan, DependencyEdge
+from ..verifier import PlanVerifier
 from .dspy_config import configure_dspy
 from .signatures import (
     GeneratePlan,
-    GeneratePlanLogistics,
     GeneratePlanDepots,
+    GeneratePlanLogistics,
     RepairPlan,
 )
 
@@ -53,8 +53,8 @@ class BDIPlanner(dspy.Module):
         self.generate_plan = dspy.ChainOfThought(sig_class)
         self.repair_plan = dspy.ChainOfThought(RepairPlan)
         self.auto_repair = auto_repair
-        self._last_generation_trace: Dict[str, Any] = {}
-        self._last_repair_trace: Dict[str, Any] = {}
+        self._last_generation_trace: dict[str, Any] = {}
+        self._last_repair_trace: dict[str, Any] = {}
 
         # Add few-shot demonstrations for Logistics domain
         if domain == "logistics":
@@ -104,7 +104,7 @@ class BDIPlanner(dspy.Module):
             print(f"Warning: logistics_demos.yaml not found at {data_path}")
             return []
 
-        with open(data_path, "r") as f:
+        with open(data_path) as f:
             data = yaml.safe_load(f)
 
         demos = []
@@ -175,7 +175,7 @@ class BDIPlanner(dspy.Module):
         return True, ""
 
     @staticmethod
-    def _truncate_trace_text(text: Optional[str], max_chars: int) -> Optional[str]:
+    def _truncate_trace_text(text: str | None, max_chars: int) -> str | None:
         if text is None:
             return None
         if max_chars <= 0 or len(text) <= max_chars:
@@ -183,10 +183,10 @@ class BDIPlanner(dspy.Module):
         extra = len(text) - max_chars
         return f"{text[:max_chars]}\n...[truncated {extra} chars]"
 
-    def _capture_prediction_trace(self, pred: dspy.Prediction, phase: str) -> Dict[str, Any]:
+    def _capture_prediction_trace(self, pred: dspy.Prediction, phase: str) -> dict[str, Any]:
         """Capture CoT/trace artifacts from DSPy prediction + LM adapter state."""
         max_chars = max(0, int(getattr(Config, "REASONING_TRACE_MAX_CHARS", 8000)))
-        trace: Dict[str, Any] = {
+        trace: dict[str, Any] = {
             "phase": phase,
             "model": Config.MODEL_NAME,
             "prediction_fields": [],
@@ -237,12 +237,12 @@ class BDIPlanner(dspy.Module):
 
         return trace
 
-    def get_last_generation_trace(self) -> Dict[str, Any]:
+    def get_last_generation_trace(self) -> dict[str, Any]:
         if not self._last_generation_trace:
             return {}
         return json.loads(json.dumps(self._last_generation_trace))
 
-    def get_last_repair_trace(self) -> Dict[str, Any]:
+    def get_last_repair_trace(self) -> dict[str, Any]:
         if not self._last_repair_trace:
             return {}
         return json.loads(json.dumps(self._last_repair_trace))
@@ -264,7 +264,8 @@ class BDIPlanner(dspy.Module):
             if not constraints_ok:
                 raise ValueError(
                     f"Action constraint violation: {constraint_msg}. "
-                    f"Re-generate the plan using ONLY valid action types for the {self.domain} domain "
+                    "Re-generate the plan using ONLY valid action types "
+                    f"for the {self.domain} domain "
                     f"and include ALL required parameters for each action."
                 )
 
@@ -307,7 +308,7 @@ class BDIPlanner(dspy.Module):
 
     def _format_repair_history(
         self,
-        repair_history: List[dict] | None = None,
+        repair_history: list[dict] | None = None,
     ) -> str:
         """Format cumulative repair history for the dedicated repair_history field.
 
@@ -347,7 +348,7 @@ class BDIPlanner(dspy.Module):
 
     def _format_verification_feedback(
         self,
-        verification_feedback: Dict | None = None,
+        verification_feedback: dict | None = None,
     ) -> str:
         """Format structured verifier diagnostics for the repair prompt."""
         if not verification_feedback:
@@ -395,7 +396,7 @@ class BDIPlanner(dspy.Module):
         parts.append("=== END VERIFIER FEEDBACK ===")
         return "\n".join(parts)
 
-    def _compute_error_signature(self, val_errors: List[str]) -> str:
+    def _compute_error_signature(self, val_errors: list[str]) -> str:
         """
         Compute a compact signature of VAL errors for pattern detection.
 
@@ -416,12 +417,12 @@ class BDIPlanner(dspy.Module):
         self,
         beliefs: str,
         desire: str,
-        previous_plan_actions: List[str],
-        val_errors: List[str],
-        repair_history: List[dict] | None = None,
-        verification_feedback: Dict | None = None,
-        instance_id: Optional[str] = None,
-        domain: Optional[str] = None,
+        previous_plan_actions: list[str],
+        val_errors: list[str],
+        repair_history: list[dict] | None = None,
+        verification_feedback: dict | None = None,
+        instance_id: str | None = None,
+        domain: str | None = None,
     ) -> dspy.Prediction:
         """
         Generate a repaired plan based on VAL validation errors.
@@ -459,7 +460,8 @@ class BDIPlanner(dspy.Module):
         if instance_id and budget.config.early_exit_enabled:
             if budget.track_error_pattern(instance_id, error_signature):
                 raise RuntimeError(
-                    f"Early exit: Same error pattern detected {budget.config.early_exit_after_failures} times. "
+                    "Early exit: Same error pattern detected "
+                    f"{budget.config.early_exit_after_failures} times. "
                     f"Error type: {error_signature}. Repair unlikely to succeed."
                 )
 

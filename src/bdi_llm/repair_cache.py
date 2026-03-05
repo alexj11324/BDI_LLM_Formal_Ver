@@ -10,8 +10,8 @@ Date: 2026-03-05
 """
 
 import threading
-from typing import Any, Dict, Optional
 from collections import deque
+from typing import Any
 
 
 class RepairCache:
@@ -22,7 +22,7 @@ class RepairCache:
     """
 
     def __init__(self, max_size: int = 1000):
-        self._cache: Dict[str, Any] = {}
+        self._cache: dict[str, Any] = {}
         self._access_order: deque = deque()
         self._max_size = max_size
         self._lock = threading.Lock()
@@ -33,7 +33,7 @@ class RepairCache:
         """Compute cache key from repair context."""
         return f"{domain}:{error_signature}:{plan_hash}"
 
-    def get(self, domain: str, error_signature: str, plan_hash: str) -> Optional[Any]:
+    def get(self, domain: str, error_signature: str, plan_hash: str) -> Any | None:
         """Get cached repair result."""
         key = self._compute_key(domain, error_signature, plan_hash)
 
@@ -61,7 +61,7 @@ class RepairCache:
             self._cache[key] = result
             self._access_order.append(key)
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Get cache statistics."""
         with self._lock:
             total = self._hits + self._misses
@@ -76,7 +76,7 @@ class RepairCache:
 
 
 # Global repair cache
-_repair_cache: Optional[RepairCache] = None
+_repair_cache: RepairCache | None = None
 
 
 def get_repair_cache(max_size: int = 1000) -> RepairCache:

@@ -14,7 +14,8 @@ Date: 2026-02-03
 
 import os
 import re
-from typing import Any, Tuple, List, Dict
+from typing import Any
+
 from .config import Config
 from .val_runner import run_val
 
@@ -55,10 +56,10 @@ class PDDLSymbolicVerifier:
         self,
         domain_file: str,
         problem_file: str,
-        plan_actions: List[str],
+        plan_actions: list[str],
         verbose: bool = False,
         check_goal: bool = True,
-    ) -> Tuple[bool, List[str]]:
+    ) -> tuple[bool, list[str]]:
         """
         Verify PDDL plan using VAL
 
@@ -118,10 +119,123 @@ class BlocksworldPhysicsValidator:
     _re_block = re.compile(r'\b([a-z0-9_-]+)\b')
 
     @staticmethod
+    def _initial_state(init_state: dict) -> dict[str, Any]:
+        """Build mutable simulation state from raw init_state."""
+        return {
+            'on_table': set(init_state.get('on_table', [])),
+            'on': set(init_state.get('on', [])),
+            'clear': set(init_state.get('clear', [])),
+            'holding': init_state.get('holding', None),
+        }
+
+    @staticmethod
+    def _handle_pickup(
+        action: str,
+        state: dict[str, Any],
+        step_num: int,
+        errors: list[str],
+    ) -> None:
+        block = BlocksworldPhysicsValidator._extract_block(action)
+        if not block:
+            errors.append(f"Step {step_num}: Cannot parse block from {action}")
+            return
+
+        if block not in state['clear']:
+            errors.append(
+                f"Step {step_num}: Cannot pick-up {block} - block not clear "
+                f"(something on top)"
+            )
+        if state['holding'] is not None:
+            errors.append(
+                f"Step {step_num}: Cannot pick-up {block} - hand already holding "
+                f"{state['holding']}"
+            )
+        if block not in state['on_table']:
+            errors.append(f"Step {step_num}: Cannot pick-up {block} - not on table")
+
+        if block in state['on_table']:
+            state['on_table'].remove(block)
+        if block in state['clear']:
+            state['clear'].remove(block)
+        state['holding'] = block
+
+    @staticmethod
+    def _handle_putdown(
+        action: str,
+        state: dict[str, Any],
+        step_num: int,
+        errors: list[str],
+    ) -> None:
+        block = BlocksworldPhysicsValidator._extract_block(action)
+        if not block:
+            errors.append(f"Step {step_num}: Cannot parse block from {action}")
+            return
+
+        if state['holding'] != block:
+            errors.append(
+                f"Step {step_num}: Cannot put-down {block} - not holding it "
+                f"(holding {state['holding']})"
+            )
+
+        state['on_table'].add(block)
+        state['clear'].add(block)
+        state['holding'] = None
+
+    @staticmethod
+    def _handle_unstack(
+        action: str,
+        state: dict[str, Any],
+        step_num: int,
+        errors: list[str],
+    ) -> None:
+        blocks = BlocksworldPhysicsValidator._extract_two_blocks(action)
+        if len(blocks) < 2:
+            errors.append(f"Step {step_num}: Cannot parse blocks from unstack action: {action}")
+            return
+
+        block_from, block_to = blocks[0], blocks[1]
+        if block_from not in state['clear']:
+            errors.append(f"Step {step_num}: Cannot unstack {block_from} - not clear")
+        if state['holding'] is not None:
+            errors.append(
+                f"Step {step_num}: Cannot unstack - hand not empty "
+                f"(holding {state['holding']})"
+            )
+
+        if (block_from, block_to) in state['on']:
+            state['on'].remove((block_from, block_to))
+        state['clear'].add(block_to)
+        if block_from in state['clear']:
+            state['clear'].remove(block_from)
+        state['holding'] = block_from
+
+    @staticmethod
+    def _handle_stack(action: str, state: dict[str, Any], step_num: int, errors: list[str]) -> None:
+        blocks = BlocksworldPhysicsValidator._extract_two_blocks(action)
+        if len(blocks) < 2:
+            errors.append(f"Step {step_num}: Cannot parse blocks from stack action: {action}")
+            return
+
+        block_from, block_to = blocks[0], blocks[1]
+        if state['holding'] != block_from:
+            errors.append(
+                f"Step {step_num}: Cannot stack {block_from} - not holding it "
+                f"(holding {state['holding']})"
+            )
+        if block_to not in state['clear']:
+            errors.append(f"Step {step_num}: Cannot stack on {block_to} - not clear")
+
+        state['on'].add((block_from, block_to))
+        state['clear'].add(block_from)
+        if block_to in state['clear']:
+            state['clear'].remove(block_to)
+        state['holding'] = None
+
+    @staticmethod
     def validate_plan(
-        plan_actions: List[str],
-        init_state: Dict
-    ) -> Tuple[bool, List[str]]:
+        plan_actions: list[str],
+        init_state: dict
+    ) -> tuple[bool, list[str]]:
         """
         Simulate plan execution and check physical constraints
 
@@ -138,122 +252,23 @@ class BlocksworldPhysicsValidator:
         Returns:
             (is_valid, error_messages)
         """
-        errors = []
+        errors: list[str] = []
+        state = BlocksworldPhysicsValidator._initial_state(init_state)
 
-        # Initialize state
-        state = {
-            'on_table': set(init_state.get('on_table', [])),
-            'on': set(init_state.get('on', [])),
-            'clear': set(init_state.get('clear', [])),
-            'holding': init_state.get('holding', None)
-        }
+        handlers = (
+            (('pick-up', 'pickup'), BlocksworldPhysicsValidator._handle_pickup),
+            (('put-down', 'putdown'), BlocksworldPhysicsValidator._handle_putdown),
+            (('unstack',), BlocksworldPhysicsValidator._handle_unstack),
+            (('stack',), BlocksworldPhysicsValidator._handle_stack),
+        )
 
-        # Simulate each action
         for i, action in enumerate(plan_actions):
             action_lower = action.lower()
             step_num = i + 1
-
-            if 'pick-up' in action_lower or 'pickup' in action_lower:
-                block = BlocksworldPhysicsValidator._extract_block(action)
-                if not block:
-                    errors.append(f"Step {step_num}: Cannot parse block from {action}")
-                    continue
-
-                # Check preconditions
-                if block not in state['clear']:
-                    errors.append(
-                        f"Step {step_num}: Cannot pick-up {block} - block not clear "
-                        f"(something on top)"
-                    )
-
-                if state['holding'] is not None:
-                    errors.append(
-                        f"Step {step_num}: Cannot pick-up {block} - hand already holding "
-                        f"{state['holding']}"
-                    )
-
-                if block not in state['on_table']:
-                    errors.append(
-                        f"Step {step_num}: Cannot pick-up {block} - not on table"
-                    )
-
-                # Apply effects (if no errors so far)
-                if block in state['on_table']:
-                    state['on_table'].remove(block)
-                if block in state['clear']:
-                    state['clear'].remove(block)
-                state['holding'] = block
-
-            elif 'put-down' in action_lower or 'putdown' in action_lower:
-                block = BlocksworldPhysicsValidator._extract_block(action)
-                if not block:
-                    errors.append(f"Step {step_num}: Cannot parse block from {action}")
-                    continue
-
-                if state['holding'] != block:
-                    errors.append(
-                        f"Step {step_num}: Cannot put-down {block} - not holding it "
-                        f"(holding {state['holding']})"
-                    )
-
-                state['on_table'].add(block)
-                state['clear'].add(block)
-                state['holding'] = None
-
-            elif 'unstack' in action_lower:
-                blocks = BlocksworldPhysicsValidator._extract_two_blocks(action)
-                if len(blocks) < 2:
-                    errors.append(
-                        f"Step {step_num}: Cannot parse blocks from unstack action: {action}"
-                    )
-                    continue
-
-                block_from, block_to = blocks[0], blocks[1]
-
-                if block_from not in state['clear']:
-                    errors.append(
-                        f"Step {step_num}: Cannot unstack {block_from} - not clear"
-                    )
-
-                if state['holding'] is not None:
-                    errors.append(
-                        f"Step {step_num}: Cannot unstack - hand not empty "
-                        f"(holding {state['holding']})"
-                    )
-
-                if (block_from, block_to) in state['on']:
-                    state['on'].remove((block_from, block_to))
-                state['clear'].add(block_to)
-                if block_from in state['clear']:
-                    state['clear'].remove(block_from)
-                state['holding'] = block_from
-
-            elif 'stack' in action_lower:
-                blocks = BlocksworldPhysicsValidator._extract_two_blocks(action)
-                if len(blocks) < 2:
-                    errors.append(
-                        f"Step {step_num}: Cannot parse blocks from stack action: {action}"
-                    )
-                    continue
-
-                block_from, block_to = blocks[0], blocks[1]
-
-                if state['holding'] != block_from:
-                    errors.append(
-                        f"Step {step_num}: Cannot stack {block_from} - not holding it "
-                        f"(holding {state['holding']})"
-                    )
-
-                if block_to not in state['clear']:
-                    errors.append(
-                        f"Step {step_num}: Cannot stack on {block_to} - not clear"
-                    )
-
-                state['on'].add((block_from, block_to))
-                state['clear'].add(block_from)
-                if block_to in state['clear']:
-                    state['clear'].remove(block_to)
-                state['holding'] = None
+            for keywords, handler in handlers:
+                if any(keyword in action_lower for keyword in keywords):
+                    handler(action, state, step_num, errors)
+                    break
 
         is_valid = len(errors) == 0
         return is_valid, errors
@@ -281,7 +296,7 @@ class BlocksworldPhysicsValidator:
         return None
 
     @staticmethod
-    def _extract_two_blocks(action: str) -> List[str]:
+    def _extract_two_blocks(action: str) -> list[str]:
         """
         Extract two block names from action.
         Handles both single-letter blocks and multi-char blocks.
@@ -334,7 +349,7 @@ class IntegratedVerifier:
         self.physics_validator = get_physics_validator(domain)
 
     @staticmethod
-    def _truncate_errors(errors: List[str], limit: int) -> List[str]:
+    def _truncate_errors(errors: list[str], limit: int) -> list[str]:
         """Return a compact, de-blanked error list."""
         if not errors:
             return []
@@ -343,9 +358,9 @@ class IntegratedVerifier:
 
     @staticmethod
     def build_planner_feedback(
-        verification_result: Dict[str, Any],
+        verification_result: dict[str, Any],
         max_errors_per_layer: int = 3,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Convert verifier output into planner-oriented repair feedback.
 
@@ -353,9 +368,9 @@ class IntegratedVerifier:
         cross-layer diagnostics for repair prompting.
         """
         layers = verification_result.get('layers', {}) or {}
-        failed_layers: List[str] = []
-        layer_status: Dict[str, str] = {}
-        key_errors: Dict[str, List[str]] = {}
+        failed_layers: list[str] = []
+        layer_status: dict[str, str] = {}
+        key_errors: dict[str, list[str]] = {}
 
         for layer_name in ('structural', 'symbolic', 'physics'):
             layer = layers.get(layer_name)
@@ -374,14 +389,14 @@ class IntegratedVerifier:
                 failed_layers.append(layer_name)
 
         symbolic_errors = key_errors.get('symbolic', [])
-        val_repair_advice: List[str] = []
+        val_repair_advice: list[str] = []
         for err in symbolic_errors:
             if err.startswith("VAL Repair Advice:"):
                 advice = err.split("VAL Repair Advice:", 1)[1].strip()
                 if advice:
                     val_repair_advice.append(advice)
 
-        repair_focus: List[str] = []
+        repair_focus: list[str] = []
         if 'structural' in failed_layers:
             repair_focus.append(
                 "Fix graph structure first: produce one weakly connected DAG with no cycles."
@@ -389,7 +404,8 @@ class IntegratedVerifier:
         if 'symbolic' in failed_layers:
             if val_repair_advice:
                 repair_focus.append(
-                    "Prioritize VAL repair advice and add prerequisite actions before failing steps."
+                    "Prioritize VAL repair advice and add prerequisite actions "
+                    "before failing steps."
                 )
             else:
                 repair_focus.append(
@@ -422,11 +438,11 @@ class IntegratedVerifier:
     def verify_full(
         self,
         bdi_plan,
-        pddl_actions: List[str],
+        pddl_actions: list[str],
         domain_file: str = None,
         problem_file: str = None,
-        init_state: Dict = None
-    ) -> Dict:
+        init_state: dict = None
+    ) -> dict:
         """
         Run complete three-layer verification
 
@@ -488,7 +504,11 @@ class IntegratedVerifier:
                 'errors': symb_errors
             }
         else:
-            reason = "missing PDDL files" if not (domain_file and problem_file) else "structural hard errors"
+            reason = (
+                "missing PDDL files"
+                if not (domain_file and problem_file)
+                else "structural hard errors"
+            )
             results['layers']['symbolic'] = {
                 'valid': False,
                 'errors': [f"Skipped ({reason})"]

@@ -15,20 +15,21 @@ Author: BDI-LLM Research
 Date: 2026-02-10
 """
 
-import networkx as nx
-from typing import List, Tuple, Dict, Set, Optional
 from dataclasses import dataclass
-from .schemas import BDIPlan, ActionNode, DependencyEdge
+
+import networkx as nx
+
+from .schemas import ActionNode, BDIPlan, DependencyEdge
 
 
 @dataclass
 class RepairResult:
     """Result of plan repair attempt"""
     success: bool
-    repaired_plan: Optional[BDIPlan]
+    repaired_plan: BDIPlan | None
     original_valid: bool
-    repairs_applied: List[str]
-    errors: List[str]
+    repairs_applied: list[str]
+    errors: list[str]
 
 
 class PlanRepairer:
@@ -48,7 +49,7 @@ class PlanRepairer:
     @classmethod
     def _append_virtual_node_once(
         cls,
-        nodes: List[ActionNode],
+        nodes: list[ActionNode],
         node_id: str,
         description: str,
     ) -> None:
@@ -74,7 +75,6 @@ class PlanRepairer:
             RepairResult with repaired plan and diagnostics
         """
         repairs = []
-        errors = []
 
         # Convert to NetworkX
         G = plan.to_networkx()
@@ -254,15 +254,15 @@ class PlanRepairer:
             return plan  # Already a DAG
 
         # Track edges to remove
-        edges_to_remove: Set[Tuple[str, str]] = set()
+        edges_to_remove: set[tuple[str, str]] = set()
 
         # DFS-based back edge detection
         # We need to find edges that go from a node to one of its ancestors
-        visited: Set[str] = set()
-        rec_stack: Set[str] = set()  # Nodes in current DFS recursion stack
-        ancestor_map: Dict[str, Set[str]] = {}  # node -> set of its ancestors
+        visited: set[str] = set()
+        rec_stack: set[str] = set()  # Nodes in current DFS recursion stack
+        ancestor_map: dict[str, set[str]] = {}  # node -> set of its ancestors
 
-        def dfs_find_back_edges(node: str, ancestors: Set[str]) -> None:
+        def dfs_find_back_edges(node: str, ancestors: set[str]) -> None:
             """
             DFS traversal to find back edges
 
@@ -318,17 +318,17 @@ class PlanRepairer:
         return plan
 
     @classmethod
-    def _find_roots(cls, G: nx.DiGraph) -> List[str]:
+    def _find_roots(cls, G: nx.DiGraph) -> list[str]:
         """Find nodes with no incoming edges"""
         return [n for n in G.nodes() if G.in_degree(n) == 0]
 
     @classmethod
-    def _find_terminals(cls, G: nx.DiGraph) -> List[str]:
+    def _find_terminals(cls, G: nx.DiGraph) -> list[str]:
         """Find nodes with no outgoing edges"""
         return [n for n in G.nodes() if G.out_degree(n) == 0]
 
     @classmethod
-    def _unify_roots(cls, plan: BDIPlan, roots: List[str]) -> BDIPlan:
+    def _unify_roots(cls, plan: BDIPlan, roots: list[str]) -> BDIPlan:
         """Add virtual START and connect to all roots"""
         new_nodes = list(plan.nodes)
         new_edges = list(plan.edges)
@@ -355,7 +355,7 @@ class PlanRepairer:
         )
 
     @classmethod
-    def _unify_terminals(cls, plan: BDIPlan, terminals: List[str]) -> BDIPlan:
+    def _unify_terminals(cls, plan: BDIPlan, terminals: list[str]) -> BDIPlan:
         """Add virtual END and connect all terminals to it"""
         new_nodes = list(plan.nodes)
         new_edges = list(plan.edges)
@@ -456,7 +456,7 @@ class PlanCanonicalizer:
         )
 
 
-def repair_and_verify(plan: BDIPlan) -> Tuple[BDIPlan, bool, List[str]]:
+def repair_and_verify(plan: BDIPlan) -> tuple[BDIPlan, bool, list[str]]:
     """
     Convenience function: repair plan and verify result
 

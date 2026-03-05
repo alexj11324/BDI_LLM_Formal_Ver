@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import List, Dict, Any, Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
@@ -12,8 +12,11 @@ class ActionNode(BaseModel):
     Corresponds to a node in the Plan Graph.
     """
     id: str = Field(..., description="Unique identifier for this action (e.g., 'nav_to_door')")
-    action_type: str = Field(..., description="The type of action/skill to invoke (e.g., 'Navigate', 'PickUp')")
-    params: Dict[str, Any] = Field(default_factory=dict, description="Parameters for the action")
+    action_type: str = Field(
+        ...,
+        description="The type of action/skill to invoke (e.g., 'Navigate', 'PickUp')",
+    )
+    params: dict[str, Any] = Field(default_factory=dict, description="Parameters for the action")
     description: str = Field(..., description="Human-readable description of what this action does")
 
 class DependencyEdge(BaseModel):
@@ -32,8 +35,11 @@ class BDIPlan(BaseModel):
     Outputted by the LLM as a structured object.
     """
     goal_description: str = Field(..., description="Restatement of the user's goal")
-    nodes: List[ActionNode] = Field(..., description="List of all actions to be performed")
-    edges: List[DependencyEdge] = Field(default_factory=list, description="List of execution dependencies")
+    nodes: list[ActionNode] = Field(..., description="List of all actions to be performed")
+    edges: list[DependencyEdge] = Field(
+        default_factory=list,
+        description="List of execution dependencies",
+    )
 
     def to_networkx(self):
         """Helper to convert Pydantic model to NetworkX DiGraph"""
@@ -109,6 +115,6 @@ class BDIPlan(BaseModel):
 
 
 # Backward-compatible module-level alias
-def parse_plan_from_text(text: str) -> Optional[BDIPlan]:
+def parse_plan_from_text(text: str) -> BDIPlan | None:
     """Thin wrapper kept for backward compatibility — delegates to *BDIPlan.from_llm_text*."""
     return BDIPlan.from_llm_text(text)
