@@ -10,17 +10,12 @@ Outputs are written to a dedicated run directory.
 import argparse
 import json
 import os
-import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-
 
 SYNTAX_ERROR_KEYWORDS = (
     "failed to generate a valid plan object",
@@ -36,7 +31,6 @@ SYNTAX_ERROR_KEYWORDS = (
     "validationerror",
     "json",
 )
-
 
 def _collect_text_errors(instance_result: Dict[str, Any]) -> List[str]:
     texts: List[str] = []
@@ -57,13 +51,11 @@ def _collect_text_errors(instance_result: Dict[str, Any]) -> List[str]:
 
     return texts
 
-
 def _classify_syntax_error(instance_result: Dict[str, Any]) -> Tuple[bool, List[str], List[str]]:
     error_texts = _collect_text_errors(instance_result)
     haystack = "\n".join(error_texts).lower()
     matches = [kw for kw in SYNTAX_ERROR_KEYWORDS if kw in haystack]
     return (len(matches) > 0, matches, error_texts)
-
 
 def _has_reasoning_trace(instance_result: Dict[str, Any]) -> bool:
     metrics = instance_result.get("bdi_metrics", {})
@@ -79,7 +71,6 @@ def _has_reasoning_trace(instance_result: Dict[str, Any]) -> bool:
         if isinstance(value, dict) and value:
             return True
     return False
-
 
 def _build_compact_record(instance_result: Dict[str, Any]) -> Dict[str, Any]:
     metrics = instance_result.get("bdi_metrics", {})
@@ -102,7 +93,6 @@ def _build_compact_record(instance_result: Dict[str, Any]) -> Dict[str, Any]:
         "reasoning_trace_present": _has_reasoning_trace(instance_result),
         "generation_time": metrics.get("generation_time"),
     }
-
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="GLM-5 PlanBench 50-instance evaluator")
@@ -269,7 +259,6 @@ def main() -> None:
     )
     print(f"Reasoning trace coverage: {reasoning_trace_count}/{total} = {summary['metrics']['reasoning_trace_rate']:.2%}")
     print(f"Output: {run_dir}")
-
 
 if __name__ == "__main__":
     main()

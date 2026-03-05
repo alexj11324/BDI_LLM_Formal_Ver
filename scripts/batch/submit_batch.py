@@ -24,10 +24,6 @@ import argparse
 from pathlib import Path
 from openai import OpenAI
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(PROJECT_ROOT))
-
-
 def get_client() -> OpenAI:
     """Initialize OpenAI client for Alibaba Cloud."""
     api_key = os.getenv("DASHSCOPE_API_KEY")
@@ -42,7 +38,6 @@ def get_client() -> OpenAI:
         base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"
     )
 
-
 def upload_file(client: OpenAI, file_path: str) -> str:
     """Upload JSONL file and return file ID."""
     print(f"Uploading {file_path}...")
@@ -52,7 +47,6 @@ def upload_file(client: OpenAI, file_path: str) -> str:
     )
     print(f"  ✓ File ID: {file_obj.id}")
     return file_obj.id
-
 
 def create_batch(client: OpenAI, file_id: str, is_test: bool = False) -> str:
     """Create a batch job and return batch ID."""
@@ -67,7 +61,6 @@ def create_batch(client: OpenAI, file_id: str, is_test: bool = False) -> str:
     print(f"  ✓ Batch ID: {batch.id}")
     print(f"  Status: {batch.status}")
     return batch.id
-
 
 def poll_status(client: OpenAI, batch_id: str, interval: int = 30) -> dict:
     """Poll batch job until completion. Returns final batch object."""
@@ -87,7 +80,6 @@ def poll_status(client: OpenAI, batch_id: str, interval: int = 30) -> dict:
         
         time.sleep(interval)
 
-
 def download_results(client: OpenAI, batch, output_dir: Path, domain: str):
     """Download result and error files."""
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -103,7 +95,6 @@ def download_results(client: OpenAI, batch, output_dir: Path, domain: str):
         content = client.files.content(batch.error_file_id)
         content.write_to_file(str(error_path))
         print(f"  ✗ Errors: {error_path}")
-
 
 def check_status(client: OpenAI, batch_id: str):
     """Check status of an existing batch job."""
@@ -122,7 +113,6 @@ def check_status(client: OpenAI, batch_id: str):
         print(f"Error file: {batch.error_file_id}")
     
     return batch
-
 
 def main():
     parser = argparse.ArgumentParser(description="Submit batch inference to Alibaba Cloud")
@@ -219,7 +209,6 @@ def main():
         print(f"\n✗ Batch ended with status: {batch.status}")
         if hasattr(batch, 'errors') and batch.errors:
             print(f"Errors: {batch.errors}")
-
 
 if __name__ == "__main__":
     main()

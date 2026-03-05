@@ -19,11 +19,8 @@ from pathlib import Path
 # Set dummy API key to avoid import errors
 os.environ['OPENAI_API_KEY'] = 'test-key-for-imports'
 
-sys.path.insert(0, str(Path(__file__).parents[2]))
-
-from src.bdi_llm.schemas import BDIPlan, ActionNode
-from src.bdi_llm.symbolic_verifier import BlocksworldPhysicsValidator
-
+from bdi_llm.schemas import BDIPlan, ActionNode
+from bdi_llm.symbolic_verifier import BlocksworldPhysicsValidator
 
 def test_bdi_to_pddl_conversion():
     """Test converting BDI actions to PDDL format"""
@@ -64,7 +61,6 @@ def test_bdi_to_pddl_conversion():
 
     print("  ✅ PASS\n")
 
-
 def test_physics_validation_valid_plan():
     """Test physics validation with a valid plan"""
 
@@ -90,7 +86,6 @@ def test_physics_validation_valid_plan():
     assert len(errors) == 0, f"Expected no errors, got: {errors}"
 
     print("  ✅ PASS\n")
-
 
 def test_physics_validation_invalid_plan():
     """Test physics validation with an invalid plan"""
@@ -120,7 +115,6 @@ def test_physics_validation_invalid_plan():
 
     print("  ✅ PASS\n")
 
-
 def test_metrics_structure():
     """Test that metrics have the correct layered structure"""
     from scripts.evaluation.run_planbench_full import parse_pddl_problem
@@ -149,7 +143,6 @@ def test_metrics_structure():
         assert key in init_state, f"Expected '{key}' in init_state"
 
     print("  ✅ PASS\n")
-
 
 def main():
     """Run all tests"""
@@ -181,7 +174,6 @@ def main():
     print("="*80)
 
     return failed == 0
-
 
 if __name__ == "__main__":
     success = main()

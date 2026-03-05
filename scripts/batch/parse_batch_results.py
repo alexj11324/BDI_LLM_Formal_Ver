@@ -19,12 +19,9 @@ import re
 from pathlib import Path
 from typing import Optional
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(PROJECT_ROOT))
-
-from src.bdi_llm.schemas import BDIPlan
-from src.bdi_llm.verifier import PlanVerifier
-from src.bdi_llm.symbolic_verifier import PDDLSymbolicVerifier
+from bdi_llm.schemas import BDIPlan
+from bdi_llm.verifier import PlanVerifier
+from bdi_llm.symbolic_verifier import PDDLSymbolicVerifier
 from scripts.evaluation.planbench_utils import (
     parse_pddl_problem,
     pddl_to_natural_language,
@@ -32,7 +29,6 @@ from scripts.evaluation.planbench_utils import (
     bdi_to_pddl_actions,
     find_all_instances,
 )
-
 
 def extract_json_from_response(text: str) -> Optional[dict]:
     """Extract JSON object from LLM response text.
@@ -76,7 +72,6 @@ def extract_json_from_response(text: str) -> Optional[dict]:
     
     return None
 
-
 def parse_plan_from_response(response_text: str) -> Optional[BDIPlan]:
     """Parse a BDIPlan from LLM response text."""
     data = extract_json_from_response(response_text)
@@ -93,7 +88,6 @@ def parse_plan_from_response(response_text: str) -> Optional[BDIPlan]:
             except Exception:
                 pass
         return None
-
 
 def verify_plan(plan: BDIPlan, pddl_problem_path: str, pddl_domain_path: str,
                 domain: str) -> dict:
@@ -142,7 +136,6 @@ def verify_plan(plan: BDIPlan, pddl_problem_path: str, pddl_domain_path: str,
     
     result['agreement'] = result['structural']['valid'] == result['symbolic']['valid']
     return result
-
 
 def main():
     parser = argparse.ArgumentParser(description="Parse batch results and verify plans")
@@ -321,7 +314,6 @@ def main():
         print(f"  VAL rate:        {stats['val_valid']/stats['parsed']*100:.1f}%")
     print(f"  Output: {output_file}")
     print(f"{'='*60}")
-
 
 if __name__ == "__main__":
     main()

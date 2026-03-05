@@ -24,16 +24,12 @@ from typing import List, Dict, Tuple
 import time
 from datetime import datetime
 
-# Add project root to path
-sys.path.insert(0, str(Path(__file__).parents[1]))
-
-from src.bdi_llm.planner import BDIPlanner
-from src.bdi_llm.schemas import BDIPlan, ActionNode, DependencyEdge
-from src.bdi_llm.verifier import PlanVerifier
+from bdi_llm.planner import BDIPlanner
+from bdi_llm.schemas import BDIPlan, ActionNode, DependencyEdge
+from bdi_llm.verifier import PlanVerifier
 from scripts.quick_fix_parallel_tasks import auto_repair_disconnected_graph
 import networkx as nx
 import dspy
-
 
 def has_any_api_credential() -> bool:
     """Return True when any supported model credential exists."""
@@ -44,11 +40,9 @@ def has_any_api_credential() -> bool:
         or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
     )
 
-
 def has_disconnected_warning(messages) -> bool:
     """Detect disconnected-component diagnostics from verifier messages."""
     return any("disconnected" in str(message).lower() for message in messages)
-
 
 # ============================================================================
 # TEST SCENARIOS (Diverse Planning Tasks)
@@ -134,7 +128,6 @@ TEST_SCENARIOS = [
     }
 ]
 
-
 # ============================================================================
 # VANILLA LLM PLANNER (No BDI, No Verification)
 # ============================================================================
@@ -168,7 +161,6 @@ class VanillaLLMPlanner:
 
         except Exception as e:
             return f"ERROR: {str(e)}", False
-
 
 # ============================================================================
 # BDI PLANNER WITH AUTO-REPAIR
@@ -227,7 +219,6 @@ class BDIPlannerWithRepair:
             )
             return plan, False, metrics
 
-
 # ============================================================================
 # EVALUATION FUNCTIONS
 # ============================================================================
@@ -261,7 +252,6 @@ def evaluate_plan_quality(plan: BDIPlan, scenario: Dict) -> Dict:
         metrics["structure_match"] = True  # Don't check complex structures
 
     return metrics
-
 
 def run_comparison(scenarios: List[Dict], n_samples: int = None) -> Dict:
     """
@@ -367,7 +357,6 @@ def run_comparison(scenarios: List[Dict], n_samples: int = None) -> Dict:
 
     return results
 
-
 def compute_summary(results: Dict):
     """Compute summary statistics"""
 
@@ -409,7 +398,6 @@ def compute_summary(results: Dict):
         "by_task_type": task_types
     }
 
-
 def print_summary(results: Dict):
     """Pretty print summary results"""
 
@@ -450,7 +438,6 @@ def print_summary(results: Dict):
     print(f"  Repairs triggered: {bdi['repaired_count']}")
     print(f"  Repair success rate: {bdi['repaired_count']/results['n_scenarios']*100:.1f}%")
 
-
 def save_results(
     results: Dict,
     output_file: str = "runs/planbench_comparison/planbench_comparison_results.json",
@@ -462,7 +449,6 @@ def save_results(
     with open(output_path, 'w') as f:
         json.dump(results, f, indent=2, default=str)
     print(f"\n✅ Results saved to {output_path}")
-
 
 # ============================================================================
 # MAIN
@@ -502,7 +488,6 @@ def main():
     print(f"\n{'='*80}")
     print(f"  COMPARISON COMPLETE")
     print(f"{'='*80}\n")
-
 
 if __name__ == "__main__":
     main()

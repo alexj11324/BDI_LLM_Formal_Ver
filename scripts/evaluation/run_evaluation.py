@@ -22,16 +22,10 @@ import sys
 import os
 import json
 import time
-from pathlib import Path
 from typing import Any, Dict, List
 from dotenv import load_dotenv
 
 load_dotenv()
-
-# Add src to path
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(PROJECT_ROOT))
-sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from bdi_llm.schemas import BDIPlan, ActionNode, DependencyEdge
 from bdi_llm.verifier import PlanVerifier
@@ -43,7 +37,6 @@ ABLATION_OUTPUT_DIRS = {
     "FULL_VERIFIED": "ablation_FULL_VERIFIED",
 }
 
-
 def get_execution_mode() -> str:
     """Read and validate AGENT_EXECUTION_MODE."""
     mode = os.environ.get("AGENT_EXECUTION_MODE", "FULL_VERIFIED").strip().upper()
@@ -52,25 +45,21 @@ def get_execution_mode() -> str:
         mode = "FULL_VERIFIED"
     return mode
 
-
 def ensure_ablation_output_dirs():
     """Ensure all ablation output directories exist."""
     runs_root = PROJECT_ROOT / "runs"
     for dirname in ABLATION_OUTPUT_DIRS.values():
         (runs_root / dirname).mkdir(parents=True, exist_ok=True)
 
-
 def get_ablation_output_dir(mode: str) -> Path:
     """Get output directory for current execution mode."""
     return PROJECT_ROOT / "runs" / ABLATION_OUTPUT_DIRS[mode]
-
 
 def write_json_file(path: Path, payload: Dict[str, Any]) -> None:
     """Persist JSON payload to disk with stable formatting."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2)
-
 
 def summarize_rows(rows: List[Dict[str, Any]], key: str) -> Dict[str, Any]:
     """Summarize boolean-like row fields for benchmark reporting."""
@@ -82,7 +71,6 @@ def summarize_rows(rows: List[Dict[str, Any]], key: str) -> Dict[str, Any]:
         "success_rate": (success_count / total) if total else 0.0,
     }
 
-
 def has_any_api_credential() -> bool:
     """Return True when any supported model credential exists."""
     return bool(
@@ -91,7 +79,6 @@ def has_any_api_credential() -> bool:
         or os.environ.get("GOOGLE_API_KEY")
         or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
     )
-
 
 def load_integration_module():
     """Load tests/test_integration.py without requiring tests to be a package."""
@@ -107,7 +94,6 @@ def load_integration_module():
     spec.loader.exec_module(module)
     return module
 
-
 def run_unit_tests():
     """Run pytest on verifier tests (no API needed)."""
     print("\n" + "="*60)
@@ -119,7 +105,6 @@ def run_unit_tests():
         cwd=str(PROJECT_ROOT)
     )
     return result.returncode == 0
-
 
 def run_offline_demo():
     """
@@ -235,7 +220,6 @@ def run_offline_demo():
 
     return True
 
-
 def run_llm_demo():
     """Run the LLM-powered planner demo under AGENT_EXECUTION_MODE."""
     mode = get_execution_mode()
@@ -345,7 +329,6 @@ def run_llm_demo():
         with open(output_file, "w") as f:
             json.dump(result_payload, f, indent=2)
         return False
-
 
 def run_benchmark():
     """Run benchmark under AGENT_EXECUTION_MODE and write mode-specific outputs."""
@@ -485,7 +468,6 @@ def run_benchmark():
         )
         return False
 
-
 def print_usage():
     """Print usage information."""
     print("""
@@ -535,7 +517,6 @@ KEY METRICS:
 - Semantic Score: Plan achieves the goal (requires LLM-as-judge)
     """)
 
-
 def main() -> int:
     parser = argparse.ArgumentParser(description="BDI-LLM Evaluation Runner")
     parser.add_argument(
@@ -577,7 +558,6 @@ def main() -> int:
         return 0 if all(results.values()) else 1
 
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

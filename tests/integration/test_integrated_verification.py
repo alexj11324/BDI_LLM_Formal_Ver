@@ -13,13 +13,10 @@ Author: BDI-LLM Research
 Date: 2026-02-04
 """
 
-import sys
 import json
 import os
 import pytest
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parents[2]))
 
 def _is_valid_api_key(key):
     if not key:
@@ -83,7 +80,6 @@ def test_pddl_parser_init_state():
     except Exception as e:
         pytest.fail(f"Exception during parsing: {e}")
 
-
 def test_multi_layer_verification():
     """Test that generate_bdi_plan includes multi-layer verification"""
     print("="*80)
@@ -136,7 +132,6 @@ def test_multi_layer_verification():
     except Exception as e:
         pytest.fail(f"Exception during plan generation: {e}")
 
-
 def test_physics_catches_errors():
     """Test that physics validation catches errors structural validation misses"""
     print("="*80)
@@ -179,7 +174,6 @@ def test_physics_catches_errors():
     except Exception as e:
         pytest.fail(f"Exception: {e}")
 
-
 def test_multiple_instances():
     """Test on multiple PDDL instances to verify no crashes"""
     print("="*80)
@@ -212,7 +206,6 @@ def test_multiple_instances():
             pytest.fail(f"Exception processing {instance_file.name}: {e}")
 
     print(f"  ✅ PASS: Tested {len(instances)} instances")
-
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

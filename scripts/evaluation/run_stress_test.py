@@ -11,15 +11,11 @@ This test will show the TRUE value of auto-repair.
 
 import sys
 import os
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parents[1]))
-
-from src.bdi_llm.planner import BDIPlanner
-from src.bdi_llm.verifier import PlanVerifier
+from bdi_llm.planner import BDIPlanner
+from bdi_llm.verifier import PlanVerifier
 from scripts.quick_fix_parallel_tasks import auto_repair_disconnected_graph
 import time
-
 
 STRESS_TEST_SCENARIOS = [
     {
@@ -49,7 +45,6 @@ STRESS_TEST_SCENARIOS = [
     },
 ]
 
-
 def has_any_api_credential() -> bool:
     """Return True when any supported model credential exists."""
     return bool(
@@ -59,11 +54,9 @@ def has_any_api_credential() -> bool:
         or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
     )
 
-
 def has_disconnected_warning(messages) -> bool:
     """Detect disconnected-component diagnostics from verifier messages."""
     return any("disconnected" in str(message).lower() for message in messages)
-
 
 def test_without_repair(scenario):
     """Test BDI planner WITHOUT auto-repair"""
@@ -88,7 +81,6 @@ def test_without_repair(scenario):
         "num_nodes": len(plan.nodes),
         "num_edges": len(plan.edges)
     }
-
 
 def test_with_repair(scenario):
     """Test BDI planner WITH auto-repair"""
@@ -129,7 +121,6 @@ def test_with_repair(scenario):
         "num_nodes_before": len([n for n in plan.nodes if n.id not in ["START", "END"]]),
         "num_nodes_after": len(plan.nodes)
     }
-
 
 def main():
     print("\n" + "="*80)
@@ -243,7 +234,6 @@ def main():
         print("⚠️  No repairs triggered - LLM performed perfectly on this run\n")
 
     print("=" * 80 + "\n")
-
 
 if __name__ == "__main__":
     main()

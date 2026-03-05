@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "bdi-llm-formal-ver"
 version = "0.1.0"
@@ -24,6 +28,11 @@ dev = [
     "docker>=7.0",
     "ruff>=0.1",
 ]
+
+[tool.setuptools.packages.find]
+where = ["src", "."]
+include = ["bdi_llm*", "scripts*"]
+exclude = ["tests*"]
 
 [tool.ruff]
 line-length = 100

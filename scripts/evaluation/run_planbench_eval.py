@@ -30,12 +30,8 @@ from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
 import argparse
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
 from bdi_llm.schemas import ActionNode, DependencyEdge, BDIPlan
 from bdi_llm.verifier import PlanVerifier
-
 
 @dataclass
 class PLANBenchResult:
@@ -47,7 +43,6 @@ class PLANBenchResult:
     errors: List[str]
     plan: Optional[BDIPlan]
     execution_order: List[str]
-
 
 class PDDLToBDIConverter:
     """
@@ -146,7 +141,6 @@ class PDDLToBDIConverter:
             beliefs = "\\n".join([f"- {pred}" for pred in parsed_pddl['init']])
             desire = " and ".join([f"{pred}" for pred in parsed_pddl['goal']])
             return beliefs, desire
-
 
 class PlanBenchEvaluator:
     """Evaluates BDI-LLM on PlanBench tasks"""
@@ -315,7 +309,6 @@ class PlanBenchEvaluator:
 
         print(f"Results saved to {output_path}")
 
-
 def main():
     parser = argparse.ArgumentParser(description="Run PlanBench evaluation on BDI-LLM")
     parser.add_argument("--task", default="t1", choices=["t1", "all"],
@@ -379,7 +372,6 @@ def main():
 
     # Save results
     evaluator.save_results(results, args.output)
-
 
 if __name__ == "__main__":
     main()

@@ -22,13 +22,9 @@ Expected output:
 import sys
 import os
 
-# Add src to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
-
 from bdi_llm.schemas import ActionNode, DependencyEdge, BDIPlan
 from bdi_llm.verifier import PlanVerifier
 from bdi_llm.plan_repair import PlanRepairer
-
 
 def create_simple_cycle():
     """A -> B -> A"""
@@ -43,7 +39,6 @@ def create_simple_cycle():
             DependencyEdge(source="B", target="A"),
         ]
     )
-
 
 def create_three_node_cycle():
     """A -> B -> C -> A"""
@@ -60,7 +55,6 @@ def create_three_node_cycle():
             DependencyEdge(source="C", target="A"),
         ]
     )
-
 
 def create_four_node_cycle():
     """A -> B -> C -> D -> A"""
@@ -79,7 +73,6 @@ def create_four_node_cycle():
             DependencyEdge(source="D", target="A"),
         ]
     )
-
 
 def create_complex_cycle_with_parallel_chain():
     """A -> B -> C -> A with parallel D -> E"""
@@ -100,7 +93,6 @@ def create_complex_cycle_with_parallel_chain():
         ]
     )
 
-
 def create_nested_cycles():
     """A -> B -> C -> A and B -> D -> B (two interlocking cycles)"""
     return BDIPlan(
@@ -120,7 +112,6 @@ def create_nested_cycles():
         ]
     )
 
-
 def create_self_loop():
     """A -> A (self-loop)"""
     return BDIPlan(
@@ -132,7 +123,6 @@ def create_self_loop():
             DependencyEdge(source="A", target="A"),
         ]
     )
-
 
 def create_double_self_loop():
     """A -> A and B -> B"""
@@ -147,7 +137,6 @@ def create_double_self_loop():
             DependencyEdge(source="B", target="B"),
         ]
     )
-
 
 def create_cycle_with_disconnected_component():
     """A -> B -> A (cycle) + C -> D (disconnected)"""
@@ -165,7 +154,6 @@ def create_cycle_with_disconnected_component():
             DependencyEdge(source="C", target="D"),
         ]
     )
-
 
 def create_long_cycle():
     """A -> B -> C -> D -> E -> A (5-node cycle)"""
@@ -187,7 +175,6 @@ def create_long_cycle():
         ]
     )
 
-
 def create_multiple_disjoint_cycles():
     """A -> B -> A (cycle 1) + C -> D -> C (cycle 2)"""
     return BDIPlan(
@@ -205,7 +192,6 @@ def create_multiple_disjoint_cycles():
             DependencyEdge(source="D", target="C"),
         ]
     )
-
 
 def run_smoke_test():
     """
@@ -292,7 +278,6 @@ def run_smoke_test():
     print()
 
     return success_count, total, success_rate
-
 
 if __name__ == "__main__":
     success_count, total, success_rate = run_smoke_test()

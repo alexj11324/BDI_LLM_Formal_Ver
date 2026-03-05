@@ -7,7 +7,7 @@ suitable for VAL verification.
 """
 from typing import Dict, List
 
-from src.bdi_llm.schemas import BDIPlan
+from bdi_llm.schemas import BDIPlan
 
 
 def bdi_to_pddl_actions(plan: BDIPlan, domain: str = "blocksworld") -> List[str]:

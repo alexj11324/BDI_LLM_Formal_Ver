@@ -15,14 +15,10 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-# Add src to path
-sys.path.append(str(Path(__file__).resolve().parent.parent / "src"))
-
 from datasets import load_dataset
 
 from bdi_llm.coding_planner import CodingBDIPlanner
 from bdi_llm.verifier import PlanVerifier
-
 
 class LocalSWEBenchHarness:
     """Runner for SWE-bench instances with local repository execution."""
@@ -1096,7 +1092,6 @@ class LocalSWEBenchHarness:
             shutil.rmtree(repo_dir, ignore_errors=True)
 
         return result
-
 
 if __name__ == "__main__":
     import argparse

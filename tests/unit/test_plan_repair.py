@@ -1,8 +1,8 @@
 """Tests for plan repair and canonicalization behaviors."""
 
-from src.bdi_llm.schemas import BDIPlan, ActionNode, DependencyEdge
-from src.bdi_llm.plan_repair import PlanRepairer, repair_and_verify, PlanCanonicalizer
-from src.bdi_llm.verifier import PlanVerifier
+from bdi_llm.schemas import BDIPlan, ActionNode, DependencyEdge
+from bdi_llm.plan_repair import PlanRepairer, repair_and_verify, PlanCanonicalizer
+from bdi_llm.verifier import PlanVerifier
 
 
 def test_connected_plan_remains_unchanged():

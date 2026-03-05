@@ -3,7 +3,7 @@ import pytest
 import os
 import subprocess
 from unittest.mock import patch, MagicMock
-from src.bdi_llm.symbolic_verifier import PDDLSymbolicVerifier
+from bdi_llm.symbolic_verifier import PDDLSymbolicVerifier
 
 class TestPDDLSymbolicVerifier:
 
@@ -80,7 +80,7 @@ class TestPDDLSymbolicVerifier:
 
         # Test with Config (mocking Config.VAL_VALIDATOR_PATH)
         # We need to mock Config in the module where it is used
-        with patch("src.bdi_llm.symbolic_verifier.Config") as MockConfig:
+        with patch("bdi_llm.symbolic_verifier.Config") as MockConfig:
             MockConfig.VAL_VALIDATOR_PATH = "/env/val"
             verifier = PDDLSymbolicVerifier()
             assert verifier.val_path == "/env/val"

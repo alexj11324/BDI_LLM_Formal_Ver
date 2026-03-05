@@ -9,16 +9,12 @@ Author: BDI-LLM Research
 Date: 2026-02-03
 """
 
-import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parents[1]))
-
-from src.bdi_llm.symbolic_verifier import (
+from bdi_llm.symbolic_verifier import (
     PDDLSymbolicVerifier,
     BlocksworldPhysicsValidator
 )
-
 
 def test_physics_validator():
     """Test blocksworld physics validation"""
@@ -104,7 +100,6 @@ def test_physics_validator():
     print("  Physics Validator Test Complete")
     print("="*80 + "\n")
 
-
 def test_val_verifier():
     """Test VAL-based symbolic verifier"""
     print("="*80)
@@ -175,7 +170,6 @@ def test_val_verifier():
     print("="*80)
     print("  VAL Verifier Test Complete")
     print("="*80 + "\n")
-
 
 if __name__ == "__main__":
     # Test physics validator (no dependencies)

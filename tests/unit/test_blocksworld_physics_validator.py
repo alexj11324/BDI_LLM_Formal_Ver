@@ -1,6 +1,6 @@
 
 import pytest
-from src.bdi_llm.symbolic_verifier import BlocksworldPhysicsValidator
+from bdi_llm.symbolic_verifier import BlocksworldPhysicsValidator
 
 class TestBlocksworldPhysicsValidator:
 

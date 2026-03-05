@@ -12,22 +12,16 @@ Output: runs/batch_inference/{domain}.jsonl
 
 import json
 import os
-import sys
 import argparse
 from pathlib import Path
-
-# Add project root to path
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(PROJECT_ROOT))
 
 from scripts.evaluation.planbench_utils import (
     parse_pddl_problem,
     pddl_to_natural_language,
     find_all_instances,
 )
-from src.bdi_llm.planner import GeneratePlan, GeneratePlanLogistics, GeneratePlanDepots
-from src.bdi_llm.schemas import BDIPlan
-
+from bdi_llm.planner import GeneratePlan, GeneratePlanLogistics, GeneratePlanDepots
+from bdi_llm.schemas import BDIPlan
 
 # ============================================================================
 # Prompt Construction (replicates DSPy's prompt from Signature docstrings)
@@ -42,7 +36,6 @@ def get_system_prompt(domain: str) -> str:
     }[domain]
     return sig_class.__doc__.strip()
 
-
 def build_user_message(beliefs: str, desire: str) -> str:
     """Build the user message from beliefs and desire."""
     return (
@@ -55,7 +48,6 @@ def build_user_message(beliefs: str, desire: str) -> str:
         f"- edges: list of dependency edges, each with source, target, relationship\n\n"
         f"Respond with ONLY the JSON object, no markdown code fences, no extra text."
     )
-
 
 def build_jsonl_line(custom_id: str, model: str, system_prompt: str,
                      user_message: str, max_tokens: int = 16000) -> dict:
@@ -75,7 +67,6 @@ def build_jsonl_line(custom_id: str, model: str, system_prompt: str,
             "response_format": {"type": "json_object"},
         }
     }
-
 
 # ============================================================================
 # Main
@@ -122,7 +113,6 @@ def prepare_domain(domain: str, model: str, output_dir: Path,
     print(f"  {domain}: {count} instances → {output_file} ({errors} errors)")
     return str(output_file)
 
-
 def main():
     parser = argparse.ArgumentParser(description="Prepare JSONL for batch inference")
     parser.add_argument("--domains", nargs="+",
@@ -159,7 +149,6 @@ def main():
         print(f"  {domain}: {lines} requests ({size/1024/1024:.1f} MB)")
     print(f"{'='*60}")
     print(f"\nNext step: python scripts/submit_batch.py --domain <domain>")
-
 
 if __name__ == "__main__":
     main()

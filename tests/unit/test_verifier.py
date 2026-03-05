@@ -3,13 +3,10 @@ Unit Tests for PlanVerifier - The "Compiler" for BDI Plans.
 These tests ensure our verification logic is sound BEFORE testing with LLMs.
 """
 import pytest
-import sys
 import os
-sys.path.append(os.path.join(os.path.dirname(__file__), '../src'))
 
 from bdi_llm.schemas import ActionNode, DependencyEdge, BDIPlan
 from bdi_llm.verifier import PlanVerifier, VerificationResult
-
 
 class TestVerifierBasics:
     """Test fundamental verification rules."""
@@ -84,7 +81,6 @@ class TestVerifierBasics:
         assert result[0] is True
         assert result[1] == []
 
-
 class TestCycleDetection:
     """Test that cycles (deadlocks) are correctly detected."""
 
@@ -144,7 +140,6 @@ class TestCycleDetection:
 
         assert is_valid is False
 
-
 class TestConnectivity:
     """Test that disconnected plans are detected."""
 
@@ -174,7 +169,6 @@ class TestConnectivity:
         is_valid, messages = result
         assert is_valid is True
         assert any("disconnect" in m.lower() for m in messages)
-
 
 class TestTopologicalSort:
     """Test execution order generation."""
@@ -216,7 +210,6 @@ class TestTopologicalSort:
         order = PlanVerifier.topological_sort(G)
 
         assert order == []
-
 
 class TestCycleDetection:
     """Enhanced cycle detection tests."""
@@ -278,7 +271,6 @@ class TestCycleDetection:
         assert is_valid is False
         # Should detect at least one cycle
         assert any("cycle" in e.lower() for e in errors)
-
 
 class TestCycleBreaking:
     """
@@ -417,7 +409,6 @@ class TestCycleBreaking:
         is_valid_after, _ = PlanVerifier.verify(repaired_G)
         assert is_valid_after is True
 
-
 class TestVALFallback:
     """
     Tests for VAL integration and fallback on structural failure.
@@ -531,7 +522,6 @@ class TestVALFallback:
         assert result.success is True
         assert any("Broke cycles" in r for r in result.repairs_applied)
 
-
 class TestComplexDAG:
     """Test more realistic planning scenarios."""
 
@@ -606,7 +596,6 @@ class TestComplexDAG:
         assert order.index("pickup_keys") < order.index("unlock")
         assert order.index("unlock") < order.index("open")
         assert order.index("open") < order.index("walk_through")
-
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

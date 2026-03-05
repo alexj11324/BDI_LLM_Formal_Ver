@@ -22,7 +22,6 @@ Usage:
 Author: BDI-LLM Research
 """
 
-import sys
 import os
 import json
 import time
@@ -36,13 +35,10 @@ import argparse
 # Background-safe progress: unified tqdm compat from planbench_utils
 from scripts.evaluation.planbench_utils.tqdm_compat import tqdm
 
-# Setup path
-sys.path.insert(0, str(Path(__file__).parents[1]))
-
-from src.bdi_llm.planner import BDIPlanner
-from src.bdi_llm.config import Config
-from src.bdi_llm.schemas import BDIPlan
-from src.bdi_llm.verifier import PlanVerifier
+from bdi_llm.planner import BDIPlanner
+from bdi_llm.config import Config
+from bdi_llm.schemas import BDIPlan
+from bdi_llm.verifier import PlanVerifier
 
 # Reuse PDDL parsing and NL conversion from planbench_utils
 from scripts.evaluation.planbench_utils import (
@@ -52,7 +48,6 @@ from scripts.evaluation.planbench_utils import (
     bdi_to_pddl_actions,
     find_all_instances,
 )
-
 
 # ============================================================================
 # CORE: GENERATE + VERIFY (NO REPAIR)
@@ -75,7 +70,7 @@ def generate_and_verify(
     - symbolic: valid, errors (VAL result = ground truth)
     - agreement: whether structural and VAL agree
     """
-    from src.bdi_llm.symbolic_verifier import PDDLSymbolicVerifier
+    from bdi_llm.symbolic_verifier import PDDLSymbolicVerifier
 
     result = {
         'generation': {
@@ -163,7 +158,6 @@ def generate_and_verify(
         result['agreement'] = result['structural']['valid'] == result['symbolic']['valid']
 
     return result
-
 
 # ============================================================================
 # BATCH EVALUATION
@@ -284,14 +278,12 @@ def run_verification_eval(
 
     return summary
 
-
 def _save_checkpoint(results: list, checkpoint_file: str, domain: str):
     """Save checkpoint atomically."""
     tmp = f"{checkpoint_file}.tmp"
     with open(tmp, 'w') as f:
         json.dump({'domain': domain, 'results': results}, f, default=str)
     os.replace(tmp, checkpoint_file)
-
 
 def _compute_summary(results: list, domain: str) -> dict:
     """Compute aggregate metrics from results."""
@@ -340,7 +332,6 @@ def _compute_summary(results: list, domain: str) -> dict:
         ) / total if total > 0 else 0,
     }
 
-
 def _print_summary(summary: dict):
     """Print formatted summary."""
     print(f"\n{'='*70}")
@@ -370,7 +361,6 @@ def _print_summary(summary: dict):
 
     print(f"\nAvg generation time: {summary['avg_generation_time']:.1f}s")
 
-
 # ============================================================================
 # CLI
 # ============================================================================
@@ -394,7 +384,6 @@ def main():
         output_dir=args.output_dir,
         workers=args.workers,
     )
-
 
 if __name__ == "__main__":
     main()

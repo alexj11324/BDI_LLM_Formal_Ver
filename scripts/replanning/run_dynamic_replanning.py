@@ -16,7 +16,6 @@ Usage:
 Author: BDI-LLM Research
 """
 
-import sys
 import os
 import json
 import time
@@ -27,14 +26,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
 import argparse
 
-# Setup path
-sys.path.insert(0, str(Path(__file__).parents[1]))
-
-from src.bdi_llm.planner import BDIPlanner
-from src.bdi_llm.config import Config
-from src.bdi_llm.schemas import BDIPlan
-from src.bdi_llm.dynamic_replanner.executor import PlanExecutor, ExecutionResult
-from src.bdi_llm.dynamic_replanner.replanner import DynamicReplanner
+from bdi_llm.planner import BDIPlanner
+from bdi_llm.config import Config
+from bdi_llm.schemas import BDIPlan
+from bdi_llm.dynamic_replanner.executor import PlanExecutor, ExecutionResult
+from bdi_llm.dynamic_replanner.replanner import DynamicReplanner
 
 # Reuse PDDL parsing and NL conversion from planbench_utils
 from scripts.evaluation.planbench_utils import (
@@ -47,7 +43,6 @@ from scripts.evaluation.planbench_utils import (
 
 # Background-safe progress: unified tqdm compat from planbench_utils
 from scripts.evaluation.planbench_utils.tqdm_compat import tqdm
-
 
 def generate_and_replan(
     beliefs: str,
@@ -260,7 +255,6 @@ def run_dynamic_replanning_eval(
         json.dump(results, f, indent=2, default=str)
         
     print(f"Saved to: {out_file}")
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Dynamic Replanning Evaluation")

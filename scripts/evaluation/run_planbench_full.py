@@ -31,13 +31,11 @@ from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
 
-sys.path.insert(0, str(Path(__file__).parents[1]))
-
-from src.bdi_llm.planner import BDIPlanner
-from src.bdi_llm.config import Config
-from src.bdi_llm.schemas import BDIPlan
-from src.bdi_llm.verifier import PlanVerifier
-from src.bdi_llm.plan_repair import repair_and_verify, PlanRepairer
+from bdi_llm.planner import BDIPlanner
+from bdi_llm.config import Config
+from bdi_llm.schemas import BDIPlan
+from bdi_llm.verifier import PlanVerifier
+from bdi_llm.plan_repair import repair_and_verify, PlanRepairer
 import networkx as nx
 
 # MLflow integration for experiment tracking
@@ -48,7 +46,6 @@ except ImportError:
     MLFLOW_AVAILABLE = False
     print("⚠️  MLflow not installed. Install with: pip install mlflow")
     print("   Experiment tracking will be disabled.")
-
 
 # ============================================================================
 # PDDL PARSING
@@ -138,7 +135,6 @@ def parse_pddl_problem(pddl_file: str) -> dict:
         'init_state': init_state  # NEW: For physics validation
     }
 
-
 def resolve_domain_file(domain_name: str, base_path: str = None) -> str:
     """Resolve the correct PDDL domain file path based on domain name.
 
@@ -182,8 +178,6 @@ def resolve_domain_file(domain_name: str, base_path: str = None) -> str:
 
     return f"{base_path}/pddlgenerators/blocksworld/domain.pddl"
 
-
-
 def pddl_to_natural_language(pddl_data: dict, domain: str = "blocksworld") -> Tuple[str, str]:
     """Convert PDDL to natural language (domain-specific)"""
 
@@ -196,7 +190,6 @@ def pddl_to_natural_language(pddl_data: dict, domain: str = "blocksworld") -> Tu
     else:
         # Generic fallback
         return pddl_to_nl_generic(pddl_data)
-
 
 def pddl_to_nl_blocksworld(pddl_data: dict) -> Tuple[str, str]:
     """Enhanced Blocksworld-specific conversion with clearer state description"""
@@ -396,7 +389,6 @@ def pddl_to_nl_blocksworld(pddl_data: dict) -> Tuple[str, str]:
 
     return beliefs, desire
 
-
 def pddl_to_nl_generic(pddl_data: dict) -> Tuple[str, str]:
     """Generic PDDL to NL conversion"""
     objects = pddl_data['objects']
@@ -407,7 +399,6 @@ def pddl_to_nl_generic(pddl_data: dict) -> Tuple[str, str]:
     desire = f"Achieve goal: {'; '.join(goal[:5])}..."
 
     return beliefs, desire
-
 
 def pddl_to_nl_logistics(pddl_data: dict) -> Tuple[str, str]:
     """Logistics domain conversion with enhanced airport/city awareness"""
@@ -557,7 +548,6 @@ def pddl_to_nl_logistics(pddl_data: dict) -> Tuple[str, str]:
     desire = "\n".join(desire_parts)
 
     return beliefs, desire
-
 
 def pddl_to_nl_depots(pddl_data: dict) -> Tuple[str, str]:
     """Enhanced Depots domain conversion with clear action specifications"""
@@ -736,7 +726,6 @@ def pddl_to_nl_depots(pddl_data: dict) -> Tuple[str, str]:
     beliefs_parts.append("4. For Unload: Is the crate IN the truck?")
     beliefs_parts.append("5. For Lift: Is the crate CLEAR (nothing on top)?")
 
-
     beliefs_parts.append("\n=== WORKED EXAMPLE WITH STATE TRACKING ===")
     beliefs_parts.append("Scenario: crate0 on pallet0 at depot0, crate1 on pallet1 at depot1")
     beliefs_parts.append("          truck0 at depot0, hoist0 at depot0, hoist1 at depot1")
@@ -794,7 +783,6 @@ def pddl_to_nl_depots(pddl_data: dict) -> Tuple[str, str]:
     desire = f"Goal: {'; '.join(goal_descs)}. Use Depots actions (Lift/Drop/Load/Unload/Drive) to achieve this goal."
 
     return beliefs, desire
-
 
 # ============================================================================
 # BDI PLANNING
@@ -1114,7 +1102,6 @@ def bdi_to_pddl_actions(plan: BDIPlan, domain: str = "blocksworld") -> List[str]
 
     return pddl_actions
 
-
 def generate_bdi_plan(
     beliefs: str,
     desire: str,
@@ -1144,7 +1131,7 @@ def generate_bdi_plan(
     Returns:
         (plan, is_valid, metrics)
     """
-    from src.bdi_llm.symbolic_verifier import (
+    from bdi_llm.symbolic_verifier import (
         BlocksworldPhysicsValidator,
         IntegratedVerifier,
         PDDLSymbolicVerifier,
@@ -1450,7 +1437,6 @@ def generate_bdi_plan(
     plan = BDIPlan(goal_description=desire, nodes=[], edges=[])
     return plan, False, metrics
 
-
 # ============================================================================
 # BATCH EVALUATION
 # ============================================================================
@@ -1469,14 +1455,12 @@ def find_all_instances(base_path: str, domain: str) -> List[str]:
 
     return sorted([str(f) for f in instance_files])
 
-
 def save_checkpoint_atomic(results: dict, checkpoint_file: str) -> None:
     """Persist checkpoint atomically to reduce corruption risk on interruption."""
     tmp_file = f"{checkpoint_file}.tmp"
     with open(tmp_file, 'w') as f:
         json.dump(results, f, indent=2)
     os.replace(tmp_file, checkpoint_file)
-
 
 def evaluate_single_instance(instance_file: str, domain: str) -> dict:
     """
@@ -1535,7 +1519,6 @@ def evaluate_single_instance(instance_file: str, domain: str) -> dict:
         instance_result['error'] = str(e)
 
     return instance_result
-
 
 def run_batch_evaluation(
     domain: str,
@@ -1859,7 +1842,6 @@ def run_batch_evaluation(
 
     return results
 
-
 # ============================================================================
 # MAIN
 # ============================================================================
@@ -1947,7 +1929,6 @@ def main():
             print(f"  Success: {summary['success_count']}/{summary['total_evaluated']} "
                   f"({summary['success_rate']*100:.1f}%)")
             print(f"  Avg time: {summary['avg_generation_time']:.2f}s\n")
-
 
 if __name__ == "__main__":
     main()

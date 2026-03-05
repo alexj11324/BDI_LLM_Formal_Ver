@@ -2,9 +2,9 @@ import pytest
 import os
 import json
 from typing import List
-from src.bdi_llm.schemas import BDIPlan
-from src.bdi_llm.verifier import PlanVerifier
-from src.bdi_llm.config import Config
+from bdi_llm.schemas import BDIPlan
+from bdi_llm.verifier import PlanVerifier
+from bdi_llm.config import Config
 
 # Check if we have a valid API key (not a dummy/placeholder)
 def _is_valid_api_key(key):
@@ -166,7 +166,7 @@ class TestLLMIntegration:
     @pytest.fixture
     def planner(self):
         """Initialize the BDI Planner."""
-        from src.bdi_llm.planner import BDIPlanner
+        from bdi_llm.planner import BDIPlanner
         return BDIPlanner(domain="testing")
 
     @pytest.mark.parametrize("scenario", TEST_SCENARIOS, ids=[s["name"] for s in TEST_SCENARIOS])
@@ -306,7 +306,7 @@ def run_benchmark(output_file: str = "benchmark_results.json"):
         print("No API key found. Running offline tests only.")
         return
 
-    from src.bdi_llm.planner import BDIPlanner
+    from bdi_llm.planner import BDIPlanner
     planner = BDIPlanner()
 
     for scenario in TEST_SCENARIOS:

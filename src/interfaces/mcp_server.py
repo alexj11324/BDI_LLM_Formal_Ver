@@ -19,8 +19,8 @@ from typing import List, Tuple
 
 # Imports rely on the project being installed (pip install -e .)
 # or PYTHONPATH including the repository root.
-from src.bdi_llm.planner import BDIPlanner
-from src.bdi_llm.symbolic_verifier import IntegratedVerifier
+from bdi_llm.planner import BDIPlanner
+from bdi_llm.symbolic_verifier import IntegratedVerifier
 
 mcp = FastMCP("BDI-LLM Verifier")
 

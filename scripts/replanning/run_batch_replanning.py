@@ -21,7 +21,6 @@ Usage:
 Author: BDI-LLM Research
 """
 
-import sys
 import os
 import json
 import time
@@ -31,17 +30,14 @@ from datetime import datetime
 import argparse
 import logging
 
-# Setup path
-sys.path.insert(0, str(Path(__file__).parents[1]))
-
-from src.bdi_llm.schemas import BDIPlan
-from src.bdi_llm.batch_engine import (
+from bdi_llm.schemas import BDIPlan
+from bdi_llm.batch_engine import (
     BatchEngine,
     build_initial_plan_messages,
     build_replan_messages,
     parse_plan_from_text,
 )
-from src.bdi_llm.dynamic_replanner.executor import PlanExecutor
+from bdi_llm.dynamic_replanner.executor import PlanExecutor
 
 # Reuse PDDL utilities from planbench_utils
 from scripts.evaluation.planbench_utils import (
@@ -58,7 +54,6 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 logger = logging.getLogger(__name__)
-
 
 # ------------------------------------------------------------------ #
 # Instance data container
@@ -115,7 +110,6 @@ class InstanceData:
         self.failed_action = result.failed_action
         self.failure_reasons = result.failure_reason or []
         return False
-
 
 def run_batch_replanning(
     domain: str,
@@ -322,7 +316,6 @@ def run_batch_replanning(
     with open(out_file, "w") as f:
         json.dump(result_data, f, indent=2, default=str)
     print(f"Saved to: {out_file}")
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Batch Dynamic Replanning Evaluation")
