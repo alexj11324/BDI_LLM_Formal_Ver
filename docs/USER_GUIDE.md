@@ -399,6 +399,9 @@ plan, valid, metrics = generate_bdi_plan(beliefs, desire, init_state)
 
 ## References
 
-- **Architecture**: `docs/ARCHITECTURE.md`
+- **Conductor Setup**: `conductor/index.md`
+- [Wiki Catalogue](../wiki-catalogue.md)
+- **C4 Architecture**: `C4-Documentation/c4-context.md`
+- **Technical Reference**: `docs/TECHNICAL_REFERENCE.md`
 - **Benchmarks**: `docs/BENCHMARKS.md`
 - **Test Suite**: `tests/test_integrated_verification.py`, `tests/test_integration_phase2.py`

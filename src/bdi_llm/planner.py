@@ -51,7 +51,7 @@ class ResponsesAPILM(dspy.BaseLM):
     - NVIDIA NIM Chat Completions API (with reasoning_content capture)
     """
     def __init__(self, model, api_key, api_base, reasoning_effort='low',
-                 max_tokens=16000, timeout=120, num_retries=5,
+                 max_tokens=16000, timeout=600, num_retries=2,
                  use_chat_completions=False,
                  chat_template_kwargs: Optional[Dict[str, Any]] = None):
         """
@@ -327,8 +327,8 @@ def configure_dspy():
                 api_base=Config.OPENAI_API_BASE or 'https://integrate.api.nvidia.com/v1',
                 reasoning_effort=Config.REASONING_EFFORT,
                 max_tokens=16000,
-                timeout=120,
-                num_retries=5,
+                timeout=Config.TIMEOUT,
+                num_retries=2,
                 use_chat_completions=True,  # Use Chat Completions API for NVIDIA
                 chat_template_kwargs=(
                     {'enable_thinking': True, 'clear_thinking': False}
@@ -347,8 +347,8 @@ def configure_dspy():
                 api_base=Config.OPENAI_API_BASE,
                 reasoning_effort=Config.REASONING_EFFORT,
                 max_tokens=16000,
-                timeout=120,
-                num_retries=5,
+                timeout=Config.TIMEOUT,
+                num_retries=2,
                 use_chat_completions=False,  # Use Responses API for infiniteai
             )
             dspy.configure(lm=lm)
@@ -368,8 +368,8 @@ def configure_dspy():
         lm_config['max_tokens'] = 16000
 
     # Add timeout and retry settings for rate limiting and reliability
-    lm_config['timeout'] = 120  # 2 minute timeout per API call
-    lm_config['num_retries'] = 5  # more retries for rate limiting
+    lm_config['timeout'] = Config.TIMEOUT  # configurable timeout (default 600s for reasoning models)
+    lm_config['num_retries'] = 2  # fewer retries to avoid long stalls
     lm_config['extra_headers'] = {'User-Agent': 'python-httpx/0.28.1'}
 
     lm = dspy.LM(**lm_config)

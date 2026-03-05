@@ -22,13 +22,26 @@ We track success rates across different validation layers:
 
 ## Results
 
-### Blocksworld (Batch 1, 2026-02-16)
+### GPT-5 (2026-02-27) — Full Dataset
+| Domain | Instances | Success Rate |
+|--------|-----------|-------------|
+| Blocksworld | 1103/1103 | **90.8%** (FULL_VERIFIED) |
+| Logistics | 572 | in progress |
+| Depots | 501 | in progress |
 
-| Run | Instances | Overall Success | Structural | Symbolic | Physics | Auto-Repair |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| Batch 1 | 400 | **99.75%** (399/400) | 100% | 99.75% | 99.75% | 100% (1/1) |
+### Ablation (GPT-OSS-120B, blocksworld 1103 instances)
+| Mode | Success Rate | What's verified |
+|------|-------------|-----------------|
+| NAIVE | 91.6% | Nothing — raw LLM output |
+| BDI_ONLY | 91.7% | Structural (DAG) only |
+| FULL_VERIFIED | 90.8% | All 3 layers — provably correct |
 
-> **Note**: Logistics and Depots domains are pending re-evaluation with the new parallel execution pipeline. Previous snapshots showed >99% accuracy.
+### Gemini (2026-02-13) — Paper Canonical Numbers
+| Domain | Passed | Total | Accuracy |
+|--------|--------|-------|----------|
+| Blocksworld | ~200 | ~200 | ~99.8% |
+| Logistics | 568 | 570 | **99.6%** |
+| Depots | 497 | 500 | **99.4%** |
 
 ### Failure Analysis
 
