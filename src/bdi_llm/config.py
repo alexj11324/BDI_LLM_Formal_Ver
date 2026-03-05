@@ -14,13 +14,15 @@ class Config:
     ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
     GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
     GOOGLE_APPLICATION_CREDENTIALS = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+    DASHSCOPE_API_KEY = os.environ.get("DASHSCOPE_API_KEY")
 
     # Model Configuration
     # Default to GPT-4o, but allow override
     MODEL_NAME = os.environ.get("LLM_MODEL", "openai/gpt-4o")
     MAX_TOKENS = int(os.environ.get("LLM_MAX_TOKENS", "4000"))
     TEMPERATURE = float(os.environ.get("LLM_TEMPERATURE", "0.2"))
-    REASONING_EFFORT = os.environ.get("REASONING_EFFORT", "low")
+    REASONING_EFFORT = os.environ.get("REASONING_EFFORT", "medium")
+    TIMEOUT = int(os.environ.get("LLM_TIMEOUT", "600"))
     SAVE_REASONING_TRACE = os.environ.get("SAVE_REASONING_TRACE", "false").lower() in {
         "1", "true", "yes", "on"
     }
