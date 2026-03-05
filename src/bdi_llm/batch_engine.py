@@ -25,7 +25,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from openai import OpenAI
 
 from src.bdi_llm.config import Config
-from src.bdi_llm.schemas import BDIPlan, ActionNode, DependencyEdge
+from src.bdi_llm.schemas import BDIPlan, ActionNode, DependencyEdge, parse_plan_from_text  # noqa: F401 – re-export
 
 logger = logging.getLogger(__name__)
 
@@ -97,64 +97,6 @@ Output ONLY valid JSON ({{"goal_description": "...", "nodes": [...], "edges": [.
 
 
 # ------------------------------------------------------------------ #
-# JSON → BDIPlan parsing (with normalisation)
-# ------------------------------------------------------------------ #
-
-def parse_plan_from_text(text: str) -> Optional[BDIPlan]:
-    """Parse LLM text output into a BDIPlan, with field normalisation."""
-    content = text.strip()
-
-    # Strip markdown fences
-    if content.startswith("```json"):
-        content = content[7:]
-    if content.startswith("```"):
-        content = content[3:]
-    if content.endswith("```"):
-        content = content[:-3]
-    content = content.strip()
-
-    try:
-        plan_dict = json.loads(content)
-    except json.JSONDecodeError:
-        logger.warning("Failed to parse JSON from LLM output")
-        return None
-
-    # Normalise nodes
-    raw_nodes = plan_dict.get("nodes", [])
-    normalised_nodes = []
-    for n in raw_nodes:
-        if "action_type" not in n:
-            n["action_type"] = n.pop("action", n.pop("type", "unknown"))
-        if "description" not in n:
-            n["description"] = f"{n.get('action_type', '')} {n.get('params', '')}"
-        if "id" not in n:
-            n["id"] = f"s{len(normalised_nodes)+1}"
-        normalised_nodes.append(n)
-
-    # Normalise edges
-    raw_edges = plan_dict.get("edges", [])
-    normalised_edges = []
-    for e in raw_edges:
-        if "source" not in e:
-            e["source"] = e.pop("from_id", e.pop("from", ""))
-        if "target" not in e:
-            e["target"] = e.pop("to_id", e.pop("to", ""))
-        normalised_edges.append(e)
-
-    try:
-        nodes = [ActionNode(**n) for n in normalised_nodes]
-        edges = [DependencyEdge(**e) for e in normalised_edges]
-        return BDIPlan(
-            goal_description=plan_dict.get("goal_description", "Generated plan"),
-            nodes=nodes,
-            edges=edges,
-        )
-    except Exception as e:
-        logger.warning(f"Pydantic validation failed: {e}")
-        return None
-
-
-# ------------------------------------------------------------------ #
 # Batch Engine
 # ------------------------------------------------------------------ #
 
@@ -170,22 +112,23 @@ class BatchEngine:
 
     def __init__(
         self,
-        model: str = "qwen3.5-plus",
-        base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        model: str = None,
+        base_url: str = None,
         enable_thinking: bool = True,
         temperature: float = 0.3,
         max_tokens: int = 4096,
         poll_interval: int = 15,
     ):
-        self.model = model
+        self.model = model or Config.MODEL_NAME
         self.enable_thinking = enable_thinking
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.poll_interval = poll_interval
 
+        _base_url = base_url or Config.OPENAI_API_BASE or "https://dashscope.aliyuncs.com/compatible-mode/v1"
         self.client = OpenAI(
             api_key=Config.DASHSCOPE_API_KEY,
-            base_url=base_url,
+            base_url=_base_url,
         )
 
     def build_jsonl_line(
