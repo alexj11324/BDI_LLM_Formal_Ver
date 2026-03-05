@@ -399,7 +399,7 @@ plan, valid, metrics = generate_bdi_plan(beliefs, desire, init_state)
 
 ## References
 
-- **Conductor Setup**: `conductor/index.md`
+- **Conductor Setup**: `docs/conductor/index.md`
 - [Wiki Catalogue](../wiki-catalogue.md)
 - **C4 Architecture**: `docs/c4/c4-context.md`
 - **Technical Reference**: `docs/TECHNICAL_REFERENCE.md`

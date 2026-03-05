@@ -19,7 +19,7 @@ import os
 import pytest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parents[1]))
+sys.path.insert(0, str(Path(__file__).parents[2]))
 
 def _is_valid_api_key(key):
     if not key:
@@ -39,7 +39,7 @@ if not real_key:
 
 # Import after setting key
 try:
-    from scripts.run_planbench_full import parse_pddl_problem, generate_bdi_plan
+    from scripts.evaluation.run_planbench_full import parse_pddl_problem, generate_bdi_plan
 except ImportError:
     # If imports fail, we can't run tests
     pass

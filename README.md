@@ -232,7 +232,7 @@ The server exposes `generate_verified_plan` ensuring tools invoke commands only 
 
 ## Further Documentation
 
-- [**Conductor Setup**](docs/conductor/index.md): Design guidelines, Git strategies, and project intent.
+- [**Conductor Setup**](docs/conductor/index.md): Design guidelines, Git strategies, and project intent. *(moved from `conductor/`)*
 - [**C4 Architecture**](docs/c4/c4-context.md): Deep-dive into Context & Container boundaries.
 - [**Technical Reference**](docs/TECHNICAL_REFERENCE.md): 10-chapter technical development manual.
 - [**Benchmarking Status**](docs/BENCHMARKS.md): Historical execution outcomes against PlanBench.

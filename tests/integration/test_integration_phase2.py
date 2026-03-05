@@ -19,8 +19,7 @@ from pathlib import Path
 # Set dummy API key to avoid import errors
 os.environ['OPENAI_API_KEY'] = 'test-key-for-imports'
 
-sys.path.insert(0, str(Path(__file__).parents[1]))
-sys.path.append(str(Path(__file__).parents[1] / "scripts"))
+sys.path.insert(0, str(Path(__file__).parents[2]))
 
 from src.bdi_llm.schemas import BDIPlan, ActionNode
 from src.bdi_llm.symbolic_verifier import BlocksworldPhysicsValidator
@@ -29,7 +28,7 @@ from src.bdi_llm.symbolic_verifier import BlocksworldPhysicsValidator
 def test_bdi_to_pddl_conversion():
     """Test converting BDI actions to PDDL format"""
     # Import the function from run_planbench_full
-    from run_planbench_full import bdi_to_pddl_actions
+    from scripts.evaluation.run_planbench_full import bdi_to_pddl_actions
 
     # Create a sample BDI plan
     plan = BDIPlan(
@@ -124,7 +123,7 @@ def test_physics_validation_invalid_plan():
 
 def test_metrics_structure():
     """Test that metrics have the correct layered structure"""
-    from run_planbench_full import parse_pddl_problem
+    from scripts.evaluation.run_planbench_full import parse_pddl_problem
 
     # Test with a real PDDL file
     test_file = "planbench_data/plan-bench/instances/blocksworld/generated/instance-10.pddl"
