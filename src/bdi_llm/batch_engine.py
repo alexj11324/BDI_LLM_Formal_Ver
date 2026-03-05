@@ -14,18 +14,23 @@ Usage:
 Author: BDI-LLM Research
 """
 
-import os
 import json
-import time
-import tempfile
 import logging
+import os
+import tempfile
+import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from openai import OpenAI
 
 from src.bdi_llm.config import Config
-from src.bdi_llm.schemas import BDIPlan, ActionNode, DependencyEdge, parse_plan_from_text  # noqa: F401 – re-export
+from src.bdi_llm.schemas import (  # noqa: F401 – re-export
+    ActionNode,
+    BDIPlan,
+    DependencyEdge,
+    parse_plan_from_text,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -39,16 +44,23 @@ Given an environment description (beliefs) and a goal (desire), generate a compl
 as a JSON DAG with nodes (actions) and edges (dependencies).
 
 Output ONLY a valid JSON object matching this schema:
-{"goal_description": "...", "nodes": [{"id": "s1", "action_type": "...", "params": {...}, "description": "..."}], "edges": [{"source": "s1", "target": "s2", "relationship": "depends_on"}]}
+{
+  "goal_description": "...",
+  "nodes": [{"id": "s1", "action_type": "...", "params": {...}, "description": "..."}],
+  "edges": [{"source": "s1", "target": "s2", "relationship": "depends_on"}]
+}
 
 Do not include markdown formatting or extra text."""
 
 REPLAN_SYSTEM_PROMPT = """You are a highly capable BDI (Belief-Desire-Intention) agent.
-Your task is to dynamically REPLAN an operation. You previously made a plan, but it failed during execution.
-You must analyze the state changes from the actions that *did* succeed, understand why the failed action was blocked, and generate a continuous JSON DAG plan of the REMAINING actions needed to achieve the goal."""
+Your task is to dynamically REPLAN an operation. You previously made a plan,
+but it failed during execution.
+You must analyze the state changes from the actions that *did* succeed,
+understand why the failed action was blocked, and generate a continuous JSON
+DAG plan of the REMAINING actions needed to achieve the goal."""
 
 
-def build_initial_plan_messages(beliefs: str, desire: str) -> List[Dict[str, str]]:
+def build_initial_plan_messages(beliefs: str, desire: str) -> list[dict[str, str]]:
     """Build chat messages for initial plan generation."""
     return [
         {"role": "system", "content": INITIAL_PLAN_SYSTEM_PROMPT},
@@ -59,10 +71,10 @@ def build_initial_plan_messages(beliefs: str, desire: str) -> List[Dict[str, str
 def build_replan_messages(
     beliefs: str,
     desire: str,
-    executed_actions: List[str],
+    executed_actions: list[str],
     failed_action: str,
-    failure_reasons: List[str],
-) -> List[Dict[str, str]]:
+    failure_reasons: list[str],
+) -> list[dict[str, str]]:
     """Build chat messages for recovery plan generation."""
     executed_str = "None"
     if executed_actions:
@@ -132,10 +144,10 @@ class BatchEngine:
         )
 
     def build_jsonl_line(
-        self, custom_id: str, messages: List[Dict[str, str]]
+        self, custom_id: str, messages: list[dict[str, str]]
     ) -> str:
         """Build a single JSONL line for batch submission."""
-        body: Dict[str, Any] = {
+        body: dict[str, Any] = {
             "model": self.model,
             "messages": messages,
             "temperature": self.temperature,
@@ -154,7 +166,7 @@ class BatchEngine:
 
     def submit(
         self,
-        requests: List[Tuple[str, List[Dict[str, str]]]],
+        requests: list[tuple[str, list[dict[str, str]]]],
         description: str = "BDI Batch",
     ) -> str:
         """
@@ -197,7 +209,7 @@ class BatchEngine:
 
     def wait_and_download(
         self, batch_id: str, timeout: int = 3600
-    ) -> Dict[str, str]:
+    ) -> dict[str, str]:
         """
         Poll batch status and download results.
 
@@ -222,7 +234,7 @@ class BatchEngine:
 
         raise TimeoutError(f"Batch {batch_id} timed out after {timeout}s")
 
-    def _download_results(self, output_file_id: str) -> Dict[str, str]:
+    def _download_results(self, output_file_id: str) -> dict[str, str]:
         """Download and parse batch result file."""
         content = self.client.files.content(output_file_id)
         results = {}

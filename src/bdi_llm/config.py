@@ -1,6 +1,7 @@
 import os
 import re
 from pathlib import Path
+
 from dotenv import load_dotenv
 
 # Load environment variables from .env if present
@@ -49,11 +50,15 @@ class Config:
     VERTEXAI_LOCATION = os.environ.get("VERTEXAI_LOCATION", "us-central1")
 
     # API Budget Configuration (for rate limiting and caching)
-    API_BUDGET_MAX_CALLS_PER_INSTANCE = int(os.environ.get("API_BUDGET_MAX_CALLS_PER_INSTANCE", "5"))
+    API_BUDGET_MAX_CALLS_PER_INSTANCE = int(
+        os.environ.get("API_BUDGET_MAX_CALLS_PER_INSTANCE", "5")
+    )
     API_BUDGET_MAX_RPM = int(os.environ.get("API_BUDGET_MAX_RPM", "60"))
     API_BUDGET_MAX_RPH = int(os.environ.get("API_BUDGET_MAX_RPH", "1000"))
     API_BUDGET_CACHE_ENABLED = os.environ.get("API_BUDGET_CACHE_ENABLED", "true").lower() == "true"
-    API_BUDGET_EARLY_EXIT_ENABLED = os.environ.get("API_BUDGET_EARLY_EXIT_ENABLED", "true").lower() == "true"
+    API_BUDGET_EARLY_EXIT_ENABLED = (
+        os.environ.get("API_BUDGET_EARLY_EXIT_ENABLED", "true").lower() == "true"
+    )
 
     # Tools Configuration
     # Auto-detect VAL in PlanBench if not provided in env
@@ -61,7 +66,11 @@ class Config:
     _base_dir = Path(__file__).parent.parent.parent
     _default_val_path = _base_dir / "workspaces/planbench_data/planner_tools/VAL/validate"
 
-    VAL_VALIDATOR_PATH = os.environ.get("VAL_VALIDATOR_PATH") or os.environ.get("VAL") or str(_default_val_path)
+    VAL_VALIDATOR_PATH = (
+        os.environ.get("VAL_VALIDATOR_PATH")
+        or os.environ.get("VAL")
+        or str(_default_val_path)
+    )
 
     @classmethod
     def get_credentials(cls):
@@ -70,7 +79,10 @@ class Config:
             "openai": _resolve_key("OPENAI_API_KEY", "DASHSCOPE_API_KEY") or cls.OPENAI_API_KEY,
             "anthropic": _resolve_key("ANTHROPIC_API_KEY") or cls.ANTHROPIC_API_KEY,
             "google": _resolve_key("GOOGLE_API_KEY") or cls.GOOGLE_API_KEY,
-            "google_application_credentials": os.environ.get("GOOGLE_APPLICATION_CREDENTIALS") or cls.GOOGLE_APPLICATION_CREDENTIALS,
+            "google_application_credentials": (
+                os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+                or cls.GOOGLE_APPLICATION_CREDENTIALS
+            ),
         }
 
     @classmethod
@@ -83,6 +95,8 @@ class Config:
         creds = cls.get_credentials()
         if require_credentials and not any(creds.values()):
             raise ValueError(
-                "Missing API Key. Please set OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_API_KEY, or GOOGLE_APPLICATION_CREDENTIALS in environment or .env file."
+                "Missing API Key. Please set OPENAI_API_KEY, ANTHROPIC_API_KEY, "
+                "GOOGLE_API_KEY, or GOOGLE_APPLICATION_CREDENTIALS in environment "
+                "or .env file."
             )
         return creds

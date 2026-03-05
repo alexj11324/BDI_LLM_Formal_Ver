@@ -13,10 +13,6 @@ import os
 import re
 import subprocess
 import tempfile
-from typing import List, Tuple
-
-from .config import Config
-
 
 # ---------------------------------------------------------------------------
 # Compiled regex patterns shared by all extraction helpers
@@ -39,7 +35,7 @@ _RE_TYPE_ERROR = re.compile(r"Type error: (.+)")
 # Temporary plan-file helpers
 # ---------------------------------------------------------------------------
 
-def create_plan_file(actions: List[str]) -> str:
+def create_plan_file(actions: list[str]) -> str:
     """Create a temporary PDDL plan file and return its path.
 
     Each action is formatted to be surrounded by parentheses if necessary.
@@ -71,12 +67,12 @@ def run_val(
     val_path: str,
     domain_file: str,
     problem_file: str,
-    plan_actions: List[str],
+    plan_actions: list[str],
     *,
     check_goal: bool = True,
     verbose: bool = False,
     timeout: int = 30,
-) -> Tuple[bool, List[str]]:
+) -> tuple[bool, list[str]]:
     """Run the VAL validator on a set of PDDL actions and return ``(is_valid, errors)``.
 
     This function handles:
@@ -151,7 +147,7 @@ def run_val(
 # VAL output parsing
 # ---------------------------------------------------------------------------
 
-def parse_val_output(output: str, verbose: bool) -> Tuple[bool, List[str]]:
+def parse_val_output(output: str, verbose: bool) -> tuple[bool, list[str]]:
     """Parse VAL validator output (with ``-v`` verbose flag).
 
     VAL ``-v`` outputs patterns like:
@@ -162,7 +158,7 @@ def parse_val_output(output: str, verbose: bool) -> Tuple[bool, List[str]]:
     * ``"Error in type-checking!"`` → Type error in action parameters
     * ``"Bad plan"`` / ``"Bad problem file!"`` → Structural PDDL error
     """
-    errors: List[str] = []
+    errors: list[str] = []
 
     if (
         "Plan executed successfully" in output
@@ -197,7 +193,7 @@ def parse_val_output(output: str, verbose: bool) -> Tuple[bool, List[str]]:
     return False, errors
 
 
-def extract_val_errors(output: str) -> List[str]:
+def extract_val_errors(output: str) -> list[str]:
     """Extract specific error messages from VAL ``-v`` verbose output.
 
     With the ``-v`` flag, VAL provides:
@@ -205,7 +201,7 @@ def extract_val_errors(output: str) -> List[str]:
     * Unsatisfied preconditions with specific predicates
     * Plan Repair Advice with concrete fixes
     """
-    errors: List[str] = []
+    errors: list[str] = []
 
     # Pattern 1 – unsatisfied precondition (verbose)
     precond_verbose = _RE_PRECOND_VERBOSE.search(output)

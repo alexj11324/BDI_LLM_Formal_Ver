@@ -10,12 +10,12 @@ The server uses FastMCP for easy MCP tool registration and supports multiple pla
 (blocksworld, logistics, depots).
 """
 
-from mcp.server.fastmcp import FastMCP
-import subprocess
 import os
-import tempfile
 import shlex
-from typing import List, Tuple
+import subprocess
+import tempfile
+
+from mcp.server.fastmcp import FastMCP
 
 # Imports rely on the project being installed (pip install -e .)
 # or PYTHONPATH including the repository root.
@@ -28,9 +28,9 @@ mcp = FastMCP("BDI-LLM Verifier")
 def _verify_plan_logic(
     domain_pddl: str,
     problem_pddl: str,
-    plan_actions: List[str],
+    plan_actions: list[str],
     domain: str = "blocksworld",
-) -> Tuple[bool, str]:
+) -> tuple[bool, str]:
     """Run symbolic verification and return structured status + message."""
     d_path = None
     p_path = None
@@ -104,7 +104,7 @@ def generate_plan(beliefs: str, desire: str, domain: str = "blocksworld") -> str
 def verify_plan(
     domain_pddl: str,
     problem_pddl: str,
-    plan_actions: List[str],
+    plan_actions: list[str],
     domain: str = "blocksworld",
 ) -> str:
     """
@@ -137,7 +137,7 @@ def _execute_command(command: str) -> subprocess.CompletedProcess:
 def execute_verified_plan(
     domain_pddl: str,
     problem_pddl: str,
-    plan_actions: List[str],
+    plan_actions: list[str],
     command_to_execute: str,
     rationale: str,
     domain: str = "blocksworld",

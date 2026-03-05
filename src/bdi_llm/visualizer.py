@@ -4,11 +4,10 @@ BDI Plan Visualizer - Using NetworkX skill from AI Research Skills
 Creates publication-quality visualizations of BDI plan graphs.
 Helps visually verify plan structure and execution flow.
 """
-import networkx as nx
+
 import matplotlib.pyplot as plt
+import networkx as nx
 from matplotlib.patches import Patch
-from typing import Dict, Optional, Tuple
-import os
 
 from .schemas import BDIPlan
 from .verifier import PlanVerifier
@@ -36,10 +35,10 @@ class PlanVisualizer:
     def visualize_plan(
         cls,
         plan: BDIPlan,
-        output_path: Optional[str] = None,
-        figsize: Tuple[int, int] = (12, 8),
+        output_path: str | None = None,
+        figsize: tuple[int, int] = (12, 8),
         show_execution_order: bool = True,
-        title: Optional[str] = None,
+        title: str | None = None,
         seed: int = 42
     ) -> plt.Figure:
         """
@@ -151,7 +150,8 @@ class PlanVisualizer:
 
         # Add error annotations if invalid
         if not is_valid:
-            error_text = "\n".join(f"• {e}" for e in errors)
+            error_messages = struct_result.errors or ["Unknown verification error."]
+            error_text = "\n".join(f"• {e}" for e in error_messages)
             ax.annotate(
                 f"Errors:\n{error_text}",
                 xy=(0.02, 0.02),
@@ -174,8 +174,8 @@ class PlanVisualizer:
     @classmethod
     def compare_plans(
         cls,
-        plans: Dict[str, BDIPlan],
-        output_path: Optional[str] = None,
+        plans: dict[str, BDIPlan],
+        output_path: str | None = None,
         seed: int = 42
     ) -> plt.Figure:
         """
@@ -189,13 +189,16 @@ class PlanVisualizer:
         Returns:
             matplotlib Figure object
         """
+        if not plans:
+            raise ValueError("`plans` must contain at least one plan.")
+
         n_plans = len(plans)
         fig, axes = plt.subplots(1, n_plans, figsize=(6 * n_plans, 6))
 
         if n_plans == 1:
             axes = [axes]
 
-        for ax, (label, plan) in zip(axes, plans.items()):
+        for ax, (label, plan) in zip(axes, plans.items(), strict=True):
             G = plan.to_networkx()
             is_valid, _ = PlanVerifier.verify(G)
 

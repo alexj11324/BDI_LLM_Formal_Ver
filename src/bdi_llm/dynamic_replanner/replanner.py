@@ -1,12 +1,10 @@
-import os
 import logging
-from typing import Dict, List, Optional
+
 from openai import OpenAI
 
 from src.bdi_llm.config import Config
-from src.bdi_llm.schemas import BDIPlan
 from src.bdi_llm.dynamic_replanner.executor import ExecutionResult
-
+from src.bdi_llm.schemas import BDIPlan
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +12,7 @@ logger = logging.getLogger(__name__)
 class DynamicReplanner:
     """
     Handles dynamic replanning (repair) by sending execution feedback
-    to an LLM to generate a recovery plan. Utilizes explicit Context Cache 
+    to an LLM to generate a recovery plan. Utilizes explicit Context Cache
     where supported (e.g. qwen3.5-plus).
     """
 
@@ -24,7 +22,7 @@ class DynamicReplanner:
             model_name = Config.MODEL_NAME
         self.model_name = model_name
         self.max_retries = max_retries
-        
+
         # Use Config for API key and base URL so it works with both
         # DashScope and standard OpenAI environments
         api_key = Config.DASHSCOPE_API_KEY or Config.OPENAI_API_KEY
@@ -35,20 +33,23 @@ class DynamicReplanner:
         )
 
     def generate_recovery_plan(
-        self, 
-        beliefs: str, 
-        desire: str, 
+        self,
+        beliefs: str,
+        desire: str,
         execution_result: ExecutionResult
-    ) -> Optional[BDIPlan]:
+    ) -> BDIPlan | None:
         """
-        Constructs a cached prompt containing the original context + the new failure 
+        Constructs a cached prompt containing the original context + the new failure
         feedback, and requests a recovery plan.
         """
-        
+
         # 1. System Prompt (Cacheable)
         system_prompt = """You are a highly capable BDI (Belief-Desire-Intention) agent.
-Your task is to dynamically REPLAN an operation. You previously made a plan, but it failed during execution.
-You must analyze the state changes from the actions that *did* succeed, understand why the failed action was blocked, and generate a continuous JSON DAG plan of the REMAINING actions needed to achieve the goal."""
+Your task is to dynamically REPLAN an operation. You previously made a plan,
+but it failed during execution.
+You must analyze the state changes from the actions that *did* succeed,
+understand why the failed action was blocked, and generate a continuous JSON
+DAG plan of the REMAINING actions needed to achieve the goal."""
 
         # 2. Environment Context (Beliefs & Desire) - Cacheable
         # We attach the 'cache_control' to the final message of the cacheable prefix
@@ -57,15 +58,18 @@ You must analyze the state changes from the actions that *did* succeed, understa
         # 3. Execution Feedback (Dynamic part, not cached)
         executed_str = "None"
         if execution_result.executed_actions:
-            executed_str = "\n".join(f"{i+1}. {a}" for i, a in enumerate(execution_result.executed_actions))
-            
+            executed_str = "\n".join(
+                f"{i + 1}. {a}" for i, a in enumerate(execution_result.executed_actions)
+            )
+
         failure_reasons_str = "None provided"
         if execution_result.failure_reason:
             failure_reasons_str = "\n".join(f"- {r}" for r in execution_result.failure_reason)
 
         feedback_prompt = f"""
 === EXECUTION FEEDBACK ===
-Here is the execution history. Update your mental state by applying these actions to the initial state sequentially.
+Here is the execution history. Update your mental state by applying these
+actions to the initial state sequentially.
 
 Successfully executed actions:
 {executed_str}
@@ -78,27 +82,33 @@ But it failed due to the following constraint violations:
 
 === YOUR TASK ===
 1. Analyze your true CURRENT STATE (Initial State + Successful Actions).
-2. Note the failure reason for '{execution_result.failed_action}' to avoid repeating the exact same mistake or expecting an invalid precondition.
-3. Generate a BDI JSON DAG plan for the REMAINING actions required to reach the goal from the CURRENT STATE. DO NOT include the already successful actions in your new plan. Focus only on what must be done next.
+2. Note the failure reason for '{execution_result.failed_action}' to avoid
+   repeating the exact same mistake or expecting an invalid precondition.
+3. Generate a BDI JSON DAG plan for the REMAINING actions required to reach
+   the goal from the CURRENT STATE. DO NOT include the already successful
+   actions in your new plan. Focus only on what must be done next.
 
-Output ONLY a valid JSON string (matching the BDIPlan schema: {{"goal_description": "...", "nodes": [...], "edges": [...]}}). Do not include markdown formatting or extra text.
+Output ONLY a valid JSON string (matching the BDIPlan schema:
+{{"goal_description": "...", "nodes": [...], "edges": [...]}}).
+Do not include markdown formatting or extra text.
 """
 
         messages = [
             {"role": "system", "content": system_prompt},
-            # Add explicit cache_control if the model supports it. 
+            # Add explicit cache_control if the model supports it.
             # In OpenAI compatible API for Dashscope, we just pass the standard format.
             {
-                "role": "user", 
+                "role": "user",
                 "content": environment_context,
             },
             {"role": "user", "content": feedback_prompt}
         ]
 
-        # In qwen3.5-plus, to use explicit cache, we actually need to mark the final message 
-        # of the prefix we want to cache. For OpenAI-compatible API on dashscope, the current standard 
-        # is sometimes not purely OpenAI standard dictionary. 
-        # But we will rely on implicit cache or session cache if explicit fails, 
+        # In qwen3.5-plus, to use explicit cache, we actually need to mark
+        # the final message of the prefix we want to cache. For OpenAI-compatible
+        # API on dashscope, the current standard
+        # is sometimes not purely OpenAI standard dictionary.
+        # But we will rely on implicit cache or session cache if explicit fails,
         # so we will use the safest standard structure.
 
         for attempt in range(self.max_retries):
@@ -130,5 +140,5 @@ Output ONLY a valid JSON string (matching the BDIPlan schema: {{"goal_descriptio
 
             except Exception as e:
                 logger.warning(f"Replanning attempt {attempt+1} failed: {e}")
-        
+
         return None

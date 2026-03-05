@@ -8,7 +8,6 @@ world state to include in the recovery prompt.
 """
 
 import re
-from typing import Dict, List, Optional, Set, Tuple
 from dataclasses import dataclass, field
 
 
@@ -18,8 +17,8 @@ class BeliefBase:
     Domain-agnostic ground-truth state tracker.
     State is a set of string propositions, e.g. {"(on a b)", "(clear a)", "(handempty)"}.
     """
-    propositions: Set[str] = field(default_factory=set)
-    objects: List[str] = field(default_factory=list)
+    propositions: set[str] = field(default_factory=set)
+    objects: list[str] = field(default_factory=list)
     domain_name: str = ""
 
     # ------------------------------------------------------------------ #
@@ -29,7 +28,7 @@ class BeliefBase:
     @classmethod
     def from_pddl_problem(cls, pddl_file: str) -> "BeliefBase":
         """Parse a PDDL problem file and extract (:init ...) propositions."""
-        with open(pddl_file, "r") as f:
+        with open(pddl_file) as f:
             content = f.read()
 
         # Domain name
@@ -38,7 +37,7 @@ class BeliefBase:
 
         # Objects
         objects_match = re.search(r":objects\s+(.*?)\)", content, re.DOTALL)
-        objects: List[str] = []
+        objects: list[str] = []
         if objects_match:
             text = objects_match.group(1)
             # Strip type annotations ("obj1 obj2 - Type")
@@ -47,7 +46,7 @@ class BeliefBase:
 
         # Init predicates
         init_match = re.search(r":init\s+(.*?)\(:goal", content, re.DOTALL)
-        propositions: Set[str] = set()
+        propositions: set[str] = set()
         if init_match:
             init_text = init_match.group(1)
             for pred_body in re.findall(r"\(([^()]+)\)", init_text):
@@ -65,7 +64,7 @@ class BeliefBase:
         """Check if a proposition currently holds."""
         return proposition in self.propositions
 
-    def query(self, predicate_name: str) -> List[str]:
+    def query(self, predicate_name: str) -> list[str]:
         """Return all propositions matching a predicate name."""
         return [
             p for p in self.propositions
@@ -82,7 +81,7 @@ class BeliefBase:
     def remove(self, proposition: str):
         self.propositions.discard(proposition)
 
-    def apply_effects(self, add_list: List[str], delete_list: List[str]):
+    def apply_effects(self, add_list: list[str], delete_list: list[str]):
         """Apply STRIPS-style add/delete effects."""
         for prop in delete_list:
             self.propositions.discard(prop)
