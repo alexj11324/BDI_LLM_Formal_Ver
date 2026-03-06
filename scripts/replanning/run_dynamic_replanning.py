@@ -19,6 +19,7 @@ Author: BDI-LLM Research
 import os
 import json
 import time
+import multiprocessing as mp
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 from datetime import datetime
@@ -31,6 +32,7 @@ from bdi_llm.config import Config
 from bdi_llm.schemas import BDIPlan
 from bdi_llm.dynamic_replanner.executor import PlanExecutor, ExecutionResult
 from bdi_llm.dynamic_replanner.replanner import DynamicReplanner
+from bdi_llm.dynamic_replanner.symbolic_fallback import SymbolicFallbackPlanner
 
 # Reuse PDDL parsing and NL conversion from planbench_utils
 from scripts.evaluation.planbench_utils import (
@@ -44,6 +46,42 @@ from scripts.evaluation.planbench_utils import (
 # Background-safe progress: unified tqdm compat from planbench_utils
 from scripts.evaluation.planbench_utils.tqdm_compat import tqdm
 
+
+def _execute_single_instance(inst_file: str, domain: str, max_replans: int) -> dict:
+    """Run one benchmark instance end-to-end inside the current process."""
+    inst_name = Path(inst_file).stem
+    pddl_data = parse_pddl_problem(inst_file)
+    beliefs, desire = pddl_to_natural_language(pddl_data, domain)
+    domain_name = pddl_data.get('domain_name', domain)
+    domain_file = resolve_domain_file(domain_name)
+
+    res = generate_and_replan(
+        beliefs=beliefs,
+        desire=desire,
+        pddl_problem_path=inst_file,
+        pddl_domain_path=domain_file,
+        domain=domain,
+        max_replans=max_replans,
+    )
+
+    return {
+        'instance_file': inst_file,
+        'instance_name': inst_name,
+        **res,
+    }
+
+
+def _instance_worker_entry(queue: mp.Queue, inst_file: str, domain: str, max_replans: int):
+    """Subprocess entrypoint for hard-killable per-instance execution."""
+    try:
+        queue.put(_execute_single_instance(inst_file, domain, max_replans))
+    except Exception as e:
+        queue.put({
+            'instance_file': inst_file,
+            'instance_name': Path(inst_file).stem,
+            'error': str(e),
+        })
+
 def generate_and_replan(
     beliefs: str,
     desire: str,
@@ -51,6 +89,7 @@ def generate_and_replan(
     pddl_domain_path: str,
     domain: str = "blocksworld",
     max_replans: int = 3,
+    max_instance_seconds: int | None = None,
 ) -> dict:
     """
     Generate initial plan and dynamically replan upon failure.
@@ -65,6 +104,10 @@ def generate_and_replan(
     }
 
     start_eval_time = time.time()
+    instance_timeout = max_instance_seconds or Config.TIMEOUT * max(2, max_replans + 1)
+
+    def _timed_out() -> bool:
+        return (time.time() - start_eval_time) > instance_timeout
     
     # 1. Initial Plan Generation
     planner = BDIPlanner(auto_repair=False, domain=domain)
@@ -75,6 +118,11 @@ def generate_and_replan(
         result['initial_generation']['success'] = True
     except Exception as e:
         result['initial_generation']['error'] = str(e)
+        result['total_time'] = time.time() - start_eval_time
+        return result
+
+    if _timed_out():
+        result['error'] = f"Instance timed out after {instance_timeout}s during initial generation."
         result['total_time'] = time.time() - start_eval_time
         return result
         
@@ -98,6 +146,16 @@ def generate_and_replan(
     current_exec_res = exec_res
     
     for i in range(max_replans):
+        if _timed_out():
+            result['replanning_history'].append({
+                'round': i + 1,
+                'failed_at': current_exec_res.failed_action,
+                'success': False,
+                'time': 0,
+                'error': f"Instance timed out after {instance_timeout}s before replanning round {i + 1}.",
+            })
+            break
+
         round_info = {
             'round': i + 1,
             'failed_at': current_exec_res.failed_action,
@@ -106,20 +164,51 @@ def generate_and_replan(
         }
         
         replan_start = time.time()
-        recovery_plan = replanner.generate_recovery_plan(beliefs, desire, current_exec_res)
+        
+        # Strategic Pivot: Graceful Symbolic Degradation
+        # If this is the last allowed LLM replanning attempt and it previously failed,
+        # fallback to the symbolic solver.
+        if i == max_replans - 1 and current_exec_res.current_state_props:
+            print(f"\n  [Fallback] Triggering Symbolic Fallback Planner...")
+            recovery_plan = SymbolicFallbackPlanner.generate_fallback_plan(
+                domain_file=pddl_domain_path,
+                problem_file=pddl_problem_path,
+                current_state_props=current_exec_res.current_state_props
+            )
+        else:
+            recovery_plan = replanner.generate_recovery_plan(beliefs, desire, current_exec_res)
+            
         round_info['time'] = time.time() - replan_start
         
         if not recovery_plan:
-            round_info['error'] = "Replanner failed to generate a valid plan structure."
+            round_info['error'] = (
+                getattr(SymbolicFallbackPlanner, "last_error", None)
+                or getattr(replanner, "last_error", None)
+                or "Replanner failed to generate a valid plan structure."
+            )
             result['replanning_history'].append(round_info)
             break
-            
+
+        if _timed_out():
+            round_info['error'] = f"Instance timed out after {instance_timeout}s after generating recovery plan."
+            result['replanning_history'].append(round_info)
+            break
+
         recovery_actions = bdi_to_pddl_actions(recovery_plan, domain=domain)
+        if not recovery_actions:
+            round_info['error'] = "Recovery plan produced zero executable PDDL actions."
+            result['replanning_history'].append(round_info)
+            break
         
         # Combine successful prefix with recovery plan
         total_plan = current_exec_res.executed_actions + recovery_actions
         current_exec_res = executor.execute(total_plan)
-        
+
+        if _timed_out():
+            round_info['error'] = f"Instance timed out after {instance_timeout}s after executing recovery plan."
+            result['replanning_history'].append(round_info)
+            break
+
         round_info['success'] = current_exec_res.success
         result['replanning_history'].append(round_info)
         result['replanning_rounds'] += 1
@@ -127,6 +216,9 @@ def generate_and_replan(
         if current_exec_res.success:
             result['final_success'] = True
             break
+
+    if _timed_out() and not result['final_success']:
+        result['error'] = f"Instance timed out after {instance_timeout}s."
 
     result['total_time'] = time.time() - start_eval_time
     return result
@@ -139,7 +231,7 @@ def run_dynamic_replanning_eval(
     resume: bool = False,
 ):
     os.makedirs(output_dir, exist_ok=True)
-    base_path = str(Path(__file__).parents[1] / "workspaces" / "planbench_data" / "plan-bench")
+    base_path = str(Path(__file__).resolve().parents[2] / "workspaces" / "planbench_data" / "plan-bench")
     all_instances = find_all_instances(base_path, domain=domain)
     if max_instances:
         all_instances = all_instances[:max_instances]
@@ -162,6 +254,12 @@ def run_dynamic_replanning_eval(
         print(f"Resumed from checkpoint: {len(results)} instances already done.")
 
     pending = [inst for inst in all_instances if inst not in done_instances]
+    instance_timeout_seconds = int(
+        os.environ.get(
+            "INSTANCE_TIMEOUT_SECONDS",
+            str(Config.TIMEOUT * max(2, 3)),
+        )
+    )
 
     print(f"\nEvaluating PNSV Dynamic Replanning")
     print(f"Domain: {domain}")
@@ -169,31 +267,51 @@ def run_dynamic_replanning_eval(
     
     def _process_instance(inst_file: str):
         inst_name = Path(inst_file).stem
-        try:
-            pddl_data = parse_pddl_problem(inst_file)
-            beliefs, desire = pddl_to_natural_language(pddl_data, domain)
-            domain_name = pddl_data.get('domain_name', domain)
-            domain_file = resolve_domain_file(domain_name)
-            
-            res = generate_and_replan(
-                beliefs=beliefs,
-                desire=desire,
-                pddl_problem_path=inst_file,
-                pddl_domain_path=domain_file,
-                domain=domain,
-                max_replans=3
+        ctx = mp.get_context("spawn")
+        queue: mp.Queue = ctx.Queue()
+        proc = ctx.Process(
+            target=_instance_worker_entry,
+            args=(queue, inst_file, domain, 3),
+        )
+        proc.start()
+        proc.join(timeout=instance_timeout_seconds)
+
+        if proc.is_alive():
+            proc.terminate()
+            proc.join(timeout=5)
+            tqdm.write(
+                f"  {inst_name}: TIMEOUT after {instance_timeout_seconds}s"
             )
-            
+            return {
+                'instance_file': inst_file,
+                'instance_name': inst_name,
+                'error': f'Instance timed out after {instance_timeout_seconds}s',
+            }
+
+        try:
+            if not queue.empty():
+                payload = queue.get_nowait()
+            else:
+                payload = {
+                    'instance_file': inst_file,
+                    'instance_name': inst_name,
+                    'error': (
+                        f'Instance process exited with code {proc.exitcode} '
+                        'without returning a result'
+                    ),
+                }
+        finally:
+            queue.close()
+            queue.join_thread()
+
+        try:
+            res = payload
             init_ok = "✓" if res['initial_execution']['success'] else "✗"
             final_ok = "✓" if res['final_success'] else "✗"
             rounds = res['replanning_rounds']
             tqdm.write(f"  {inst_name}: Init={init_ok} | Replans={rounds} | Final={final_ok}")
             
-            return {
-                'instance_file': inst_file,
-                'instance_name': inst_name,
-                **res
-            }
+            return res
         except Exception as e:
             tqdm.write(f"  {inst_name}: ERROR - {e}")
             return {

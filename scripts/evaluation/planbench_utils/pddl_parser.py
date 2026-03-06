@@ -50,13 +50,24 @@ def parse_pddl_problem(pddl_file: str) -> dict:
     else:
         init_predicates = []
 
-    # Extract goal
-    goal_match = re.search(r':goal\s*\(and\s*((?:\([^)]+\)\s*)+)\)', content, re.DOTALL)
+    # Extract goal. PlanBench instances may use either:
+    #   (:goal (and (...)))
+    # or the singleton form:
+    #   (:goal (...))
+    goal_match = re.search(r':goal\s*\(and\s*((?:\([^)]+\)\s*)+)\)', content, re.DOTALL | re.IGNORECASE)
     if goal_match:
         goal_content = goal_match.group(1)
         goal_predicates = re.findall(r'\(([^)]+)\)', goal_content)
     else:
-        goal_predicates = []
+        single_goal_match = re.search(
+            r':goal\s*(\([^()]+\))\s*\)',
+            content,
+            re.DOTALL | re.IGNORECASE,
+        )
+        if single_goal_match:
+            goal_predicates = [single_goal_match.group(1)[1:-1].strip()]
+        else:
+            goal_predicates = []
 
     # Phase 1: Extract init_state for physics validation
     init_state = {
@@ -103,7 +114,7 @@ def resolve_domain_file(domain_name: str, base_path: str = None) -> str:
     Falls back to pddlgenerators/ domain.pddl otherwise.
     """
     if base_path is None:
-        base_path = str(Path(__file__).resolve().parent.parent.parent / "workspaces/planbench_data/plan-bench")
+        base_path = str(Path(__file__).resolve().parent.parent.parent.parent / "workspaces/planbench_data/plan-bench")
 
     # Map PDDL domain name -> instance directory name
     dir_map = {

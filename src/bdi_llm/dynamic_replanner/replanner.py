@@ -1,5 +1,6 @@
 import logging
 
+import instructor
 from openai import OpenAI
 
 from src.bdi_llm.config import Config
@@ -20,17 +21,31 @@ class DynamicReplanner:
         # We explicitly want to use a model that supports caching.
         if model_name is None:
             model_name = Config.MODEL_NAME
+            
+        # Strip provider prefixes (like 'openai/') when using direct OpenAI client 
+        # against a compatible endpoint
+        if "/" in model_name:
+            model_name = model_name.split("/", 1)[1]
+            
         self.model_name = model_name
         self.max_retries = max_retries
+        self.last_error: str | None = None
 
         # Use Config for API key and base URL so it works with both
         # DashScope and standard OpenAI environments
         api_key = Config.DASHSCOPE_API_KEY or Config.OPENAI_API_KEY
         base_url = Config.OPENAI_API_BASE or 'https://dashscope.aliyuncs.com/compatible-mode/v1'
-        self.client = OpenAI(
+        
+        raw_client = OpenAI(
             api_key=api_key,
             base_url=base_url,
+            default_headers={"User-Agent": "curl/7.68.0"},
+            timeout=Config.TIMEOUT,
         )
+        
+        # Syntax Pivot: Wrap client with Instructor for guaranteed structured JSON output
+        # Use Mode.JSON to avoid 'tool_choice' errors when using thinking models
+        self.client = instructor.from_openai(raw_client, mode=instructor.Mode.JSON)
 
     def generate_recovery_plan(
         self,
@@ -45,15 +60,31 @@ class DynamicReplanner:
 
         # 1. System Prompt (Cacheable)
         system_prompt = """You are a highly capable BDI (Belief-Desire-Intention) agent.
-Your task is to dynamically REPLAN an operation. You previously made a plan,
-but it failed during execution.
-You must analyze the state changes from the actions that *did* succeed,
-understand why the failed action was blocked, and generate a continuous JSON
-DAG plan of the REMAINING actions needed to achieve the goal."""
+Your task is to REPLAN an operation from a newly updated belief state. 
+You previously executed a plan, but it was interrupted. We have extracted the EXACT GROUND TRUTH
+state from the environment at the moment of interruption.
+
+You must treat this as a COMPLETELY NEW zero-shot planning task starting from this new state.
+DO NOT attempt to "patch" or "fix" the old plan. Just look at the CURRENT WORLD STATE,
+look at the GOAL, and generate a continuous JSON DAG plan of the REMAINING actions needed.
+
+CRITICAL INSTRUCTION ON ACTION PARAMETERS:
+You must strictly follow the required parameters for each action. Do not omit parameters.
+For example, if an action requires (truck loc-from loc-to city), you must provide all four.
+
+CRITICAL INSTRUCTION ON OUTPUT SIZE:
+Prefer a simple linear recovery plan unless parallel branches are absolutely necessary.
+Use concise sequential node IDs such as step_1, step_2, ... and keep dependency edges minimal.
+"""
 
         # 2. Environment Context (Beliefs & Desire) - Cacheable
-        # We attach the 'cache_control' to the final message of the cacheable prefix
-        environment_context = f"{beliefs}\n\n{desire}"
+        environment_context = f"=== ORIGINAL GOAL ===\n{desire}"
+        
+        if hasattr(execution_result, '_actions_schema') and execution_result._actions_schema:
+            environment_context += "\n\n=== ALLOWED ACTIONS & PARAMETERS ===\n"
+            for act_name, act_def in execution_result._actions_schema.items():
+                params = " ".join(act_def['params'])
+                environment_context += f"- ({act_name} {params})\n"
 
         # 3. Execution Feedback (Dynamic part, not cached)
         executed_str = "None"
@@ -66,37 +97,38 @@ DAG plan of the REMAINING actions needed to achieve the goal."""
         if execution_result.failure_reason:
             failure_reasons_str = "\n".join(f"- {r}" for r in execution_result.failure_reason)
 
-        feedback_prompt = f"""
-=== EXECUTION FEEDBACK ===
-Here is the execution history. Update your mental state by applying these
-actions to the initial state sequentially.
+        current_state_str = execution_result.current_state or "State not available"
 
-Successfully executed actions:
+        # Feedback Pivot: Differential Belief Injection
+        unsatisfied_core = ""
+        if execution_result.failure_reason:
+            for reason in execution_result.failure_reason:
+                if "Unsatisfied precondition" in reason or "goal is not satisfied" in reason.lower() or "Advice:" in reason:
+                    unsatisfied_core += f"\n🚨 CRITICAL DIFFERENCE 🚨: {reason}\nYou MUST bridge this specific gap starting from the NEW BELIEF STATE!\n"
+
+        feedback_prompt = f"""
+=== PLAN INTERRUPTION INFO ===
+Successfully executed actions so far:
 {executed_str}
 
-Then, you attempted this action:
-FAILED ACTION: {execution_result.failed_action}
-
-But it failed due to the following constraint violations:
+The plan was interrupted because the next action ({execution_result.failed_action}) was invalid:
 {failure_reasons_str}
+{unsatisfied_core}
+
+=== NEW BELIEF STATE (GROUND TRUTH) ===
+This is the absolute true state of the world right now, after the successful actions.
+{current_state_str}
 
 === YOUR TASK ===
-1. Analyze your true CURRENT STATE (Initial State + Successful Actions).
-2. Note the failure reason for '{execution_result.failed_action}' to avoid
-   repeating the exact same mistake or expecting an invalid precondition.
-3. Generate a BDI JSON DAG plan for the REMAINING actions required to reach
-   the goal from the CURRENT STATE. DO NOT include the already successful
-   actions in your new plan. Focus only on what must be done next.
-
-Output ONLY a valid JSON string (matching the BDIPlan schema:
-{{"goal_description": "...", "nodes": [...], "edges": [...]}}).
-Do not include markdown formatting or extra text.
+1. Analyze your NEW BELIEF STATE.
+2. Note the CRITICAL DIFFERENCE between the failed action's expectation and the current reality.
+3. Generate a BDI JSON DAG plan for the actions required to reach the GOAL from this exact NEW BELIEF STATE.
+4. Prefer a linear chain of actions over a wide graph, to minimize JSON size and avoid truncation.
+5. DO NOT include the already successful actions in your new plan. Focus only on what must be done next.
 """
 
         messages = [
             {"role": "system", "content": system_prompt},
-            # Add explicit cache_control if the model supports it.
-            # In OpenAI compatible API for Dashscope, we just pass the standard format.
             {
                 "role": "user",
                 "content": environment_context,
@@ -104,41 +136,34 @@ Do not include markdown formatting or extra text.
             {"role": "user", "content": feedback_prompt}
         ]
 
-        # In qwen3.5-plus, to use explicit cache, we actually need to mark
-        # the final message of the prefix we want to cache. For OpenAI-compatible
-        # API on dashscope, the current standard
-        # is sometimes not purely OpenAI standard dictionary.
-        # But we will rely on implicit cache or session cache if explicit fails,
-        # so we will use the safest standard structure.
-
+        self.last_error = None
         for attempt in range(self.max_retries):
             try:
-                # Add 'enable_thinking' if it's a model that supports it
                 extra_body = {}
-                if "thinking" in self.model_name or "plus" in self.model_name:
+                if "thinking" in self.model_name or "plus" in self.model_name or "5.4" in self.model_name:
                     extra_body["enable_thinking"] = True
+                    
+                if Config.REASONING_EFFORT:
+                    extra_body["reasoning_effort"] = Config.REASONING_EFFORT
 
-                # To use Session Cache, we add the header (optional, but good for DashScope)
                 extra_headers = {"x-dashscope-session-cache": "enable"}
 
-                response = self.client.chat.completions.create(
+                # Syntax Pivot: Use Instructor to force Pydantic schema validation directly
+                plan: BDIPlan = self.client.chat.completions.create(
                     model=self.model_name,
                     messages=messages,
-                    temperature=0.3, # Low temp for planning
-                    max_tokens=2048,
+                    response_model=BDIPlan, # Force structured output
+                    temperature=0.3,
+                    max_tokens=8192,
                     extra_body=extra_body,
-                    extra_headers=extra_headers
+                    extra_headers=extra_headers,
+                    max_retries=2 # Instructor will automatically retry on Pydantic validation errors!
                 )
-
-                content = response.choices[0].message.content.strip()
-
-                # Delegate all JSON parsing + field normalisation to BDIPlan
-                plan = BDIPlan.from_llm_text(content)
-                if plan is not None:
-                    return plan
-                logger.warning(f"Replanning attempt {attempt+1}: from_llm_text returned None")
+                
+                return plan
 
             except Exception as e:
+                self.last_error = str(e)
                 logger.warning(f"Replanning attempt {attempt+1} failed: {e}")
 
         return None

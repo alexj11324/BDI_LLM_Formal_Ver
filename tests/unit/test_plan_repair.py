@@ -1,8 +1,14 @@
 """Tests for plan repair and canonicalization behaviors."""
 
+from types import SimpleNamespace
+
+from pyperplan import planner
+
 from bdi_llm.schemas import BDIPlan, ActionNode, DependencyEdge
 from bdi_llm.plan_repair import PlanRepairer, repair_and_verify, PlanCanonicalizer
 from bdi_llm.verifier import PlanVerifier
+from scripts.evaluation.planbench_utils.bdi_to_pddl import bdi_to_pddl_actions
+from src.bdi_llm.dynamic_replanner.symbolic_fallback import SymbolicFallbackPlanner
 
 
 def test_connected_plan_remains_unchanged():
@@ -324,3 +330,200 @@ def test_cycle_breaking_preserves_non_cycle_feeder_edges():
     assert ("x", "b") in repaired_edges
     # Exactly one edge from the 2-cycle should remain.
     assert len({("b", "c"), ("c", "b")} & repaired_edges) == 1
+
+
+def test_bdi_plan_model_validate_accepts_common_aliases_and_missing_ids():
+    plan = BDIPlan.model_validate(
+        {
+            "nodes": [
+                {
+                    "type": "load-truck",
+                    "params": {"obj": "p1", "truck": "t0", "loc": "l0-0"},
+                    "description": "Load package into truck",
+                },
+                {
+                    "action": "drive-truck",
+                    "params": {
+                        "truck": "t0",
+                        "from": "l0-0",
+                        "to": "l0-1",
+                        "city": "c0",
+                    },
+                    "description": "Drive truck to the airport",
+                },
+            ],
+            "edges": [{"from": "step_1", "to": "step_2"}],
+        }
+    )
+
+    assert plan.goal_description == "Generated plan"
+    assert [node.id for node in plan.nodes] == ["step_1", "step_2"]
+    assert [node.action_type for node in plan.nodes] == ["load-truck", "drive-truck"]
+    assert [(edge.source, edge.target) for edge in plan.edges] == [("step_1", "step_2")]
+
+
+def test_bdi_plan_missing_edges_key_linearizes_node_order():
+    plan = BDIPlan.model_validate(
+        {
+            "goal_description": "Deliver package",
+            "nodes": [
+                {
+                    "id": "n1",
+                    "action_type": "load-truck",
+                    "params": {"obj": "p1", "truck": "t0", "loc": "l0-0"},
+                    "description": "Load",
+                },
+                {
+                    "id": "n2",
+                    "action_type": "drive-truck",
+                    "params": {
+                        "truck": "t0",
+                        "from": "l0-0",
+                        "to": "l0-1",
+                        "city": "c0",
+                    },
+                    "description": "Drive",
+                },
+                {
+                    "id": "n3",
+                    "action_type": "unload-truck",
+                    "params": {"obj": "p1", "truck": "t0", "loc": "l0-1"},
+                    "description": "Unload",
+                },
+            ],
+        }
+    )
+
+    assert [(edge.source, edge.target) for edge in plan.edges] == [
+        ("n1", "n2"),
+        ("n2", "n3"),
+    ]
+
+
+def test_bdi_to_pddl_actions_accepts_raw_pddl_action_type():
+    plan = BDIPlan(
+        goal_description="Fallback plan",
+        nodes=[
+            ActionNode(
+                id="fallback_0",
+                action_type="(LOAD-TRUCK p1 t0 l0-0)",
+                params={},
+                description="Raw symbolic fallback action",
+            )
+        ],
+        edges=[],
+    )
+
+    assert bdi_to_pddl_actions(plan, domain="logistics") == ["(LOAD-TRUCK p1 t0 l0-0)"]
+
+
+def test_symbolic_fallback_uses_callable_pyperplan_api(tmp_path, monkeypatch):
+    domain_file = tmp_path / "domain.pddl"
+    problem_file = tmp_path / "problem.pddl"
+
+    domain_file.write_text("(define (domain dummy))", encoding="utf-8")
+    problem_file.write_text(
+        """
+(define (problem dummy-problem)
+  (:domain dummy)
+  (:init
+    (at p1 l0-0)
+  )
+  (:goal
+    (and (delivered p1))
+  )
+)
+""".strip(),
+        encoding="utf-8",
+    )
+
+    captured: dict[str, object] = {}
+
+    def fake_search_plan(domain_path, problem_path, search, heuristic_class, use_preferred_ops=False):
+        captured["domain_path"] = domain_path
+        captured["problem_path"] = problem_path
+        captured["search"] = search
+        captured["heuristic_class"] = heuristic_class
+        captured["use_preferred_ops"] = use_preferred_ops
+        return [SimpleNamespace(name="load-truck p1 t0 l0-0")]
+
+    monkeypatch.setattr(planner, "search_plan", fake_search_plan)
+
+    plan = SymbolicFallbackPlanner.generate_fallback_plan(
+        str(domain_file),
+        str(problem_file),
+        {"(at p1 l0-0)"},
+    )
+
+    assert plan is not None
+    assert captured["domain_path"] == str(domain_file)
+    assert captured["search"] is planner.SEARCHES["astar"]
+    assert captured["heuristic_class"] is planner.HEURISTICS["hmax"]
+    assert bdi_to_pddl_actions(plan, domain="logistics") == ["(load-truck p1 t0 l0-0)"]
+
+
+def test_symbolic_fallback_preserves_single_parenthesized_action_names(tmp_path, monkeypatch):
+    domain_file = tmp_path / "domain.pddl"
+    problem_file = tmp_path / "problem.pddl"
+
+    domain_file.write_text("(define (domain dummy))", encoding="utf-8")
+    problem_file.write_text(
+        """
+(define (problem dummy-problem)
+  (:domain dummy)
+  (:init
+    (at p1 l0-0)
+  )
+  (:goal
+    (and (delivered p1))
+  )
+)
+""".strip(),
+        encoding="utf-8",
+    )
+
+    def fake_search_plan(domain_path, problem_path, search, heuristic_class, use_preferred_ops=False):
+        return [SimpleNamespace(name="(drive-truck t0 l0-0 l0-1 c0)")]
+
+    monkeypatch.setattr(planner, "search_plan", fake_search_plan)
+
+    plan = SymbolicFallbackPlanner.generate_fallback_plan(
+        str(domain_file),
+        str(problem_file),
+        {"(at p1 l0-0)"},
+    )
+
+    assert plan is not None
+    assert plan.nodes[0].action_type == "(drive-truck t0 l0-0 l0-1 c0)"
+
+
+def test_symbolic_fallback_records_error_for_invalid_state(tmp_path):
+    domain_file = tmp_path / "domain.pddl"
+    problem_file = tmp_path / "problem.pddl"
+
+    domain_file.write_text("(define (domain dummy))", encoding="utf-8")
+    problem_file.write_text(
+        """
+(define (problem dummy-problem)
+  (:domain dummy)
+  (:init
+    (at p1 l0-0)
+  )
+  (:goal
+    (and (delivered p1))
+  )
+)
+""".strip(),
+        encoding="utf-8",
+    )
+
+    plan = SymbolicFallbackPlanner.generate_fallback_plan(
+        str(domain_file),
+        str(problem_file),
+        {"(at ?pkg l0-0)"},
+    )
+
+    assert plan is None
+    assert SymbolicFallbackPlanner.last_error == (
+        "Fallback state is empty or contains no valid ground propositions."
+    )

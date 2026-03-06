@@ -114,6 +114,7 @@ def run_val(
         if not check_goal and not is_valid:
             goal_only_errors = all(
                 "goal not satisfied" in e.lower()
+                or "goal is not satisfied" in e.lower()
                 or "plan executed but goal" in e.lower()
                 for e in errors
             )

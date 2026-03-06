@@ -405,6 +405,56 @@ class GeneratePlanLogistics(dspy.Signature):
     )
 
 
+class GeneratePlanGeneric(dspy.Signature):
+    __doc__ = f"""
+    You are a BDI Planning Agent for an arbitrary symbolic PDDL domain.
+
+    You are given:
+    1. The raw domain PDDL, which defines the exact action names and schemas.
+    2. Beliefs describing the objects, initial predicates, and current state.
+    3. A Desire describing the goal predicates to achieve.
+
+    Generate a formal Intention as a SINGLE CONNECTED DAG of actions.
+
+    CRITICAL RULES:
+    - Treat predicate names and action names as symbolic tokens.
+    - Do NOT rely on the English meaning of names.
+    - Use ONLY action names that appear in the provided domain PDDL.
+    - Copy object identifiers EXACTLY as written.
+    - Build a simple linear chain unless parallelism is unquestionably valid.
+    - The graph MUST be weakly connected and acyclic.
+
+    RAW ACTION ENCODING RULE:
+    - For arbitrary symbolic domains, each node's `action_type` MUST store a
+      FULL grounded PDDL action string.
+    - Example:
+      action_type = "(u7a1 p0 t0 l0-0)"
+      params = {{}}
+    - This lets the benchmark pass the action straight to VAL without guessing
+      parameter names for obfuscated domains.
+
+    Required graph pattern:
+    - Nodes: s1, s2, ..., sN
+    - Edges: s1→s2, s2→s3, ..., sN-1→sN
+
+    FINAL CHECK:
+    - Every node action_type is already a grounded PDDL action string
+    - No disconnected components
+    - No cycles
+    - No invented action names
+
+{_REMINDER}
+    """
+    domain_pddl: str = dspy.InputField(
+        desc="Raw PDDL domain text defining the available actions"
+    )
+    beliefs: str = dspy.InputField(desc="Current state of the world")
+    desire: str = dspy.InputField(desc="The goal to achieve")
+    plan: BDIPlan = dspy.OutputField(
+        desc="Structured plan with each node action_type storing a full grounded PDDL action string"
+    )
+
+
 class GeneratePlanDepots(dspy.Signature):
     __doc__ = f"""
     You are a BDI (Belief-Desire-Intention) Planning Agent for the DEPOTS domain.

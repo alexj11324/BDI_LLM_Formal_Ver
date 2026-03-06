@@ -222,13 +222,40 @@ def pddl_to_nl_blocksworld(pddl_data: dict) -> Tuple[str, str]:
 
 
 def pddl_to_nl_generic(pddl_data: dict) -> Tuple[str, str]:
-    """Generic PDDL to NL conversion"""
+    """Generic symbolic problem description for domains without custom adapters."""
     objects = pddl_data['objects']
+    typed_objects = pddl_data.get('typed_objects', {})
     init = pddl_data['init']
     goal = pddl_data['goal']
+    domain_name = pddl_data.get('domain_name', 'unknown')
 
-    beliefs = f"Domain objects: {', '.join(objects)}. Initial state: {'; '.join(init[:10])}..."
-    desire = f"Achieve goal: {'; '.join(goal[:5])}..."
+    if typed_objects:
+        object_entries = [
+            f"{obj}:{typed_objects.get(obj, 'object')}" for obj in objects
+        ]
+    else:
+        object_entries = list(objects)
+
+    beliefs_lines = [
+        f"DOMAIN NAME: {domain_name}",
+        "Treat predicate and action names as symbolic tokens.",
+        f"Objects ({len(objects)}): {', '.join(object_entries)}",
+        "",
+        "Initial predicates:",
+    ]
+    beliefs_lines.extend(f"- ({pred})" for pred in init)
+
+    desire_lines = [
+        "Goal predicates:",
+    ]
+    desire_lines.extend(f"- ({pred})" for pred in goal)
+    desire_lines.append("")
+    desire_lines.append(
+        "Reason symbolically from the exact predicate names and action schemas."
+    )
+
+    beliefs = "\n".join(beliefs_lines)
+    desire = "\n".join(desire_lines)
 
     return beliefs, desire
 

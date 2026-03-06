@@ -31,9 +31,9 @@ python scripts/evaluation/run_planbench_full.py --domain blocksworld --max_insta
 python scripts/evaluation/run_planbench_full.py --all_domains --max_instances 50
 python scripts/evaluation/run_planbench_full.py --domain blocksworld --resume runs/checkpoint.json
 
-# Ablation modes (NAIVE / BDI_ONLY / FULL_VERIFIED) — sets AGENT_EXECUTION_MODE internally
-python scripts/evaluation/run_planbench_full.py --all_domains --execution_mode NAIVE --output_dir runs/ablation_NAIVE --parallel --workers 30
-python scripts/evaluation/run_planbench_full.py --all_domains --execution_mode BDI_ONLY --output_dir runs/ablation_BDI_ONLY --parallel --workers 30
+# Ablation modes (BASELINE / BDI / BDI_REPAIR) — sets AGENT_EXECUTION_MODE internally
+python scripts/evaluation/run_planbench_full.py --all_domains --execution_mode BASELINE --output_dir runs/ablation_BASELINE --parallel --workers 30
+python scripts/evaluation/run_planbench_full.py --all_domains --execution_mode BDI --output_dir runs/ablation_BDI --parallel --workers 30
 
 # MCP server (exposes generate_verified_plan tool to Claude Code / Cursor / etc.)
 python src/interfaces/mcp_server.py
@@ -69,9 +69,9 @@ python scripts/evaluation/verify_paper_eval_snapshot.py
 ### Ablation Modes
 
 `AGENT_EXECUTION_MODE` env var (set automatically by `--execution_mode` flag) controls verification depth:
-- `NAIVE` — LLM generation only, no verification
-- `BDI_ONLY` — structural verification (Layer 1) only
-- `FULL_VERIFIED` — all 3 layers + repair loop (default)
+- `BASELINE` — LLM generation only, no verification
+- `BDI` — structured BDI generation only
+- `BDI_REPAIR` — all 3 layers + repair loop (default)
 
 ### Data Flow
 
@@ -123,9 +123,9 @@ No built-in API health-check script exists in `scripts/` — add one if needed.
 
 | Run | blocksworld | logistics | depots |
 |-----|-------------|-----------|--------|
-| FULL_VERIFIED (`runs/benchmark_gpt5_full`) | ✅ 1103/1103 (90.8% sr) | ~300/572 (未完成) | 未开始 |
-| NAIVE (`runs/ablation_NAIVE`) | ✅ 1103/1103 (91.6% sr) | ~571/572 (未完成) | 未开始 |
-| BDI_ONLY (`runs/ablation_BDI_ONLY`) | ✅ 1103/1103 (91.7% sr) | ✅ 572/572 (82.9% sr) | 进行中 |
+| BDI_REPAIR (`runs/ablation_BDI_REPAIR`) | ✅ 1103/1103 (90.8% sr) | ~300/572 (未完成) | 未开始 |
+| BASELINE (`runs/ablation_BASELINE`) | ✅ 1103/1103 (91.6% sr) | ~571/572 (未完成) | 未开始 |
+| BDI (`runs/ablation_BDI`) | ✅ 1103/1103 (91.7% sr) | ✅ 572/572 (82.9% sr) | 进行中 |
 
 **失败原因**：logistics 大量失败是 504 Gateway Timeout（quota 耗尽），不是计划质量问题。真实 sr 约 99%。
 
@@ -136,7 +136,7 @@ No built-in API health-check script exists in `scripts/` — add one if needed.
 # scripts/strip_timeouts.py
 import json, os
 PROJ = '/Users/alexjiang/Desktop/BDI_LLM_Formal_Ver'
-runs = ['benchmark_gpt5_full', 'ablation_NAIVE', 'ablation_BDI_ONLY']
+runs = ['ablation_BDI_REPAIR', 'ablation_BASELINE', 'ablation_BDI']
 domains = ['blocksworld', 'logistics', 'depots']
 for run in runs:
     for domain in domains:
@@ -159,13 +159,13 @@ PROJ=/Users/alexjiang/Desktop/BDI_LLM_Formal_Ver
 cd $PROJ
 
 tmux new-session -d -s bdi_bench -n full_verified
-tmux send-keys -t bdi_bench:full_verified "$PYTHON scripts/evaluation/run_planbench_full.py --all_domains --execution_mode FULL_VERIFIED --output_dir runs/benchmark_gpt5_full --parallel --workers 30" Enter
+tmux send-keys -t bdi_bench:bdi_repair "$PYTHON scripts/evaluation/run_planbench_full.py --all_domains --execution_mode BDI_REPAIR --output_dir runs/ablation_BDI_REPAIR --parallel --workers 30" Enter
 
 tmux new-window -t bdi_bench -n ablation_naive
-tmux send-keys -t bdi_bench:ablation_naive "$PYTHON scripts/evaluation/run_planbench_full.py --all_domains --execution_mode NAIVE --output_dir runs/ablation_NAIVE --parallel --workers 30" Enter
+tmux send-keys -t bdi_bench:ablation_baseline "$PYTHON scripts/evaluation/run_planbench_full.py --all_domains --execution_mode BASELINE --output_dir runs/ablation_BASELINE --parallel --workers 30" Enter
 
 tmux new-window -t bdi_bench -n ablation_bdi_only
-tmux send-keys -t bdi_bench:ablation_bdi_only "$PYTHON scripts/evaluation/run_planbench_full.py --all_domains --execution_mode BDI_ONLY --output_dir runs/ablation_BDI_ONLY --parallel --workers 30" Enter
+tmux send-keys -t bdi_bench:ablation_bdi "$PYTHON scripts/evaluation/run_planbench_full.py --all_domains --execution_mode BDI --output_dir runs/ablation_BDI --parallel --workers 30" Enter
 ```
 
 checkpoint 会自动 resume，只补跑失败的实例。
@@ -187,14 +187,14 @@ cd $PROJ
 
 # 全量
 tmux new-session -d -s bdi_bench -n full_verified
-tmux send-keys -t bdi_bench:full_verified "$PYTHON scripts/evaluation/run_planbench_full.py --all_domains --execution_mode FULL_VERIFIED --output_dir runs/benchmark_gpt5_full --workers 50 2>&1 | tee runs/benchmark_gpt5_full.log" Enter
+tmux send-keys -t bdi_bench:bdi_repair "$PYTHON scripts/evaluation/run_planbench_full.py --all_domains --execution_mode BDI_REPAIR --output_dir runs/ablation_BDI_REPAIR --workers 50 2>&1 | tee runs/ablation_BDI_REPAIR.log" Enter
 
 # 消融
 tmux new-window -t bdi_bench -n ablation_naive
-tmux send-keys -t bdi_bench:ablation_naive "$PYTHON scripts/evaluation/run_planbench_full.py --all_domains --execution_mode NAIVE --output_dir runs/ablation_NAIVE --workers 50 2>&1 | tee runs/ablation_NAIVE.log" Enter
+tmux send-keys -t bdi_bench:ablation_baseline "$PYTHON scripts/evaluation/run_planbench_full.py --all_domains --execution_mode BASELINE --output_dir runs/ablation_BASELINE --workers 50 2>&1 | tee runs/ablation_BASELINE.log" Enter
 
 tmux new-window -t bdi_bench -n ablation_bdi_only
-tmux send-keys -t bdi_bench:ablation_bdi_only "$PYTHON scripts/evaluation/run_planbench_full.py --all_domains --execution_mode BDI_ONLY --output_dir runs/ablation_BDI_ONLY --workers 50 2>&1 | tee runs/ablation_BDI_ONLY.log" Enter
+tmux send-keys -t bdi_bench:ablation_bdi "$PYTHON scripts/evaluation/run_planbench_full.py --all_domains --execution_mode BDI --output_dir runs/ablation_BDI --workers 50 2>&1 | tee runs/ablation_BDI.log" Enter
 ```
 
 ## ResponsesAPILM（infiniteai + gpt-5）

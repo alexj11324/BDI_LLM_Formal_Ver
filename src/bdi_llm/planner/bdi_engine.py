@@ -17,16 +17,23 @@ from .dspy_config import configure_dspy
 from .signatures import (
     GeneratePlan,
     GeneratePlanDepots,
+    GeneratePlanGeneric,
     GeneratePlanLogistics,
     RepairPlan,
 )
 
 logger = logging.getLogger(__name__)
 
+# Standard BDI domains with dedicated DSPy Signatures.
+# Non-standard / obfuscated domains use GeneratePlanGeneric and require
+# raw grounded PDDL action strings in action_type (params={}).
+STANDARD_BDI_DOMAINS = {"blocksworld", "logistics", "depots"}
+
 
 # 3. Define the Module with Assertions
 class BDIPlanner(dspy.Module):
-    def __init__(self, auto_repair: bool = True, domain: str = "blocksworld"):
+    def __init__(self, auto_repair: bool = True, domain: str = "blocksworld",
+                 few_shot: bool = False):
         """
         Initialize BDI Planner
 
@@ -34,6 +41,9 @@ class BDIPlanner(dspy.Module):
             auto_repair: If True, automatically repair disconnected plans
             domain: Planning domain - selects domain-specific Signature
                     ("blocksworld", "logistics", or "depots")
+            few_shot: If True, inject few-shot demonstrations for both
+                      plan generation and repair. If False (default),
+                      operates in zero-shot mode (no demonstrations).
         """
         super().__init__()
 
@@ -41,24 +51,41 @@ class BDIPlanner(dspy.Module):
         configure_dspy()
 
         self.domain = domain
+        self.few_shot = few_shot
 
         # Select domain-specific Signature
         if domain == "logistics":
             sig_class = GeneratePlanLogistics
         elif domain == "depots":
             sig_class = GeneratePlanDepots
-        else:
+        elif domain == "blocksworld":
             sig_class = GeneratePlan
+        else:
+            sig_class = GeneratePlanGeneric
 
-        self.generate_plan = dspy.ChainOfThought(sig_class)
+        self._uses_generic_signature = sig_class is GeneratePlanGeneric
+        self._generate_plan_predictor = dspy.ChainOfThought(sig_class)
         self.repair_plan = dspy.ChainOfThought(RepairPlan)
         self.auto_repair = auto_repair
         self._last_generation_trace: dict[str, Any] = {}
         self._last_repair_trace: dict[str, Any] = {}
 
-        # Add few-shot demonstrations for Logistics domain
-        if domain == "logistics":
-            self.generate_plan.demos = self._build_logistics_demos()
+        # Inject few-shot demonstrations when enabled
+        if few_shot:
+            demo_builders = {
+                "logistics": self._build_logistics_demos,
+                "blocksworld": self._build_blocksworld_demos,
+                "depots": self._build_depots_demos,
+            }
+            builder = demo_builders.get(domain)
+            if builder:
+                self._generate_plan_predictor.demos = builder()
+                logger.info(
+                    f"Loaded {len(self._generate_plan_predictor.demos)} generation demos for {domain}"
+                )
+            # Repair demos are domain-agnostic
+            self.repair_plan.demos = self._build_repair_demos()
+            logger.info(f"Loaded {len(self.repair_plan.demos)} repair demos")
 
         # Domain-specific action constraints for dspy.Assert validation
         self._valid_action_types = {
@@ -92,16 +119,19 @@ class BDIPlanner(dspy.Module):
         }
 
     @staticmethod
-    def _build_logistics_demos():
-        """Build few-shot demonstrations for the Logistics domain.
+    def _load_generation_demos(filename: str) -> list:
+        """Load generation few-shot demos from a YAML file.
 
-        Loads demonstrations from 'src/bdi_llm/data/logistics_demos.yaml'.
+        Args:
+            filename: YAML file name in the data/ directory
+
+        Returns:
+            List of dspy.Example with beliefs, desire, plan
         """
-        # Resolve the path to the data file relative to this module
-        data_path = Path(__file__).parent.parent / "data" / "logistics_demos.yaml"
+        data_path = Path(__file__).parent.parent / "data" / filename
 
         if not data_path.exists():
-            print(f"Warning: logistics_demos.yaml not found at {data_path}")
+            logger.warning(f"{filename} not found at {data_path}")
             return []
 
         with open(data_path) as f:
@@ -109,7 +139,6 @@ class BDIPlanner(dspy.Module):
 
         demos = []
         for demo_data in data.get("demos", []):
-            # Reconstruct nodes and edges from dicts
             nodes_data = demo_data["plan"]["nodes"]
             edges_data = demo_data["plan"]["edges"]
 
@@ -128,6 +157,67 @@ class BDIPlanner(dspy.Module):
                     desire=demo_data["desire"],
                     plan=plan,
                 ).with_inputs("beliefs", "desire")
+            )
+
+        return demos
+
+    @staticmethod
+    def _build_logistics_demos():
+        """Build few-shot demonstrations for the Logistics domain."""
+        return BDIPlanner._load_generation_demos("logistics_demos.yaml")
+
+    @staticmethod
+    def _build_blocksworld_demos():
+        """Build few-shot demonstrations for the Blocksworld domain."""
+        return BDIPlanner._load_generation_demos("blocksworld_demos.yaml")
+
+    @staticmethod
+    def _build_depots_demos():
+        """Build few-shot demonstrations for the Depots domain."""
+        return BDIPlanner._load_generation_demos("depots_demos.yaml")
+
+    @staticmethod
+    def _build_repair_demos() -> list:
+        """Build few-shot demonstrations for plan repair (domain-agnostic).
+
+        Loads from 'data/repair_demos.yaml'. Each demo includes:
+        beliefs, desire, previous_plan, val_errors, and corrected plan.
+        """
+        data_path = Path(__file__).parent.parent / "data" / "repair_demos.yaml"
+
+        if not data_path.exists():
+            logger.warning(f"repair_demos.yaml not found at {data_path}")
+            return []
+
+        with open(data_path) as f:
+            data = yaml.safe_load(f)
+
+        demos = []
+        for demo_data in data.get("demos", []):
+            nodes_data = demo_data["plan"]["nodes"]
+            edges_data = demo_data["plan"]["edges"]
+
+            nodes = [ActionNode(**n) for n in nodes_data]
+            edges = [DependencyEdge(**e) for e in edges_data]
+
+            plan = BDIPlan(
+                goal_description=demo_data["plan"]["goal_description"],
+                nodes=nodes,
+                edges=edges
+            )
+
+            demos.append(
+                dspy.Example(
+                    beliefs=demo_data["beliefs"],
+                    desire=demo_data["desire"],
+                    previous_plan=demo_data["previous_plan"],
+                    val_errors=demo_data["val_errors"],
+                    repair_history="",
+                    verification_feedback="",
+                    plan=plan,
+                ).with_inputs("beliefs", "desire", "previous_plan",
+                              "val_errors", "repair_history",
+                              "verification_feedback")
             )
 
         return demos
@@ -251,9 +341,36 @@ class BDIPlanner(dspy.Module):
         """Record generation trace when caller invokes `generate_plan` directly."""
         self._last_generation_trace = self._capture_prediction_trace(pred, phase="generation")
 
-    def forward(self, beliefs: str, desire: str) -> dspy.Prediction:
+    def generate_plan(
+        self,
+        beliefs: str,
+        desire: str,
+        domain_context: str | None = None,
+    ) -> dspy.Prediction:
+        """Generate a plan prediction, injecting raw domain PDDL for generic domains."""
+        if self._uses_generic_signature:
+            return self._generate_plan_predictor(
+                domain_pddl=domain_context or "",
+                beliefs=beliefs,
+                desire=desire,
+            )
+        return self._generate_plan_predictor(
+            beliefs=beliefs,
+            desire=desire,
+        )
+
+    def forward(
+        self,
+        beliefs: str,
+        desire: str,
+        domain_context: str | None = None,
+    ) -> dspy.Prediction:
         # Generate the plan
-        pred = self.generate_plan(beliefs=beliefs, desire=desire)
+        pred = self.generate_plan(
+            beliefs=beliefs,
+            desire=desire,
+            domain_context=domain_context,
+        )
         self.record_generation_trace(pred)
 
         try:
@@ -341,8 +458,18 @@ class BDIPlanner(dspy.Module):
         parts.append("=== END HISTORY ===")
         parts.append(
             f"You have failed {len(repair_history)} time(s). "
-            "DO NOT repeat any of the plans above. "
-            "Analyze the error patterns and try a fundamentally different approach."
+            "DO NOT repeat any of the plans above.\n\n"
+            "CONVERGENCE STRATEGY (CRITICAL):\n"
+            "1. Identify which actions ALREADY executed correctly in the "
+            "previous plan (before the first failing action).\n"
+            "2. KEEP those correct prefix actions EXACTLY as they were — "
+            "do NOT reorganize or reorder them.\n"
+            "3. ONLY modify the failing action and the actions AFTER it.\n"
+            "4. Before adding/changing any action, verify its preconditions "
+            "are satisfied by the cumulative state of all prior actions.\n"
+            "5. If you keep breaking different preconditions each attempt, "
+            "STOP and re-derive the full state from the initial beliefs "
+            "step by step before proposing the next plan."
         )
         return "\n".join(parts)
 
@@ -500,8 +627,41 @@ class BDIPlanner(dspy.Module):
             history_str = self._format_repair_history(repair_history)
             verifier_feedback_str = self._format_verification_feedback(verification_feedback)
 
+            # For obfuscated / non-standard domains, inject raw-action encoding
+            # instructions so the LLM returns action_type as a full grounded
+            # PDDL string (e.g. "(xyz123 o1 o2)") with params={}.
+            repair_beliefs = beliefs
+            effective_domain = domain or self.domain
+            if effective_domain not in STANDARD_BDI_DOMAINS:
+                raw_action_instruction = (
+                    "\n\n═══════════════════════════════════════════"
+                    "═══════════════════════════════════════\n"
+                    "CRITICAL — RAW ACTION ENCODING (OBFUSCATED DOMAIN)\n"
+                    "════════════════════════════════════════"
+                    "════════════════════════════════════════\n"
+                    "This is an obfuscated / symbolic domain.\n"
+                    "Each node's action_type MUST store a FULL grounded "
+                    "PDDL action string, exactly as it appears in the "
+                    "previous_plan field above.\n\n"
+                    "Example:\n"
+                    '  action_type = "(xyz123 o1 o2 o3)"\n'
+                    "  params = {}\n\n"
+                    "DO NOT use human-readable action names like "
+                    "'load-truck' or 'drive'.\n"
+                    "DO NOT invent new parameter key names.\n"
+                    "Copy the obfuscated action names EXACTLY from the "
+                    "domain PDDL and object identifiers EXACTLY as written.\n"
+                    "════════════════════════════════════════"
+                    "════════════════════════════════════════\n"
+                )
+                repair_beliefs = beliefs + raw_action_instruction
+                logger.info(
+                    "Injected raw-action encoding instruction for "
+                    f"non-standard domain '{effective_domain}'"
+                )
+
             pred = self.repair_plan(
-                beliefs=beliefs,
+                beliefs=repair_beliefs,
                 desire=desire,
                 previous_plan="\n".join(previous_plan_actions),
                 val_errors="\n".join(val_errors),

@@ -130,7 +130,7 @@ BDI_LLM_Formal_Ver/
 | `python scripts/evaluation/run_verification_only.py` | 纯净的线下校验模式。用以断开网络连接专门检查给定的静态输出能否过审 |
 | `python src/interfaces/mcp_server.py` | 把该工作流作为一个守护进程端口暴露出基于 MCP 路由的智能服务 |
 
-*支持向部分跑分命令附加 `--execution_mode FULL_VERIFIED` 来触发完整的三层防伪机制，或是采用 `--execution_mode NAIVE` 开启纯野生大模型幻觉率对比测算。*
+*支持向部分跑分命令附加 `--execution_mode BDI_REPAIR` 来触发完整的三层防伪机制，或是采用 `--execution_mode BASELINE` 开启纯野生大模型幻觉率对比测算。*
 
 ---
 

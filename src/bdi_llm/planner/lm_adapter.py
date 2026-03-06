@@ -118,9 +118,11 @@ class ResponsesAPILM(dspy.BaseLM):
     @staticmethod
     def _raise_response_error(data):
         """Raise normalized RuntimeError for Responses API failure payload."""
-        error = data.get('error', {})
-        code = error.get('code', 'unknown')
-        message = error.get('message', 'unknown error')
+        error = data.get('error')
+        if not isinstance(error, dict):
+            error = {}
+        code = error.get('code') or data.get('status') or 'unknown'
+        message = error.get('message') or data.get('message') or json.dumps(data)[:500]
         raise RuntimeError(f"ResponsesAPI error: {code} - {message}")
 
     def _call_once_chat_completions(self, messages):
@@ -217,8 +219,9 @@ class ResponsesAPILM(dspy.BaseLM):
         resp.raise_for_status()
         data = resp.json()
 
-        # Check for error in response
-        if data.get('status') == 'failed' or 'error' in data:
+        # Treat only explicit failures as errors. Some providers always include
+        # the `error` key with a null value even for successful responses.
+        if data.get('status') == 'failed' or data.get('error'):
             self._raise_response_error(data)
 
         # Extract text from response
