@@ -22,8 +22,11 @@ share/python-wheels/
 *.egg
 MANIFEST
 
-# Virtual environments
+# Virtual environments / local env files
 .env
+.env.*
+!.env.example
+!.env.test.example
 .venv
 env/
 venv/
@@ -94,6 +97,7 @@ test_*.py
 *_failed_*.txt
 *_root_cause_*.md
 !scripts/verify_paper_eval_snapshot.py
+!tests/unit/test_no_secrets.py
 
 # Paper drafts
 paper/

@@ -54,6 +54,10 @@ cd BDI_LLM_Formal_Ver
 
 ```bash
 pip install -r requirements.txt
+
+# 如果你也要启用开发检查
+pip install -e ".[dev]"
+pre-commit install
 ```
 
 ### 3. 配置本地环境变量
@@ -62,7 +66,14 @@ pip install -r requirements.txt
 
 ```bash
 cp .env.example .env
+
+# 如果你想给测试单独覆写本地配置
+cp .env.test.example .env.test
 ```
+
+`.env`、`.env.test` 以及其他 `.env.*` 本地覆写文件默认都不会进仓库。
+仓库中只保留模板文件；现在本地 `pre-commit` 和 CI `Secret Scan`
+都会拦截硬编码密钥提交。
 
 依据你要集成的提供商，在 `.env` 中补充以下密钥（必须配置至少一个）：
 

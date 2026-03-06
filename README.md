@@ -62,6 +62,7 @@ pip install -e .
 
 # Or with development dependencies:
 pip install -e ".[dev]"
+pre-commit install
 ```
 
 ### 3. Environment Setup
@@ -70,7 +71,15 @@ Copy the example environment variables file to configure your language model API
 
 ```bash
 cp .env.example .env
+
+# Optional test-only local overrides:
+cp .env.test.example .env.test
 ```
+
+`.env`, `.env.test`, and other `.env.*` local override files are gitignored on purpose.
+Only example templates should be committed. The repository now blocks committed
+secrets both locally through `pre-commit` and in CI through the `Secret Scan`
+workflow.
 
 Configure the following standard LLM variables inside `.env`:
 

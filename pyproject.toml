@@ -27,6 +27,7 @@ dev = [
     "pytest-cov>=4.0",
     "docker>=7.0",
     "ruff>=0.1",
+    "pre-commit>=3.7",
 ]
 
 [tool.setuptools.packages.find]
