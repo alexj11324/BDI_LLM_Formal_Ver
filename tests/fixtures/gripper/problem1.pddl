@@ -1,0 +1,11 @@
+(define (problem gripper-1)
+  (:domain gripper)
+  (:objects rooma roomb left right ball1 ball2)
+  (:init
+    (room rooma) (room roomb)
+    (gripper left) (gripper right)
+    (ball ball1) (ball ball2)
+    (at-robby rooma)
+    (at ball1 rooma) (at ball2 rooma)
+    (free left) (free right))
+  (:goal (and (at ball1 roomb) (at ball2 roomb))))

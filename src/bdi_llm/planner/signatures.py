@@ -655,6 +655,97 @@ class GeneratePlanDepots(dspy.Signature):
     )
 
 
+class GeneratePlanGeneric(dspy.Signature):
+    __doc__ = f"""
+    You are a BDI (Belief-Desire-Intention) Planning Agent for a GENERIC PDDL domain.
+    Given a set of Beliefs (current state), a Desire (goal), and a Domain Context
+    describing the available actions, generate a formal Intention (Plan) as a directed
+    graph of actions.
+
+    ═══════════════════════════════════════════════════════════════════════════
+    STEP 1: UNDERSTAND THE DOMAIN
+    ═══════════════════════════════════════════════════════════════════════════
+
+    Read the domain_context carefully. It describes:
+    - The available action types and their parameters
+    - Each action's preconditions and effects (if provided)
+
+    You MUST ONLY use action types listed in the domain_context.
+    Do NOT invent actions that are not defined in the domain.
+
+    ═══════════════════════════════════════════════════════════════════════════
+    STEP 2: LIST ALL ACTIONS IN EXECUTION ORDER (Chain-of-Thought)
+    ═══════════════════════════════════════════════════════════════════════════
+
+    Before generating the graph, write down ALL actions in the exact order they
+    must execute. This is your "linearization" of the plan.
+
+    Format:
+    ```
+    EXECUTION ORDER:
+    1. <action_1>
+    2. <action_2>
+    3. <action_3>
+    ...
+    N. <action_N>
+    ```
+
+    Then VERIFY:
+    - [ ] No action appears more than once (check for duplicates)
+    - [ ] Each action advances toward the goal
+    - [ ] No action returns to a previously visited state
+    - [ ] The last action achieves the goal
+
+    ═══════════════════════════════════════════════════════════════════════════
+    STEP 3: CONVERT TO GRAPH (Nodes + Edges)
+    ═══════════════════════════════════════════════════════════════════════════
+
+    Convert your linear order into a graph:
+    - Each action becomes a node with a unique ID (s1, s2, ..., sN)
+    - Add edges: (s1→s2), (s2→s3), ..., (sN-1→sN)
+    - This guarantees acyclicity by construction
+
+    ═══════════════════════════════════════════════════════════════════════════
+    FINAL CHECK (Mandatory)
+    ═══════════════════════════════════════════════════════════════════════════
+
+    Count occurrences of each UNIQUE action (by action_type + params):
+    - If any action appears 2+ times → YOU HAVE A CYCLE. Remove duplicates.
+    - If graph is not connected → ADD MISSING EDGES to connect all nodes.
+
+{_GRAPH_STRUCTURE_COMMON}
+
+{_STATE_TRACKING_HEADER}
+
+    Maintain a state table appropriate for the domain described in domain_context.
+    Update it after EVERY action.
+
+{_COS_REPRESENTATION_HEADER}
+
+    Use symbolic notation appropriate for the domain predicates.
+
+{_LOGICOT_HEADER}
+
+{_LOGICOT_PROTOCOL_DETAILED}
+
+{_REMINDER}
+    """
+    beliefs: str = dspy.InputField(
+        desc="Current state of the world (objects, initial predicates)"
+    )
+    desire: str = dspy.InputField(
+        desc="The goal conditions to achieve"
+    )
+    domain_context: str = dspy.InputField(
+        desc="Domain action schema: available actions, their parameters, "
+        "preconditions, and effects (auto-derived from PDDL domain file)"
+    )
+    plan: BDIPlan = dspy.OutputField(
+        desc="Structured execution plan with nodes and edges forming a "
+        "SINGLE CONNECTED DAG"
+    )
+
+
 class RepairPlan(dspy.Signature):
     """You previously generated a plan that failed PDDL validation (VAL).
     The validator found specific errors in your plan.
