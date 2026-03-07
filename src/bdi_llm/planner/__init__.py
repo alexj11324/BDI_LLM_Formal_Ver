@@ -5,6 +5,7 @@ and ``from src.bdi_llm.planner import configure_dspy`` continue to work.
 """
 
 from .bdi_engine import BDIPlanner  # noqa: F401
+from .domain_spec import DomainSpec  # noqa: F401
 from .dspy_config import configure_dspy  # noqa: F401
 
 # Also re-export private prompt constants for backward compatibility with
@@ -23,6 +24,7 @@ from .prompts import (  # noqa: F401
 from .signatures import (  # noqa: F401
     GeneratePlan,
     GeneratePlanDepots,
+    GeneratePlanGeneric,
     GeneratePlanLogistics,
     RepairPlan,
 )

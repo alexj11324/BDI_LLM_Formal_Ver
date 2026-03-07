@@ -1,10 +1,12 @@
 """BDIPlanner – the core BDI planning module built on DSPy."""
 
+from __future__ import annotations
+
 import hashlib
 import json
 import logging
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import dspy
 import yaml
@@ -17,79 +19,65 @@ from .dspy_config import configure_dspy
 from .signatures import (
     GeneratePlan,
     GeneratePlanDepots,
+    GeneratePlanGeneric,
     GeneratePlanLogistics,
     RepairPlan,
 )
+
+if TYPE_CHECKING:
+    from .domain_spec import DomainSpec
 
 logger = logging.getLogger(__name__)
 
 
 # 3. Define the Module with Assertions
 class BDIPlanner(dspy.Module):
-    def __init__(self, auto_repair: bool = True, domain: str = "blocksworld"):
+    def __init__(
+        self,
+        auto_repair: bool = True,
+        domain: str = "blocksworld",
+        domain_spec: DomainSpec | None = None,
+    ):
         """
-        Initialize BDI Planner
+        Initialize BDI Planner.
 
         Args:
-            auto_repair: If True, automatically repair disconnected plans
-            domain: Planning domain - selects domain-specific Signature
-                    ("blocksworld", "logistics", or "depots")
+            auto_repair: If True, automatically repair disconnected plans.
+            domain: Planning domain name — selects built-in Signature.
+                    ("blocksworld", "logistics", or "depots").
+                    Ignored when *domain_spec* is provided.
+            domain_spec: Explicit domain specification. When given, *domain*
+                         is ignored and all configuration is taken from the
+                         spec. Use ``DomainSpec.from_pddl()`` for generic
+                         PDDL domains.
         """
         super().__init__()
 
         # Configure DSPy (idempotent - only runs once per process)
         configure_dspy()
 
-        self.domain = domain
-
-        # Select domain-specific Signature
-        if domain == "logistics":
-            sig_class = GeneratePlanLogistics
-        elif domain == "depots":
-            sig_class = GeneratePlanDepots
+        # ----- resolve DomainSpec -----
+        if domain_spec is not None:
+            self._domain_spec = domain_spec
         else:
-            sig_class = GeneratePlan
+            from .domain_spec import DomainSpec as DS
+            self._domain_spec = DS.from_name(domain)
 
-        self.generate_plan = dspy.ChainOfThought(sig_class)
+        self.domain = self._domain_spec.name
+
+        # Whether Signature has a domain_context field (i.e. generic PDDL)
+        self._is_generic = self._domain_spec.signature_class is GeneratePlanGeneric
+
+        # Internal DSPy program (renamed from ``self.generate_plan``)
+        self._generate_program = dspy.ChainOfThought(self._domain_spec.signature_class)
         self.repair_plan = dspy.ChainOfThought(RepairPlan)
         self.auto_repair = auto_repair
         self._last_generation_trace: dict[str, Any] = {}
         self._last_repair_trace: dict[str, Any] = {}
 
-        # Add few-shot demonstrations for Logistics domain
-        if domain == "logistics":
-            self.generate_plan.demos = self._build_logistics_demos()
-
-        # Domain-specific action constraints for dspy.Assert validation
-        self._valid_action_types = {
-            "blocksworld": {"pick-up", "put-down", "stack", "unstack"},
-            "logistics": {"load-truck", "unload-truck", "load-airplane",
-                          "unload-airplane", "drive-truck", "fly-airplane"},
-            "depots": {"drive", "lift", "drop", "load", "unload"},
-            "testing": set(),  # Empty set = no validation for testing
-        }
-        self._required_params = {
-            "blocksworld": {
-                "pick-up": {"block"}, "put-down": {"block"},
-                "stack": {"block", "target"}, "unstack": {"block", "target"},
-            },
-            "logistics": {
-                "load-truck": {"obj", "truck", "loc"},
-                "unload-truck": {"obj", "truck", "loc"},
-                "load-airplane": {"obj", "airplane", "loc"},
-                "unload-airplane": {"obj", "airplane", "loc"},
-                "drive-truck": {"truck", "from", "to", "city"},
-                "fly-airplane": {"airplane", "from", "to"},
-            },
-            "depots": {
-                "drive": {"truck", "from", "to"},
-                "lift": {"hoist", "crate", "surface", "place"},
-                "drop": {"hoist", "crate", "surface", "place"},
-                "load": {"hoist", "crate", "truck", "place"},
-                "unload": {"hoist", "crate", "truck", "place"},
-            },
-            "testing": {},  # No required params for testing
-        }
+        # Few-shot demonstrations (if any)
+        if self._domain_spec.demos_loader is not None:
+            self._generate_program.demos = self._domain_spec.demos_loader()
 
     @staticmethod
     def _build_logistics_demos():
@@ -138,8 +126,10 @@ class BDIPlanner(dspy.Module):
         Returns:
             (all_valid, error_message) — error_message is empty when valid.
         """
-        valid_types = self._valid_action_types.get(self.domain, set())
-        required_params = self._required_params.get(self.domain, {})
+        valid_types = self._domain_spec.valid_action_types
+        required_params = {
+            k: set(v) for k, v in self._domain_spec.required_params.items()
+        }
 
         if not valid_types:
             return True, ""
@@ -251,9 +241,65 @@ class BDIPlanner(dspy.Module):
         """Record generation trace when caller invokes `generate_plan` directly."""
         self._last_generation_trace = self._capture_prediction_trace(pred, phase="generation")
 
-    def forward(self, beliefs: str, desire: str) -> dspy.Prediction:
-        # Generate the plan
-        pred = self.generate_plan(beliefs=beliefs, desire=desire)
+    # ------------------------------------------------------------------
+    # Public entry-point: wraps the internal DSPy program
+    # ------------------------------------------------------------------
+
+    def generate_plan(
+        self,
+        beliefs: str,
+        desire: str,
+        domain_context: str | None = None,
+    ) -> dspy.Prediction:
+        """Generate a BDI plan.
+
+        This is the single public entry-point that both ``forward()`` and
+        external scripts should use.  When ``domain_context`` is provided
+        (or when ``self._is_generic`` is True and the DomainSpec carries a
+        ``domain_context``), the generic PDDL signature is invoked with the
+        extra field.
+
+        Args:
+            beliefs: Current-state description.
+            desire: Goal description.
+            domain_context: Optional action-schema summary for generic PDDL.
+                            Falls back to ``self._domain_spec.domain_context``
+                            when not explicitly supplied.
+
+        Returns:
+            ``dspy.Prediction`` with a ``plan`` attribute.
+        """
+        ctx = domain_context or self._domain_spec.domain_context
+
+        if self._is_generic:
+            if not ctx:
+                raise ValueError(
+                    f"Generic PDDL domain '{self.domain}' requires domain_context "
+                    "but none was provided and DomainSpec.domain_context is empty. "
+                    "Pass domain_context= explicitly or use DomainSpec.from_pddl()."
+                )
+            pred = self._generate_program(
+                beliefs=beliefs, desire=desire, domain_context=ctx,
+            )
+        else:
+            pred = self._generate_program(beliefs=beliefs, desire=desire)
+
+        return pred
+
+    # ------------------------------------------------------------------
+    # forward() — delegates to generate_plan() + structural verification
+    # ------------------------------------------------------------------
+
+    def forward(
+        self,
+        beliefs: str,
+        desire: str,
+        domain_context: str | None = None,
+    ) -> dspy.Prediction:
+        # Generate the plan via unified wrapper
+        pred = self.generate_plan(
+            beliefs=beliefs, desire=desire, domain_context=domain_context,
+        )
         self.record_generation_trace(pred)
 
         try:
