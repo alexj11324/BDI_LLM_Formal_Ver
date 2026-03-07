@@ -25,7 +25,7 @@ jobs:
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
         
         # Install explicit dependencies if missing from requirements.txt
-        pip install dspy-ai networkx pydantic python-dotenv
+        pip install dspy-ai networkx pydantic python-dotenv pyperplan
         
         # Install VAL (PlanBench tools) dependencies if needed
         # (Assuming VAL binary is checked in or handled by config)

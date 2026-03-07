@@ -22,7 +22,8 @@ def test_tracked_local_env_file_is_rejected(tmp_path: Path) -> None:
 
 def test_real_secret_value_is_rejected(tmp_path: Path) -> None:
     target = tmp_path / "settings.txt"
-    target.write_text("OPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwxyz123456\n", encoding="utf-8")
+    secret = "sk-" + "abcdefghijklmnopqrstuvwxyz123456"
+    target.write_text(f"OPENAI_API_KEY={secret}\n", encoding="utf-8")
 
     issues = collect_issues([target])
 

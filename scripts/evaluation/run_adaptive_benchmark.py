@@ -101,8 +101,11 @@ def main():
                         help="Output directory")
     parser.add_argument("--execution_mode", type=str, default="BDI_REPAIR",
                         choices=["BASELINE", "BDI", "BDI_REPAIR"])
-    parser.add_argument("--parallel", action="store_true", default=True,
-                        help="Run instances in parallel (default: True)")
+    parser.add_argument("--parallel", dest="parallel", action="store_true",
+                        help="Run instances in parallel")
+    parser.add_argument("--no-parallel", dest="parallel", action="store_false",
+                        help="Run instances serially")
+    parser.set_defaults(parallel=True)
     parser.add_argument("--workers", type=int, default=100,
                         help="Number of parallel workers (default: 100)")
     parser.add_argument("--max_rounds", type=int, default=10,
