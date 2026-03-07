@@ -93,16 +93,35 @@ def generate_and_replan(
     # 1. Initial Plan Generation
     planner = BDIPlanner(auto_repair=False, domain=domain)
     gen_start = time.time()
-    try:
-        gen_result = planner.generate_plan(beliefs=beliefs, desire=desire)
-        initial_plan = gen_result.plan
-        result['initial_generation']['success'] = True
-    except Exception as e:
-        result['initial_generation']['error'] = str(e)
-        result['total_time'] = time.time() - start_eval_time
-        return result
+    initial_plan = None
+    max_generation_retries = 3
+    for attempt in range(max_generation_retries):
+        try:
+            gen_result = planner.generate_plan(beliefs=beliefs, desire=desire)
+            initial_plan = gen_result.plan
+            result['initial_generation']['success'] = True
+            break
+        except Exception as e:
+            error_str = str(e).lower()
+            result['initial_generation']['error'] = str(e)
+            transient = any(
+                kw in error_str for kw in ['connection', 'timeout', 'rate', '429', 'quota', '503', '504']
+            )
+            if transient and attempt < max_generation_retries - 1:
+                wait_time = 2 ** (attempt + 1)
+                tqdm.write(
+                    f"    Initial generation transient error, retrying in {wait_time}s "
+                    f"({attempt + 1}/{max_generation_retries})"
+                )
+                time.sleep(wait_time)
+                continue
+            result['total_time'] = time.time() - start_eval_time
+            return result
         
     result['initial_generation']['time'] = time.time() - gen_start
+    if initial_plan is None:
+        result['total_time'] = time.time() - start_eval_time
+        return result
     pddl_actions = bdi_to_pddl_actions(initial_plan, domain=domain)
     
     # 2. Plan Executor
@@ -118,7 +137,7 @@ def generate_and_replan(
         return result
         
     # 3. Dynamic Replanning Loop
-    replanner = DynamicReplanner(model_name="qwen3.5-plus") # Hardcoded to cached model
+    replanner = DynamicReplanner()
     current_exec_res = exec_res
     
     for i in range(max_replans):
@@ -182,7 +201,7 @@ def run_dynamic_replanning_eval(
             results = checkpoint_data
         elif isinstance(checkpoint_data, dict):
             results = checkpoint_data.get('results', [])
-        done_instances = {r.get('instance_file') or r.get('instance_name', '') for r in results}
+        done_instances = {r.get('instance_file') for r in results if r.get('instance_file')}
         print(f"Resumed from checkpoint: {len(results)} instances already done.")
 
     pending = [inst for inst in all_instances if inst not in done_instances]
@@ -221,6 +240,7 @@ def run_dynamic_replanning_eval(
         except Exception as e:
             tqdm.write(f"  {inst_name}: ERROR - {e}")
             return {
+                'instance_file': inst_file,
                 'instance_name': inst_name,
                 'error': str(e)
             }

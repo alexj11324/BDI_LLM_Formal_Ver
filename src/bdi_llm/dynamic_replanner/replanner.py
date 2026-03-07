@@ -1,7 +1,7 @@
-import os
 import json
 import logging
-from typing import Dict, List, Optional
+import re
+from typing import Optional
 from openai import OpenAI
 
 from src.bdi_llm.config import Config
@@ -19,15 +19,28 @@ class DynamicReplanner:
     where supported (e.g. qwen3.5-plus).
     """
 
-    def __init__(self, model_name: str = "qwen3.5-plus", max_retries: int = 3):
+    def __init__(self, model_name: str = None, max_retries: int = 3):
         # We explicitly want to use a model that supports caching.
+        if model_name is None:
+            model_name = Config.MODEL_NAME
         self.model_name = model_name
         self.max_retries = max_retries
-        
-        # We use standard OpenAI client for DashScope compatible API
+
+        api_key = Config.DASHSCOPE_API_KEY or Config.OPENAI_API_KEY
+        if not api_key or not str(api_key).strip():
+            raise RuntimeError(
+                "DashScope/OpenAI compatible API is not configured correctly: "
+                "Config.DASHSCOPE_API_KEY and Config.OPENAI_API_KEY are both missing or empty. "
+                "Set a valid API key in your environment or .env before running dynamic replanning."
+            )
+
+        base_url = Config.OPENAI_API_BASE or "https://dashscope.aliyuncs.com/compatible-mode/v1"
+
+        # We use standard OpenAI client for DashScope-compatible API
         self.client = OpenAI(
-            api_key=Config.DASHSCOPE_API_KEY,
-            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            api_key=api_key,
+            base_url=base_url,
+            timeout=Config.TIMEOUT,
         )
 
     def generate_recovery_plan(
@@ -116,18 +129,34 @@ Output ONLY a valid JSON string (matching the BDIPlan schema: {{"goal_descriptio
                     extra_headers=extra_headers
                 )
 
-                content = response.choices[0].message.content.strip()
+                raw_content = response.choices[0].message.content.strip()
+                content = raw_content
+                fence_match = re.search(
+                    r"```(?:json)?\s*(.*?)```",
+                    content,
+                    re.IGNORECASE | re.DOTALL,
+                )
+                if fence_match:
+                    content = fence_match.group(1).strip()
 
-                # Clean up markdown
-                if content.startswith("```json"):
-                    content = content[7:]
-                if content.startswith("```"):
-                    content = content[3:]
-                if content.endswith("```"):
-                    content = content[:-3]
-                content = content.strip()
+                start = content.find("{")
+                end = content.rfind("}")
+                if start != -1 and end != -1 and end >= start:
+                    content = content[start:end + 1]
 
-                plan_dict = json.loads(content)
+                try:
+                    plan_dict = json.loads(content)
+                except json.JSONDecodeError as json_exc:
+                    snippet = raw_content[:2000]
+                    if len(raw_content) > 2000:
+                        snippet += "... [truncated]"
+                    logger.warning(
+                        "Replanning JSON decode failed on attempt %d: %s. Raw content snippet: %r",
+                        attempt + 1,
+                        json_exc,
+                        snippet,
+                    )
+                    raise
                 
                 # Parse to BDIPlan
                 nodes = [ActionNode(**n) for n in plan_dict.get('nodes', [])]
