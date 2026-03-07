@@ -158,13 +158,13 @@ PYTHON=/Users/alexjiang/opt/anaconda3/envs/ai_scientist/bin/python
 PROJ=/Users/alexjiang/Desktop/BDI_LLM_Formal_Ver
 cd $PROJ
 
-tmux new-session -d -s bdi_bench -n full_verified
+tmux new-session -d -s bdi_bench -n bdi_repair
 tmux send-keys -t bdi_bench:bdi_repair "$PYTHON scripts/evaluation/run_planbench_full.py --all_domains --execution_mode BDI_REPAIR --output_dir runs/ablation_BDI_REPAIR --parallel --workers 30" Enter
 
-tmux new-window -t bdi_bench -n ablation_naive
+tmux new-window -t bdi_bench -n ablation_baseline
 tmux send-keys -t bdi_bench:ablation_baseline "$PYTHON scripts/evaluation/run_planbench_full.py --all_domains --execution_mode BASELINE --output_dir runs/ablation_BASELINE --parallel --workers 30" Enter
 
-tmux new-window -t bdi_bench -n ablation_bdi_only
+tmux new-window -t bdi_bench -n ablation_bdi
 tmux send-keys -t bdi_bench:ablation_bdi "$PYTHON scripts/evaluation/run_planbench_full.py --all_domains --execution_mode BDI --output_dir runs/ablation_BDI --parallel --workers 30" Enter
 ```
 
@@ -186,14 +186,14 @@ PROJ=/Users/alexjiang/Desktop/BDI_LLM_Formal_Ver
 cd $PROJ
 
 # 全量
-tmux new-session -d -s bdi_bench -n full_verified
+tmux new-session -d -s bdi_bench -n bdi_repair
 tmux send-keys -t bdi_bench:bdi_repair "$PYTHON scripts/evaluation/run_planbench_full.py --all_domains --execution_mode BDI_REPAIR --output_dir runs/ablation_BDI_REPAIR --workers 50 2>&1 | tee runs/ablation_BDI_REPAIR.log" Enter
 
 # 消融
-tmux new-window -t bdi_bench -n ablation_naive
+tmux new-window -t bdi_bench -n ablation_baseline
 tmux send-keys -t bdi_bench:ablation_baseline "$PYTHON scripts/evaluation/run_planbench_full.py --all_domains --execution_mode BASELINE --output_dir runs/ablation_BASELINE --workers 50 2>&1 | tee runs/ablation_BASELINE.log" Enter
 
-tmux new-window -t bdi_bench -n ablation_bdi_only
+tmux new-window -t bdi_bench -n ablation_bdi
 tmux send-keys -t bdi_bench:ablation_bdi "$PYTHON scripts/evaluation/run_planbench_full.py --all_domains --execution_mode BDI --output_dir runs/ablation_BDI --workers 50 2>&1 | tee runs/ablation_BDI.log" Enter
 ```
 
