@@ -31,7 +31,7 @@ from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
 
-from bdi_llm.planner import BDIPlanner
+from bdi_llm.planner import BDIPlanner, NaivePlanner
 from bdi_llm.config import Config
 from bdi_llm.schemas import BDIPlan
 from bdi_llm.verifier import PlanVerifier
@@ -50,6 +50,15 @@ except ImportError:
 # ============================================================================
 # PDDL PARSING
 # ============================================================================
+
+STANDARD_BDI_DOMAINS = {"blocksworld", "logistics", "depots"}
+SUPPORTED_CLI_DOMAINS = [
+    "blocksworld",
+    "logistics",
+    "depots",
+    "obfuscated_deceptive_logistics",
+    "obfuscated_randomized_logistics",
+]
 
 def parse_pddl_problem(pddl_file: str) -> dict:
     """Parse PDDL problem file"""
@@ -91,13 +100,24 @@ def parse_pddl_problem(pddl_file: str) -> dict:
     else:
         init_predicates = []
 
-    # Extract goal
-    goal_match = re.search(r':goal\s*\(and\s*((?:\([^)]+\)\s*)+)\)', content, re.DOTALL)
+    # Extract goal. PlanBench instances may use either:
+    #   (:goal (and (...)))
+    # or the singleton form:
+    #   (:goal (...))
+    goal_match = re.search(r':goal\s*\(and\s*((?:\([^)]+\)\s*)+)\)', content, re.DOTALL | re.IGNORECASE)
     if goal_match:
         goal_content = goal_match.group(1)
         goal_predicates = re.findall(r'\(([^)]+)\)', goal_content)
     else:
-        goal_predicates = []
+        single_goal_match = re.search(
+            r':goal\s*(\([^()]+\))\s*\)',
+            content,
+            re.DOTALL | re.IGNORECASE,
+        )
+        if single_goal_match:
+            goal_predicates = [single_goal_match.group(1)[1:-1].strip()]
+        else:
+            goal_predicates = []
 
     # Phase 1: Extract init_state for physics validation
     init_state = {
@@ -143,7 +163,7 @@ def resolve_domain_file(domain_name: str, base_path: str = None) -> str:
     Falls back to pddlgenerators/ domain.pddl otherwise.
     """
     if base_path is None:
-        base_path = str(Path(__file__).resolve().parent.parent / "workspaces/planbench_data/plan-bench")
+        base_path = str(Path(__file__).resolve().parent.parent.parent / "workspaces/planbench_data/plan-bench")
 
     # Map PDDL domain name -> instance directory name
     dir_map = {
@@ -390,15 +410,53 @@ def pddl_to_nl_blocksworld(pddl_data: dict) -> Tuple[str, str]:
     return beliefs, desire
 
 def pddl_to_nl_generic(pddl_data: dict) -> Tuple[str, str]:
-    """Generic PDDL to NL conversion"""
+    """Generic symbolic problem description for domains without custom adapters."""
     objects = pddl_data['objects']
+    typed_objects = pddl_data.get('typed_objects', {})
     init = pddl_data['init']
     goal = pddl_data['goal']
+    domain_name = pddl_data.get('domain_name', 'unknown')
 
-    beliefs = f"Domain objects: {', '.join(objects)}. Initial state: {'; '.join(init[:10])}..."
-    desire = f"Achieve goal: {'; '.join(goal[:5])}..."
+    if typed_objects:
+        object_entries = [
+            f"{obj}:{typed_objects.get(obj, 'object')}" for obj in objects
+        ]
+    else:
+        object_entries = list(objects)
+
+    beliefs_lines = [
+        f"DOMAIN NAME: {domain_name}",
+        "Treat predicate and action names as symbolic tokens.",
+        f"Objects ({len(objects)}): {', '.join(object_entries)}",
+        "",
+        "Initial predicates:",
+    ]
+    beliefs_lines.extend(f"- ({pred})" for pred in init)
+
+    desire_lines = [
+        "Goal predicates:",
+    ]
+    desire_lines.extend(f"- ({pred})" for pred in goal)
+    desire_lines.append("")
+    desire_lines.append(
+        "Reason symbolically from the exact predicate names and action schemas."
+    )
+
+    beliefs = "\n".join(beliefs_lines)
+    desire = "\n".join(desire_lines)
 
     return beliefs, desire
+
+
+def load_domain_pddl_for_prompt(domain_file: str) -> str:
+    """Return a compact domain PDDL string for generic baseline prompting."""
+    with open(domain_file, 'r') as f:
+        content = f.read()
+
+    # Strip line comments and compress excess blank lines to keep prompts tight.
+    content = re.sub(r';.*$', '', content, flags=re.MULTILINE)
+    content = re.sub(r'\n\s*\n+', '\n', content)
+    return content.strip()
 
 def pddl_to_nl_logistics(pddl_data: dict) -> Tuple[str, str]:
     """Logistics domain conversion with enhanced airport/city awareness"""
@@ -862,6 +920,11 @@ def bdi_to_pddl_actions(plan: BDIPlan, domain: str = "blocksworld") -> List[str]
         if not action_node:
             continue
 
+        raw_action = action_node.action_type.strip()
+        if raw_action.startswith("(") and raw_action.endswith(")"):
+            pddl_actions.append(" ".join(raw_action.split()))
+            continue
+
         canon = _normalise(action_node.action_type)
         params = action_node.params
         before_len = len(pddl_actions)
@@ -1102,6 +1165,19 @@ def bdi_to_pddl_actions(plan: BDIPlan, domain: str = "blocksworld") -> List[str]
 
     return pddl_actions
 
+
+def _serialize_plan_nodes(plan: BDIPlan) -> List[dict]:
+    """Convert plan nodes into JSON-safe dictionaries for metrics storage."""
+    nodes_list = []
+    for node in plan.nodes:
+        if isinstance(node, dict):
+            nodes_list.append(dict(node))
+        elif hasattr(node, "model_dump"):
+            nodes_list.append(node.model_dump())
+        else:
+            nodes_list.append({"id": str(node)})
+    return nodes_list
+
 def generate_bdi_plan(
     beliefs: str,
     desire: str,
@@ -1158,7 +1234,8 @@ def generate_bdi_plan(
         'overall_valid': False,
         'num_nodes': 0,
         'num_edges': 0,
-        'retries': 0
+        'retries': 0,
+        'execution_mode': 'BDI_REPAIR',
     }
     if Config.SAVE_REASONING_TRACE:
         metrics['reasoning_trace'] = {
@@ -1172,7 +1249,18 @@ def generate_bdi_plan(
     for attempt in range(max_retries):
         try:
             planner = BDIPlanner(auto_repair=auto_repair, domain=domain)
-            result = planner.generate_plan(beliefs=beliefs, desire=desire)
+            domain_context = None
+            if domain not in STANDARD_BDI_DOMAINS and pddl_domain_path:
+                domain_context = load_domain_pddl_for_prompt(pddl_domain_path)
+            generate_kwargs = {
+                'beliefs': beliefs,
+                'desire': desire,
+            }
+            if domain_context is not None:
+                generate_kwargs['domain_context'] = domain_context
+            result = planner.generate_plan(
+                **generate_kwargs,
+            )
             planner.record_generation_trace(result)
             plan = result.plan
             metrics['retries'] = attempt
@@ -1214,7 +1302,8 @@ def generate_bdi_plan(
             # Layer 2: Symbolic Verification (PDDL/VAL) with repair loop
             symbolic_valid = False
             symbolic_errors = ["Skipped - Structural failure"]
-            max_val_repairs = 3
+            max_val_repairs = 5
+            val_attempted = False
 
             # VAL is the ultimate validator - if VAL says plan works, it works.
             # Even if structural verification fails, we should still try VAL.
@@ -1230,6 +1319,7 @@ def generate_bdi_plan(
 
                     # Initialize VAL verifier
                     val_verifier = PDDLSymbolicVerifier()
+                    val_attempted = True
                     symbolic_valid, symbolic_errors = val_verifier.verify_plan(
                         domain_file=pddl_domain_path,
                         problem_file=pddl_problem_path,
@@ -1318,15 +1408,18 @@ def generate_bdi_plan(
                             struct_result_r = PlanVerifier.verify(G)
                             struct_valid_r = struct_result_r.is_valid
                             struct_errors_r = struct_result_r.errors
+                            struct_hard_errors_r = struct_result_r.hard_errors
+                            struct_warnings_r = struct_result_r.warnings
 
                             # KEY INSIGHT: VAL is the ultimate validator.
                             # If structural check fails but VAL passes, the plan works.
                             # Don't break - let VAL verify anyway.
                             if not struct_valid_r:
                                 print(f"    VAL repair {val_repair_attempt}: structural failure after repair, but still trying VAL")
-                                struct_valid = struct_valid_r  # Update for outer scope
-                            else:
-                                struct_valid = struct_valid_r  # Update for outer scope
+                            struct_valid = struct_valid_r
+                            struct_errors = struct_errors_r
+                            struct_hard_errors = struct_hard_errors_r
+                            struct_warnings = struct_warnings_r
 
                             # Re-convert and re-verify with VAL (even if structural fails)
                             pddl_actions = bdi_to_pddl_actions(plan, domain=domain)
@@ -1362,6 +1455,10 @@ def generate_bdi_plan(
 
             metrics['verification_layers']['symbolic']['valid'] = symbolic_valid
             metrics['verification_layers']['symbolic']['errors'] = symbolic_errors
+            metrics['verification_layers']['structural']['valid'] = struct_valid
+            metrics['verification_layers']['structural']['errors'] = struct_errors
+            metrics['verification_layers']['structural']['hard_errors'] = struct_hard_errors
+            metrics['verification_layers']['structural']['warnings'] = struct_warnings
 
             # Layer 3: Physics validation (if init_state provided)
             # This is now a "fallback" or "double-check" layer
@@ -1390,16 +1487,31 @@ def generate_bdi_plan(
             # KEY PRINCIPLE: VAL is the ultimate validator - if VAL says plan works, it works.
             # A plan that passes VAL is considered valid even with minor structural issues.
             # Structural validation is a heuristic; VAL's symbolic execution is ground truth.
-            if symbolic_valid and pddl_problem_path and pddl_domain_path:
-                # VAL passed = plan works (regardless of structural status)
-                overall_valid = True
-                print(f"    Overall: VALID (VAL passed, structural={struct_valid}, physics={physics_valid})")
+            if pddl_problem_path and pddl_domain_path and val_attempted:
+                # When VAL is available, success is determined by VAL.
+                overall_valid = symbolic_valid
+                print(
+                    f"    Overall: {'VALID' if overall_valid else 'INVALID'} "
+                    f"(VAL {'passed' if symbolic_valid else 'failed'}, "
+                    f"structural={struct_valid}, physics={physics_valid})"
+                )
             else:
                 # No VAL verification available - fall back to structural + physics
                 overall_valid = struct_valid and physics_valid
                 print(f"    Overall: {'VALID' if overall_valid else 'INVALID'} (no VAL, structural={struct_valid}, physics={physics_valid})")
 
             metrics['overall_valid'] = overall_valid
+
+            # Persist PDDL actions and plan nodes for offline re-verification
+            try:
+                final_actions = bdi_to_pddl_actions(plan, domain=domain)
+                metrics['pddl_actions'] = final_actions
+            except Exception:
+                metrics['pddl_actions'] = []
+            try:
+                metrics['plan_nodes'] = _serialize_plan_nodes(plan)
+            except Exception:
+                metrics['plan_nodes'] = []
 
             return plan, overall_valid, metrics
 
@@ -1436,6 +1548,146 @@ def generate_bdi_plan(
     metrics['verification_layers']['structural']['warnings'] = []
     plan = BDIPlan(goal_description=desire, nodes=[], edges=[])
     return plan, False, metrics
+
+
+def generate_bdi_only_plan(
+    beliefs: str,
+    desire: str,
+    domain: str = "blocksworld",
+    pddl_domain_path: str = None,
+) -> Tuple[BDIPlan, bool, dict]:
+    """Generate a BDI plan without verifier-driven validation or repair."""
+    start_time = time.time()
+    metrics = {
+        'generation_time': 0,
+        'verification_layers': {
+            'structural': {'valid': None, 'errors': ['Skipped - BDI mode'], 'hard_errors': [], 'warnings': []},
+            'symbolic': {'valid': None, 'errors': ['Skipped - BDI mode']},
+            'physics': {'valid': None, 'errors': ['Skipped - BDI mode']},
+        },
+        'auto_repair': {
+            'triggered': False,
+            'success': False,
+            'repairs_applied': [],
+        },
+        'val_repair': {
+            'attempts': 0,
+            'success': False,
+            'history': [],
+        },
+        'overall_valid': True,
+        'num_nodes': 0,
+        'num_edges': 0,
+        'retries': 0,
+        'execution_mode': 'BDI',
+    }
+
+    planner = BDIPlanner(auto_repair=False, domain=domain)
+    domain_context = None
+    if domain not in STANDARD_BDI_DOMAINS and pddl_domain_path:
+        domain_context = load_domain_pddl_for_prompt(pddl_domain_path)
+    generate_kwargs = {
+        'beliefs': beliefs,
+        'desire': desire,
+    }
+    if domain_context is not None:
+        generate_kwargs['domain_context'] = domain_context
+    result = planner.generate_plan(**generate_kwargs)
+    plan = result.plan
+
+    metrics['generation_time'] = time.time() - start_time
+    metrics['num_nodes'] = len(plan.nodes)
+    metrics['num_edges'] = len(plan.edges)
+    try:
+        metrics['pddl_actions'] = bdi_to_pddl_actions(plan, domain=domain)
+    except Exception:
+        metrics['pddl_actions'] = []
+    metrics['plan_nodes'] = _serialize_plan_nodes(plan)
+
+    return plan, True, metrics
+
+# ============================================================================
+# BASELINE (no BDI, no repair)
+# ============================================================================
+
+def generate_naive_plan(
+    beliefs: str,
+    desire: str,
+    pddl_problem_path: str,
+    pddl_domain_path: str,
+    domain: str = "blocksworld",
+    timeout: int = 60,
+    max_retries: int = 3,
+    instance_id: Optional[str] = None,
+) -> Tuple[List[str], bool, dict]:
+    """Generate plan using naive LLM baseline (no BDI, no repair).
+
+    Returns:
+        (pddl_actions, is_valid, metrics)
+    """
+    from bdi_llm.symbolic_verifier import PDDLSymbolicVerifier
+
+    start_time = time.time()
+    metrics = {
+        'generation_time': 0,
+        'verification_layers': {
+            'structural': {'valid': None, 'errors': ['Skipped — BASELINE mode'], 'hard_errors': [], 'warnings': []},
+            'symbolic': {'valid': False, 'errors': []},
+            'physics': {'valid': None, 'errors': ['Skipped — BASELINE mode']},
+        },
+        'auto_repair': {
+            'triggered': False,
+            'success': False,
+            'repairs_applied': [],
+        },
+        'val_repair': {
+            'attempts': 0,
+            'success': False,
+            'history': [],
+        },
+        'overall_valid': False,
+        'num_actions': 0,
+        'execution_mode': 'BASELINE',
+    }
+
+    planner = NaivePlanner(domain=domain)
+    domain_context = None
+    if domain not in STANDARD_BDI_DOMAINS:
+        domain_context = load_domain_pddl_for_prompt(pddl_domain_path)
+    pddl_actions = planner.generate_plan(
+        beliefs=beliefs,
+        desire=desire,
+        max_retries=max_retries,
+        domain_context=domain_context,
+    )
+    metrics['generation_time'] = time.time() - start_time
+    metrics['num_actions'] = len(pddl_actions)
+
+    if not pddl_actions:
+        metrics['verification_layers']['symbolic']['errors'] = [
+            'No actions generated by LLM'
+        ]
+        return pddl_actions, False, metrics
+
+    # Only VAL verification — no repair
+    try:
+        val_verifier = PDDLSymbolicVerifier()
+        symbolic_valid, symbolic_errors = val_verifier.verify_plan(
+            domain_file=pddl_domain_path,
+            problem_file=pddl_problem_path,
+            plan_actions=pddl_actions,
+            verbose=True,
+        )
+        metrics['verification_layers']['symbolic']['valid'] = symbolic_valid
+        metrics['verification_layers']['symbolic']['errors'] = symbolic_errors
+        metrics['overall_valid'] = symbolic_valid
+    except Exception as e:
+        metrics['verification_layers']['symbolic']['errors'] = [
+            f'VAL verification error: {e}'
+        ]
+
+    return pddl_actions, metrics['overall_valid'], metrics
+
 
 # ============================================================================
 # BATCH EVALUATION
@@ -1501,15 +1753,39 @@ def evaluate_single_instance(instance_file: str, domain: str) -> dict:
         domain_name = pddl_data.get('domain_name', 'blocksworld')
         domain_file = resolve_domain_file(domain_name)
 
-        plan, is_valid, metrics = generate_bdi_plan(
-            beliefs=beliefs,
-            desire=desire,
-            pddl_problem_path=instance_file,
-            pddl_domain_path=domain_file,
-            init_state=init_state,
-            domain=domain,
-            instance_id=instance_file,  # Use instance file path as unique ID
-        )
+        # Branch on execution mode
+        execution_mode = os.environ.get('AGENT_EXECUTION_MODE', 'BDI_REPAIR')
+
+        if execution_mode == 'BASELINE':
+            # --- BASELINE: direct LLM → VAL only, no BDI, no repair ---
+            pddl_actions, is_valid, metrics = generate_naive_plan(
+                beliefs=beliefs,
+                desire=desire,
+                pddl_problem_path=instance_file,
+                pddl_domain_path=domain_file,
+                domain=domain,
+                instance_id=instance_file,
+            )
+            metrics['pddl_actions'] = pddl_actions
+        elif execution_mode == 'BDI':
+            # --- BDI ablation: structured BDI generation, no verifier/repair loop ---
+            _plan, is_valid, metrics = generate_bdi_only_plan(
+                beliefs=beliefs,
+                desire=desire,
+                domain=domain,
+                pddl_domain_path=domain_file,
+            )
+        else:
+            # --- BDI_REPAIR: full BDI pipeline ---
+            plan, is_valid, metrics = generate_bdi_plan(
+                beliefs=beliefs,
+                desire=desire,
+                pddl_problem_path=instance_file,
+                pddl_domain_path=domain_file,
+                init_state=init_state,
+                domain=domain,
+                instance_id=instance_file,
+            )
 
         instance_result['bdi_metrics'] = metrics
         instance_result['success'] = is_valid
@@ -1523,6 +1799,7 @@ def evaluate_single_instance(instance_file: str, domain: str) -> dict:
 def run_batch_evaluation(
     domain: str,
     max_instances: int = None,
+    max_failures: int = None,
     resume_from: str = None,
     output_dir: str = "runs/planbench_results",
     parallel: bool = False,
@@ -1538,7 +1815,7 @@ def run_batch_evaluation(
     print(f"{'='*80}\n")
 
     # Setup
-    base_path = Path(__file__).resolve().parent.parent / "workspaces/planbench_data/plan-bench"
+    base_path = Path(__file__).resolve().parent.parent.parent / "workspaces/planbench_data/plan-bench"
     os.makedirs(output_dir, exist_ok=True)
 
     # Find instances
@@ -1554,6 +1831,9 @@ def run_batch_evaluation(
         if max_instances:
             instances = instances[:max_instances]
         print(f"Found {len(instances)} instances")
+
+    if max_failures:
+        print(f"⚡ Early-stop enabled: will pause after {max_failures} failures")
 
     checkpoint_file = f"{output_dir}/checkpoint_{domain}.json"
     effective_resume = resume_from
@@ -1696,6 +1976,21 @@ def run_batch_evaluation(
             if len(results['results']) % checkpoint_every == 0:
                 save_checkpoint_atomic(results, checkpoint_file)
 
+            # Early-stop on max_failures threshold
+            if max_failures and failed_count >= max_failures:
+                print(f"\n⚡ Early-stop: reached {failed_count} failures (threshold: {max_failures})")
+                print(f"   Saving checkpoint and failed instances for analysis...")
+                # Save list of failed instances for targeted re-run
+                failed_instances = [
+                    r['instance_file'] for r in results['results']
+                    if not r.get('success', False)
+                ]
+                failed_file = f"{output_dir}/failed_instances_{domain}.txt"
+                with open(failed_file, 'w') as ff:
+                    ff.write('\n'.join(failed_instances))
+                print(f"   Failed instances saved to: {failed_file}")
+                break
+
     # Always persist latest progress snapshot
     save_checkpoint_atomic(results, checkpoint_file)
 
@@ -1815,29 +2110,37 @@ def run_batch_evaluation(
             # End MLflow run
             mlflow.end_run()
 
+    total_count = len(results['results'])
+    early_stopped = max_failures and failed_count >= max_failures
+
     print(f"\n{'='*80}")
-    print(f"  EVALUATION COMPLETE")
+    print(f"  EVALUATION {'PAUSED (early-stop)' if early_stopped else 'COMPLETE'}")
     print(f"{'='*80}")
     print(f"\nDomain: {domain}")
-    print(f"Total instances: {len(results['results'])}")
-    print(f"\n--- Multi-Layer Verification Comparison ---")
-    print(f"Structural-only success: {structural_only_success} ({structural_only_success/len(results['results'])*100:.1f}%)")
-    print(f"Multi-layer success: {overall_success} ({overall_success/len(results['results'])*100:.1f}%)")
-    print(f"Symbolic caught: {symbolic_caught_errors} additional errors")
-    print(f"Physics caught: {physics_caught_errors} additional errors")
-    print(f"\n--- Auto-Repair Statistics ---")
-    print(f"Auto-repair triggered: {auto_repair_triggered}")
-    print(f"Auto-repair successful: {auto_repair_success}")
-    if auto_repair_triggered > 0:
-        print(f"Auto-repair success rate: {auto_repair_success/auto_repair_triggered*100:.1f}%")
-    print(f"\n--- VAL Repair Loop Statistics ---")
-    print(f"VAL repair triggered: {val_repair_triggered}")
-    print(f"VAL repair successful: {val_repair_success}")
-    print(f"VAL repair total attempts: {val_repair_total_attempts}")
-    if val_repair_triggered > 0:
-        print(f"VAL repair success rate: {val_repair_success/val_repair_triggered*100:.1f}%")
-    print(f"\nFinal success: {success_count} ({success_count/len(results['results'])*100:.1f}%)")
-    print(f"Failed: {failed_count}")
+    print(f"Total instances evaluated: {total_count}")
+
+    if total_count > 0:
+        print(f"\n--- Multi-Layer Verification Comparison ---")
+        print(f"Structural-only success: {structural_only_success} ({structural_only_success/total_count*100:.1f}%)")
+        print(f"Multi-layer success: {overall_success} ({overall_success/total_count*100:.1f}%)")
+        print(f"Symbolic caught: {symbolic_caught_errors} additional errors")
+        print(f"Physics caught: {physics_caught_errors} additional errors")
+        print(f"\n--- Auto-Repair Statistics ---")
+        print(f"Auto-repair triggered: {auto_repair_triggered}")
+        print(f"Auto-repair successful: {auto_repair_success}")
+        if auto_repair_triggered > 0:
+            print(f"Auto-repair success rate: {auto_repair_success/auto_repair_triggered*100:.1f}%")
+        print(f"\n--- VAL Repair Loop Statistics ---")
+        print(f"VAL repair triggered: {val_repair_triggered}")
+        print(f"VAL repair successful: {val_repair_success}")
+        print(f"VAL repair total attempts: {val_repair_total_attempts}")
+        if val_repair_triggered > 0:
+            print(f"VAL repair success rate: {val_repair_success/val_repair_triggered*100:.1f}%")
+        print(f"\nFinal success: {success_count} ({success_count/total_count*100:.1f}%)")
+        print(f"Failed: {failed_count}")
+    else:
+        print("\n⚠️  No instances were evaluated. Check domain path and instance files.")
+
     print(f"\nResults saved to: {output_file}")
 
     return results
@@ -1851,7 +2154,7 @@ def main():
 
     parser = argparse.ArgumentParser(description="PlanBench Full Benchmark Evaluation")
     parser.add_argument("--domain", type=str,
-                       choices=["blocksworld", "logistics", "depots"],
+                       choices=SUPPORTED_CLI_DOMAINS,
                        help="Domain to evaluate")
     parser.add_argument("--all_domains", action="store_true",
                        help="Evaluate all domains")
@@ -1869,18 +2172,21 @@ def main():
                        help="File containing list of instance paths to evaluate (one per line)")
     parser.add_argument("--checkpoint_every", type=int, default=1,
                        help="Save checkpoint every N completed instances (default: 1)")
-    parser.add_argument("--execution_mode", type=str, default="FULL_VERIFIED",
-                       choices=["NAIVE", "BDI_ONLY", "FULL_VERIFIED"],
-                       help="Ablation execution mode (default: FULL_VERIFIED)")
+    parser.add_argument("--max_failures", type=int, default=None,
+                       help="Stop after accumulating N failures (for iterative fix workflow)")
+    parser.add_argument("--execution_mode", type=str, default="BDI_REPAIR",
+                       choices=["BASELINE", "BDI", "BDI_REPAIR"],
+                       help="Ablation execution mode (default: BDI_REPAIR)")
 
     args = parser.parse_args()
 
-    # Check API credentials (accept OpenAI, Anthropic, or Google credentials)
+    # Check API credentials (accept OpenAI, Anthropic, Google, or DashScope credentials)
     if (
         not os.environ.get("OPENAI_API_KEY")
         and not os.environ.get("ANTHROPIC_API_KEY")
         and not os.environ.get("GOOGLE_API_KEY")
         and not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+        and not os.environ.get("DASHSCOPE_API_KEY")
     ):
         print("❌ ERROR: No API credential set")
         print("   export OPENAI_API_KEY=your-key")
@@ -1908,6 +2214,7 @@ def main():
         results = run_batch_evaluation(
             domain=domain,
             max_instances=args.max_instances,
+            max_failures=args.max_failures,
             resume_from=args.resume,
             output_dir=args.output_dir,
             parallel=args.parallel,

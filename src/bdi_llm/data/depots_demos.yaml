@@ -1,0 +1,159 @@
+demos:
+# Demo 1: Single depot — lift crate, load onto truck, drive, unload, drop at distributor
+- beliefs: "DEPOTS DOMAIN\n\n=== PLACES ===\ndepot0: hoist0(available), pallet0(clear after lifting), truck0\ndistributor0: hoist1(available), pallet1(occupied by crate1)\n\n=== OBJECTS ===\n| Object | Type | Location | On/In | Status |\n|--------|------|----------|-------|--------|\n| crate0 | crate | depot0 | pallet0 | clear |\n| crate1 | crate | distributor0 | pallet1 | clear |\n| hoist0 | hoist | depot0 | - | available |\n| hoist1 | hoist | distributor0 | - | available |\n| truck0 | truck | depot0 | - | empty |\n| pallet0 | pallet | depot0 | - | occupied(crate0) |\n| pallet1 | pallet | distributor0 | - | occupied(crate1) |"
+  desire: "Goal: on(crate0, crate1) at distributor0\n\nMove crate0 from depot0 to distributor0 and stack it on crate1."
+  plan:
+    goal_description: "Transport crate0 from depot0 to distributor0, stack on crate1"
+    nodes:
+    - id: s1
+      action_type: lift
+      params:
+        hoist: hoist0
+        crate: crate0
+        surface: pallet0
+        place: depot0
+      description: "Lift crate0 off pallet0 using hoist0 at depot0. Pre: hoist0 available ✓, crate0 on pallet0 ✓, crate0 clear ✓, all at depot0 ✓. Post: hoist0 LIFTING crate0, pallet0 CLEAR"
+    - id: s2
+      action_type: load
+      params:
+        hoist: hoist0
+        crate: crate0
+        truck: truck0
+        place: depot0
+      description: "Load crate0 into truck0 using hoist0 at depot0. Pre: hoist0 lifting crate0 ✓, truck0 at depot0 ✓. Post: crate0 IN truck0, hoist0 AVAILABLE"
+    - id: s3
+      action_type: drive
+      params:
+        truck: truck0
+        from: depot0
+        to: distributor0
+      description: "Drive truck0 from depot0 to distributor0. Pre: truck0 at depot0 ✓. Post: truck0 at distributor0"
+    - id: s4
+      action_type: unload
+      params:
+        hoist: hoist1
+        crate: crate0
+        truck: truck0
+        place: distributor0
+      description: "Unload crate0 from truck0 using hoist1 at distributor0. Pre: hoist1 available ✓, crate0 in truck0 ✓, truck0 at distributor0 ✓, hoist1 at distributor0 ✓. Post: hoist1 LIFTING crate0"
+    - id: s5
+      action_type: drop
+      params:
+        hoist: hoist1
+        crate: crate0
+        surface: crate1
+        place: distributor0
+      description: "Drop crate0 onto crate1 using hoist1 at distributor0. Pre: hoist1 lifting crate0 ✓, crate1 clear ✓. Post: on(crate0, crate1) — GOAL ACHIEVED"
+    edges:
+    - source: s1
+      target: s2
+    - source: s2
+      target: s3
+    - source: s3
+      target: s4
+    - source: s4
+      target: s5
+
+# Demo 2: Two crates, two depots — requires careful truck position tracking
+- beliefs: "DEPOTS DOMAIN\n\n=== PLACES ===\ndepot0: hoist0(available), pallet0(occupied by crate0)\ndepot1: hoist1(available), pallet1(occupied by crate1)\ndistributor0: hoist2(available), pallet2(clear)\n\n=== OBJECTS ===\n| Object | Type | Location | On/In | Status |\n|--------|------|----------|-------|--------|\n| crate0 | crate | depot0 | pallet0 | clear |\n| crate1 | crate | depot1 | pallet1 | clear |\n| hoist0 | hoist | depot0 | - | available |\n| hoist1 | hoist | depot1 | - | available |\n| hoist2 | hoist | distributor0 | - | available |\n| truck0 | truck | depot0 | - | empty |\n| pallet0 | pallet | depot0 | - | occupied(crate0) |\n| pallet1 | pallet | depot1 | - | occupied(crate1) |\n| pallet2 | pallet | distributor0 | - | clear |"
+  desire: "Goal: on(crate0, pallet2) AND on(crate1, crate0) at distributor0\n\nTransport both crates to distributor0. Stack crate0 on pallet2, then crate1 on crate0."
+  plan:
+    goal_description: "Transport crate0 and crate1 to distributor0, stack crate1 on crate0 on pallet2"
+    nodes:
+    - id: s1
+      action_type: lift
+      params:
+        hoist: hoist0
+        crate: crate0
+        surface: pallet0
+        place: depot0
+      description: "Lift crate0 off pallet0 at depot0. Post: hoist0 LIFTING crate0"
+    - id: s2
+      action_type: load
+      params:
+        hoist: hoist0
+        crate: crate0
+        truck: truck0
+        place: depot0
+      description: "Load crate0 into truck0 at depot0. Post: crate0 IN truck0, hoist0 AVAILABLE"
+    - id: s3
+      action_type: drive
+      params:
+        truck: truck0
+        from: depot0
+        to: depot1
+      description: "Drive truck0 depot0→depot1. ⚠️ truck0 NOW at depot1"
+    - id: s4
+      action_type: lift
+      params:
+        hoist: hoist1
+        crate: crate1
+        surface: pallet1
+        place: depot1
+      description: "Lift crate1 off pallet1 at depot1. Post: hoist1 LIFTING crate1"
+    - id: s5
+      action_type: load
+      params:
+        hoist: hoist1
+        crate: crate1
+        truck: truck0
+        place: depot1
+      description: "Load crate1 into truck0 at depot1. Pre: truck0 at depot1 ✓ (after s3). Post: crate1 IN truck0"
+    - id: s6
+      action_type: drive
+      params:
+        truck: truck0
+        from: depot1
+        to: distributor0
+      description: "Drive truck0 depot1→distributor0. ⚠️ truck0 NOW at distributor0"
+    - id: s7
+      action_type: unload
+      params:
+        hoist: hoist2
+        crate: crate0
+        truck: truck0
+        place: distributor0
+      description: "Unload crate0 from truck0 at distributor0. Post: hoist2 LIFTING crate0"
+    - id: s8
+      action_type: drop
+      params:
+        hoist: hoist2
+        crate: crate0
+        surface: pallet2
+        place: distributor0
+      description: "Drop crate0 onto pallet2 at distributor0. Post: on(crate0, pallet2), hoist2 AVAILABLE, pallet2 occupied"
+    - id: s9
+      action_type: unload
+      params:
+        hoist: hoist2
+        crate: crate1
+        truck: truck0
+        place: distributor0
+      description: "Unload crate1 from truck0. Pre: hoist2 available ✓ (after s8). Post: hoist2 LIFTING crate1"
+    - id: s10
+      action_type: drop
+      params:
+        hoist: hoist2
+        crate: crate1
+        surface: crate0
+        place: distributor0
+      description: "Drop crate1 onto crate0 at distributor0. Pre: crate0 clear ✓. Post: on(crate1, crate0) — GOAL ACHIEVED"
+    edges:
+    - source: s1
+      target: s2
+    - source: s2
+      target: s3
+    - source: s3
+      target: s4
+    - source: s4
+      target: s5
+    - source: s5
+      target: s6
+    - source: s6
+      target: s7
+    - source: s7
+      target: s8
+    - source: s8
+      target: s9
+    - source: s9
+      target: s10

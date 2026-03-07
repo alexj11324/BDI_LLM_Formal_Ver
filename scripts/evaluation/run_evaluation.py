@@ -30,19 +30,19 @@ load_dotenv()
 from bdi_llm.schemas import BDIPlan, ActionNode, DependencyEdge
 from bdi_llm.verifier import PlanVerifier
 
-EXECUTION_MODES = {"NAIVE", "BDI_ONLY", "FULL_VERIFIED"}
+EXECUTION_MODES = {"BASELINE", "BDI", "BDI_REPAIR"}
 ABLATION_OUTPUT_DIRS = {
-    "NAIVE": "ablation_NAIVE",
-    "BDI_ONLY": "ablation_BDI_ONLY",
-    "FULL_VERIFIED": "ablation_FULL_VERIFIED",
+    "BASELINE": "ablation_BASELINE",
+    "BDI": "ablation_BDI",
+    "BDI_REPAIR": "ablation_BDI_REPAIR",
 }
 
 def get_execution_mode() -> str:
     """Read and validate AGENT_EXECUTION_MODE."""
-    mode = os.environ.get("AGENT_EXECUTION_MODE", "FULL_VERIFIED").strip().upper()
+    mode = os.environ.get("AGENT_EXECUTION_MODE", "BDI_REPAIR").strip().upper()
     if mode not in EXECUTION_MODES:
-        print(f"WARNING: Unsupported AGENT_EXECUTION_MODE='{mode}', falling back to FULL_VERIFIED")
-        mode = "FULL_VERIFIED"
+        print(f"WARNING: Unsupported AGENT_EXECUTION_MODE='{mode}', falling back to BDI_REPAIR")
+        mode = "BDI_REPAIR"
     return mode
 
 def ensure_ablation_output_dirs():
@@ -255,7 +255,7 @@ def run_llm_demo():
     }
 
     try:
-        if mode == "NAIVE":
+        if mode == "BASELINE":
             import dspy
             from bdi_llm.planner import configure_dspy
 
@@ -268,11 +268,11 @@ def run_llm_demo():
             plan_text = getattr(pred, "plan_description", "")
             result_payload["success"] = bool(plan_text)
             result_payload["details"] = {
-                "path": "naive_text_only",
+                "path": "baseline_text_only",
                 "plan_description": plan_text,
             }
 
-        elif mode == "BDI_ONLY":
+        elif mode == "BDI":
             from bdi_llm.planner import BDIPlanner
 
             planner = BDIPlanner(auto_repair=False)
@@ -280,7 +280,7 @@ def run_llm_demo():
             plan = response.plan
             result_payload["success"] = True
             result_payload["details"] = {
-                "path": "bdi_generate_only_no_verifier",
+                "path": "bdi_generate_only",
                 "num_nodes": len(plan.nodes),
                 "num_edges": len(plan.edges),
                 "actions": [
@@ -298,7 +298,7 @@ def run_llm_demo():
                 ],
             }
 
-        else:  # FULL_VERIFIED
+        else:  # BDI_REPAIR
             from bdi_llm.planner import BDIPlanner
 
             planner = BDIPlanner(auto_repair=True)
@@ -308,7 +308,7 @@ def run_llm_demo():
             is_valid, errors = PlanVerifier.verify(G)
             result_payload["success"] = is_valid
             result_payload["details"] = {
-                "path": "bdi_forward_with_verifier",
+                "path": "bdi_repair_with_verifier",
                 "is_valid": is_valid,
                 "errors": errors,
                 "execution_order": PlanVerifier.topological_sort(G) if is_valid else [],
@@ -356,7 +356,7 @@ def run_benchmark():
         return False
 
     try:
-        if mode == "NAIVE":
+        if mode == "BASELINE":
             import dspy
             from bdi_llm.planner import configure_dspy
             integration = load_integration_module()
@@ -390,7 +390,7 @@ def run_benchmark():
             print(f"Saved benchmark results to {output_file}")
             return True
 
-        if mode == "BDI_ONLY":
+        if mode == "BDI":
             from bdi_llm.planner import BDIPlanner
             integration = load_integration_module()
             test_scenarios = integration.TEST_SCENARIOS

@@ -1,0 +1,87 @@
+demos:
+# Demo 1: Simple 2-block rearrangement — on(a,b) → on(a,c)
+- beliefs: "BLOCKSWORLD DOMAIN\n\n=== CURRENT STATE ===\non(a, b), ontable(b), ontable(c), clear(a), clear(c), handempty\n\nBlock positions:\n  a: on b\n  b: on table (a on top)\n  c: on table (clear)\nHand: empty"
+  desire: "Goal: on(a, c)\n\nMove block a from on top of b to on top of c."
+  plan:
+    goal_description: "Move block a from b to c: on(a, c)"
+    nodes:
+    - id: s1
+      action_type: unstack
+      params:
+        block: a
+        target: b
+      description: "Unstack a from b. Pre: a clear ✓, a on b ✓, handempty ✓. Post: holding(a), clear(b)"
+    - id: s2
+      action_type: put-down
+      params:
+        block: a
+      description: "Put down a on table. Pre: holding(a) ✓. Post: ontable(a), clear(a), handempty"
+    - id: s3
+      action_type: pick-up
+      params:
+        block: a
+      description: "Pick up a from table. Pre: a clear ✓, ontable(a) ✓, handempty ✓. Post: holding(a)"
+    - id: s4
+      action_type: stack
+      params:
+        block: a
+        target: c
+      description: "Stack a on c. Pre: holding(a) ✓, c clear ✓. Post: on(a,c), handempty — GOAL ACHIEVED"
+    edges:
+    - source: s1
+      target: s2
+    - source: s2
+      target: s3
+    - source: s3
+      target: s4
+
+# Demo 2: 3-block tower — build on(a,b), on(b,c) from scattered state
+- beliefs: "BLOCKSWORLD DOMAIN\n\n=== CURRENT STATE ===\non(c, a), ontable(a), ontable(b), clear(c), clear(b), handempty\n\nBlock positions:\n  c: on a (clear)\n  a: on table (c on top, NOT clear)\n  b: on table (clear)\nHand: empty"
+  desire: "Goal: on(a, b) AND on(b, c)\n\nBuild tower: a on b, b on c. Final: c on table, b on c, a on b."
+  plan:
+    goal_description: "Build tower on(a,b), on(b,c) from on(c,a), ontable(a), ontable(b)"
+    nodes:
+    - id: s1
+      action_type: unstack
+      params:
+        block: c
+        target: a
+      description: "Unstack c from a. Pre: c clear ✓, c on a ✓, handempty ✓. Post: holding(c), clear(a)"
+    - id: s2
+      action_type: put-down
+      params:
+        block: c
+      description: "Put down c on table. Pre: holding(c) ✓. Post: ontable(c), clear(c), handempty"
+    - id: s3
+      action_type: pick-up
+      params:
+        block: b
+      description: "Pick up b from table. Pre: b clear ✓, ontable(b) ✓, handempty ✓. Post: holding(b)"
+    - id: s4
+      action_type: stack
+      params:
+        block: b
+        target: c
+      description: "Stack b on c. Pre: holding(b) ✓, c clear ✓. Post: on(b,c), handempty"
+    - id: s5
+      action_type: pick-up
+      params:
+        block: a
+      description: "Pick up a from table. Pre: a clear ✓, ontable(a) ✓, handempty ✓. Post: holding(a)"
+    - id: s6
+      action_type: stack
+      params:
+        block: a
+        target: b
+      description: "Stack a on b. Pre: holding(a) ✓, b clear ✓. Post: on(a,b), handempty — GOAL ACHIEVED"
+    edges:
+    - source: s1
+      target: s2
+    - source: s2
+      target: s3
+    - source: s3
+      target: s4
+    - source: s4
+      target: s5
+    - source: s5
+      target: s6

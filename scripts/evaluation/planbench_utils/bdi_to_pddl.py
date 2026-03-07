@@ -84,6 +84,11 @@ def bdi_to_pddl_actions(plan: BDIPlan, domain: str = "blocksworld") -> List[str]
         if not action_node:
             continue
 
+        raw_action = action_node.action_type.strip()
+        if raw_action.startswith("(") and raw_action.endswith(")"):
+            pddl_actions.append(" ".join(raw_action.split()))
+            continue
+
         canon = _normalise(action_node.action_type)
         params = action_node.params
         before_len = len(pddl_actions)

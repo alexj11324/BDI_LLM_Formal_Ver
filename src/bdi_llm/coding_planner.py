@@ -96,7 +96,8 @@ class CodingBDIPlanner(BDIPlanner):
         super().__init__(auto_repair=auto_repair, domain="coding")
 
         # Override the signature with our coding-specific one
-        self.generate_plan = dspy.ChainOfThought(GeneratePlanCoding)
+        self._generate_plan_predictor = dspy.ChainOfThought(GeneratePlanCoding)
+        self._uses_generic_signature = False
 
         # Add the code implementation module
         self.implement_change = dspy.ChainOfThought(ImplementCodeChange)

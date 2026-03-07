@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from src.bdi_llm.symbolic_verifier import PDDLSymbolicVerifier
+from src.bdi_llm.dynamic_replanner.belief_base import BeliefBase
 
 
 @dataclass
@@ -12,6 +13,9 @@ class ExecutionResult:
     executed_actions: list[str]
     failed_action: str | None
     failure_reason: list[str] | None
+    current_state: str | None = None
+    current_state_props: set[str] | None = None
+    _actions_schema: dict | None = None
 
 
 class PlanExecutor:
@@ -41,12 +45,18 @@ class PlanExecutor:
         Returns:
             ExecutionResult containing what worked and exactly what failed.
         """
+        # Initialize state tracker
+        belief_base = BeliefBase.from_pddl(self.domain_file, self.problem_file)
+
         if not plan_actions:
             return ExecutionResult(
                 success=False,
                 executed_actions=[],
                 failed_action=None,
                 failure_reason=["Empty plan - no actions to execute"],
+                current_state=belief_base.to_natural_language(),
+                current_state_props=belief_base.propositions,
+                _actions_schema=belief_base._actions
             )
 
         executed = []
@@ -68,6 +78,8 @@ class PlanExecutor:
 
             if is_valid:
                 executed.append(action)
+                # update state tracking
+                belief_base.apply_action(action)
             else:
                 # VAL caught a real failure at this step (precondition violation)
                 return ExecutionResult(
@@ -75,6 +87,9 @@ class PlanExecutor:
                     executed_actions=executed,
                     failed_action=action,
                     failure_reason=errors,
+                    current_state=belief_base.to_natural_language(),
+                    current_state_props=set(belief_base.propositions),
+                    _actions_schema=belief_base._actions
                 )
 
         # All steps succeeded AND goal is satisfied (check_goal=True on last step)
@@ -83,4 +98,7 @@ class PlanExecutor:
             executed_actions=executed,
             failed_action=None,
             failure_reason=None,
+            current_state=belief_base.to_natural_language(),
+            current_state_props=set(belief_base.propositions),
+            _actions_schema=belief_base._actions
         )

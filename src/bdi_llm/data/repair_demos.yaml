@@ -1,0 +1,113 @@
+demos:
+# Demo 1: Unsatisfied precondition — truck not at package location
+# VAL error: truck t0 is not at the location where package p0 is.
+# Fix: insert drive-truck action BEFORE the load-truck action.
+- beliefs: "LOGISTICS DOMAIN\n\n=== WORLD STRUCTURE ===\nCities: c0\n  c0: AIRPORT(s)=['l0-2'], other locations=['l0-0', 'l0-1']\n\n=== VEHICLE POSITIONS ===\nTrucks:\n  t0 is at l0-0 (c0)\n\n=== PACKAGE POSITIONS ===\n  p0 is at l0-1 (c0)"
+  desire: "Goal: deliver p0 to l0-2 (airport in c0)"
+  previous_plan: "(load-truck p0 t0 l0-1)\n(drive-truck t0 l0-1 l0-2 c0)\n(unload-truck p0 t0 l0-2)"
+  val_errors: "Checking plan: FAILED\nError: Unsatisfied precondition in action: (load-truck p0 t0 l0-1)\n  Required: (at t0 l0-1) — but t0 is at l0-0, NOT l0-1.\nVAL Repair Advice: Set (at t0 l0-1) to true before this action."
+  plan:
+    goal_description: "Deliver p0 to l0-2 — REPAIRED: added drive-truck to move t0 to p0's location first"
+    nodes:
+    - id: s1
+      action_type: drive-truck
+      params:
+        truck: t0
+        from: l0-0
+        to: l0-1
+        city: c0
+      description: "REPAIR INSERT: Drive t0 from l0-0 to l0-1 so t0 is at p0's location. Fixes: (at t0 l0-1)"
+    - id: s2
+      action_type: load-truck
+      params:
+        obj: p0
+        truck: t0
+        loc: l0-1
+      description: "Load p0 onto t0 at l0-1. Now valid: t0 at l0-1 ✓, p0 at l0-1 ✓"
+    - id: s3
+      action_type: drive-truck
+      params:
+        truck: t0
+        from: l0-1
+        to: l0-2
+        city: c0
+      description: "Drive t0 to destination l0-2"
+    - id: s4
+      action_type: unload-truck
+      params:
+        obj: p0
+        truck: t0
+        loc: l0-2
+      description: "Unload p0 at l0-2 — GOAL ACHIEVED"
+    edges:
+    - source: s1
+      target: s2
+    - source: s2
+      target: s3
+    - source: s3
+      target: s4
+
+# Demo 2: Goal not satisfied — plan executes correctly but misses a delivery
+# VAL error: all actions valid but final state doesn't satisfy goal (at p1 l1-0).
+# Fix: append missing delivery actions at the end.
+- beliefs: "LOGISTICS DOMAIN\n\n=== WORLD STRUCTURE ===\nCities: c0, c1\n  c0: AIRPORT(s)=['l0-0'], other locations=['l0-1']\n  c1: AIRPORT(s)=['l1-0'], other locations=['l1-1']\n\n=== VEHICLE POSITIONS ===\nAirplanes:\n  a0 is at l0-0 (AIRPORT, c0)\nTrucks:\n  t0 is at l0-1 (c0)\n  t1 is at l1-1 (c1)\n\n=== PACKAGE POSITIONS ===\n  p0 is at l0-1 (c0)\n  p1 is at l0-0 (c0)"
+  desire: "Goal: deliver p0 to l0-0 AND p1 to l1-0\n\np0 stays in c0 (truck only). p1 must go c0→c1 (needs airplane)."
+  previous_plan: "(load-truck p0 t0 l0-1)\n(drive-truck t0 l0-1 l0-0 c0)\n(unload-truck p0 t0 l0-0)"
+  val_errors: "Checking plan: FAILED\nPlan executed successfully but goal NOT satisfied.\nUnsatisfied goal predicates:\n  (at p1 l1-0) — p1 is still at l0-0, was never moved.\nVAL Repair Advice: Add actions to transport p1 from l0-0 (c0) to l1-0 (c1). Since l1-0 is in a different city, use airplane."
+  plan:
+    goal_description: "Deliver p0→l0-0 AND p1→l1-0 — REPAIRED: kept original p0 delivery, added p1 cross-city transport"
+    nodes:
+    - id: s1
+      action_type: load-truck
+      params:
+        obj: p0
+        truck: t0
+        loc: l0-1
+      description: "Load p0 onto t0 at l0-1 (original, correct)"
+    - id: s2
+      action_type: drive-truck
+      params:
+        truck: t0
+        from: l0-1
+        to: l0-0
+        city: c0
+      description: "Drive t0 to airport l0-0 (original, correct)"
+    - id: s3
+      action_type: unload-truck
+      params:
+        obj: p0
+        truck: t0
+        loc: l0-0
+      description: "Unload p0 at l0-0 — p0 goal achieved"
+    - id: s4
+      action_type: load-airplane
+      params:
+        obj: p1
+        airplane: a0
+        loc: l0-0
+      description: "REPAIR APPEND: Load p1 onto a0 at airport l0-0. Pre: p1 at l0-0 ✓, a0 at l0-0 ✓"
+    - id: s5
+      action_type: fly-airplane
+      params:
+        airplane: a0
+        from: l0-0
+        to: l1-0
+      description: "REPAIR APPEND: Fly a0 from l0-0 to l1-0 (both AIRPORTS ✓). a0 now at l1-0"
+    - id: s6
+      action_type: unload-airplane
+      params:
+        obj: p1
+        airplane: a0
+        loc: l1-0
+      description: "REPAIR APPEND: Unload p1 at l1-0 — p1 goal achieved. ALL GOALS SATISFIED"
+    edges:
+    - source: s1
+      target: s2
+    - source: s2
+      target: s3
+    - source: s3
+      target: s4
+    - source: s4
+      target: s5
+    - source: s5
+      target: s6

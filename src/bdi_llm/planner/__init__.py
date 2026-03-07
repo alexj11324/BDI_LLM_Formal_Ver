@@ -6,6 +6,7 @@ and ``from src.bdi_llm.planner import configure_dspy`` continue to work.
 
 from .bdi_engine import BDIPlanner  # noqa: F401
 from .dspy_config import configure_dspy  # noqa: F401
+from .naive_planner import NaivePlanner  # noqa: F401
 
 # Also re-export private prompt constants for backward compatibility with
 # coding_planner.py and other modules that import them from `.planner`.
