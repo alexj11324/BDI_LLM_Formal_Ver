@@ -21,11 +21,9 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install pytest pytest-asyncio
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-        
-        # Install explicit dependencies if missing from requirements.txt
-        pip install dspy-ai networkx pydantic python-dotenv pyperplan
+        python -m pip install pytest pytest-asyncio
+        if [ -f requirements.txt ]; then python -m pip install -r requirements.txt; fi
+        python -m pip install -e .
         
         # Install VAL (PlanBench tools) dependencies if needed
         # (Assuming VAL binary is checked in or handled by config)
@@ -36,4 +34,4 @@ jobs:
         # and online tests are skipped
         PYTHONPATH: src
       run: |
-        pytest -v tests/
+        python -m pytest -v tests/
