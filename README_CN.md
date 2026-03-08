@@ -119,6 +119,28 @@ BDI_LLM_Formal_Ver/
 
 ---
 
+
+## 最新跑分结果快照
+
+当前 `codex/generic-pddl-domain` 分支使用 `run_planbench_full.py`、CPA OpenAI-compatible 代理（`gpt-5(low)`）以及 `workers=500` 的最新结果如下。
+
+**阶段定义**
+- `baseline`：严格的 direct action-generation baseline（不是旧版共享 BDI 生成链的 `NAIVE`）
+- `bdi`：初始 BDI 检查点，不做 repair
+- `bdi-repair`：完整 verify-repair 闭环
+
+| Domain | `baseline` | `bdi` | `bdi-repair` |
+| --- | --- | --- | --- |
+| `blocksworld` | `1103/1103 (100.0%)` | `1103/1103 (100.0%)` | `1103/1103 (100.0%)` |
+| `logistics` | `0/572 (0.0%)` | `557/572 (97.4%)` | `572/572 (100.0%)` |
+| `depots` | `498/501 (99.4%)` | `478/501 (95.4%)` | `501/501 (100.0%)` |
+| `obfuscated_deceptive_logistics` | `546/572 (95.5%)` | `546/572 (95.5%)` | `572/572 (100.0%)` |
+| `obfuscated_randomized_logistics` | `547/572 (95.6%)` | `536/572 (93.7%)` | `572/572 (100.0%)` |
+
+**核心结论**：严格 direct `baseline` 在 logistics 上几乎不会，但 BDI scaffold 已经能覆盖大多数样本，而 `bdi-repair` 可以把剩余 hard cases 全部补齐到 100%。
+
+---
+
 ## 操作常用脚本矩阵
 
 你可以使用提供的独立脚本来运行不同细分领域的框架控制体：
@@ -130,7 +152,7 @@ BDI_LLM_Formal_Ver/
 | `python scripts/evaluation/run_verification_only.py` | 纯净的线下校验模式。用以断开网络连接专门检查给定的静态输出能否过审 |
 | `python src/interfaces/mcp_server.py` | 把该工作流作为一个守护进程端口暴露出基于 MCP 路由的智能服务 |
 
-*支持向部分跑分命令附加 `--execution_mode FULL_VERIFIED` 来触发完整的三层防伪机制，或是采用 `--execution_mode NAIVE` 开启纯野生大模型幻觉率对比测算。*
+*支持向部分跑分命令附加 `--execution_mode bdi-repair` 来运行完整的 baseline → BDI → repair 流水线，使用 `--execution_mode bdi` 停在初始 BDI 检查点，或使用 `--execution_mode baseline` 运行 direct action generation baseline。*
 
 ---
 
