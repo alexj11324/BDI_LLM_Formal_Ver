@@ -148,7 +148,7 @@ You must provide *at least one* LLM provider key to use the DSPy planner.
 
 ## Latest Benchmark Snapshot
 
-Latest branch snapshot on `codex/generic-pddl-domain` using `run_planbench_full.py`, CPA OpenAI-compatible proxy (`gpt-5(low)`), and `workers=500`.
+Latest mainline snapshot on `planner-main` using `run_planbench_full.py`, CPA OpenAI-compatible proxy (`gpt-5(low)`), and `workers=500`.
 
 **Stage semantics**
 - `baseline`: strict direct action-generation baseline (not the old shared-BDI `NAIVE` ablation)

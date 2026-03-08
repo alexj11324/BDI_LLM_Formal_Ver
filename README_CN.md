@@ -122,7 +122,7 @@ BDI_LLM_Formal_Ver/
 
 ## 最新跑分结果快照
 
-当前 `codex/generic-pddl-domain` 分支使用 `run_planbench_full.py`、CPA OpenAI-compatible 代理（`gpt-5(low)`）以及 `workers=500` 的最新结果如下。
+当前主线 `planner-main` 使用 `run_planbench_full.py`、CPA OpenAI-compatible 代理（`gpt-5(low)`）以及 `workers=500` 的最新结果如下。
 
 **阶段定义**
 - `baseline`：严格的 direct action-generation baseline（不是旧版共享 BDI 生成链的 `NAIVE`）
