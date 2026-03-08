@@ -145,6 +145,28 @@ You must provide *at least one* LLM provider key to use the DSPy planner.
 
 ---
 
+
+## Latest Benchmark Snapshot
+
+Latest branch snapshot on `codex/generic-pddl-domain` using `run_planbench_full.py`, CPA OpenAI-compatible proxy (`gpt-5(low)`), and `workers=500`.
+
+**Stage semantics**
+- `baseline`: strict direct action-generation baseline (not the old shared-BDI `NAIVE` ablation)
+- `bdi`: initial BDI checkpoint without repair
+- `bdi-repair`: full verify-repair pipeline
+
+| Domain | `baseline` | `bdi` | `bdi-repair` |
+| --- | --- | --- | --- |
+| `blocksworld` | `1103/1103 (100.0%)` | `1103/1103 (100.0%)` | `1103/1103 (100.0%)` |
+| `logistics` | `0/572 (0.0%)` | `557/572 (97.4%)` | `572/572 (100.0%)` |
+| `depots` | `498/501 (99.4%)` | `478/501 (95.4%)` | `501/501 (100.0%)` |
+| `obfuscated_deceptive_logistics` | `546/572 (95.5%)` | `546/572 (95.5%)` | `572/572 (100.0%)` |
+| `obfuscated_randomized_logistics` | `547/572 (95.6%)` | `536/572 (93.7%)` | `572/572 (100.0%)` |
+
+**Key takeaway**: the strict direct `baseline` can fail badly on logistics, while the BDI scaffold recovers most of the domain and the verify-repair loop closes the remaining hard cases to 100%.
+
+---
+
 ## Available Scripts
 
 | Command | Description |
@@ -154,7 +176,7 @@ You must provide *at least one* LLM provider key to use the DSPy planner.
 | `python scripts/evaluation/run_verification_only.py` | Run pure ground-truth validation offline (no LLMs pinged) |
 | `python src/interfaces/mcp_server.py` | Launch the server as a Model Context Protocol endpoint |
 
-*Pass `--execution_mode FULL_VERIFIED` to benchmark scripts to trigger the full 3-layer architecture, or `--execution_mode NAIVE` for plain LLM un-verified generation.*
+*Pass `--execution_mode bdi-repair` to run the full baseline → BDI → repair pipeline, `--execution_mode bdi` to stop after the initial BDI checkpoint, or `--execution_mode baseline` for the direct action-generation baseline.*
 
 ---
 
