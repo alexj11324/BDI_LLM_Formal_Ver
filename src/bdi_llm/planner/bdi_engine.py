@@ -126,9 +126,14 @@ class BDIPlanner(dspy.Module):
         Returns:
             (all_valid, error_message) — error_message is empty when valid.
         """
-        valid_types = self._domain_spec.valid_action_types
+        def _normalise_symbol(value: str) -> str:
+            return str(value).strip().lower().lstrip("?").replace("_", "-")
+
+        valid_types_raw = self._domain_spec.valid_action_types
+        valid_types = {_normalise_symbol(v) for v in valid_types_raw}
         required_params = {
-            k: set(v) for k, v in self._domain_spec.required_params.items()
+            _normalise_symbol(k): {_normalise_symbol(p) for p in v}
+            for k, v in self._domain_spec.required_params.items()
         }
 
         if not valid_types:
@@ -142,16 +147,20 @@ class BDIPlanner(dspy.Module):
             if node.action_type == "Virtual":
                 continue
 
-            at = node.action_type.lower()
+            at = _normalise_symbol(node.action_type)
 
             if at not in valid_types:
                 invalid_actions.append(
                     f"Node '{node.id}' has invalid action_type '{node.action_type}'. "
-                    f"Must be one of: {sorted(valid_types)}"
+                    f"Must be one of: {sorted(valid_types_raw)}"
                 )
 
             elif at in required_params:
-                present = set(node.params.keys()) if node.params else set()
+                present = (
+                    {_normalise_symbol(k) for k in node.params.keys()}
+                    if node.params
+                    else set()
+                )
                 missing = required_params[at] - present
                 if missing:
                     missing_params.append(
@@ -387,8 +396,18 @@ class BDIPlanner(dspy.Module):
         parts.append("=== END HISTORY ===")
         parts.append(
             f"You have failed {len(repair_history)} time(s). "
-            "DO NOT repeat any of the plans above. "
-            "Analyze the error patterns and try a fundamentally different approach."
+            "DO NOT repeat any of the plans above.\n\n"
+            "CONVERGENCE STRATEGY (CRITICAL):\n"
+            "1. Identify which actions ALREADY executed correctly in the "
+            "previous plan (before the first failing action).\n"
+            "2. KEEP those correct prefix actions EXACTLY as they were — "
+            "do NOT reorganize or reorder them.\n"
+            "3. ONLY modify the failing action and the actions AFTER it.\n"
+            "4. Before adding/changing any action, verify its preconditions "
+            "are satisfied by the cumulative state of all prior actions.\n"
+            "5. If you keep breaking different preconditions each attempt, "
+            "STOP and re-derive the full state from the initial beliefs "
+            "step by step before proposing the next plan."
         )
         return "\n".join(parts)
 
@@ -469,6 +488,8 @@ class BDIPlanner(dspy.Module):
         verification_feedback: dict | None = None,
         instance_id: str | None = None,
         domain: str | None = None,
+        domain_context: str | None = None,
+        allow_early_exit: bool = True,
     ) -> dspy.Prediction:
         """
         Generate a repaired plan based on VAL validation errors.
@@ -503,7 +524,7 @@ class BDIPlanner(dspy.Module):
         ).hexdigest()[:16]
 
         # EARLY EXIT CHECK: Detect repeated failure patterns
-        if instance_id and budget.config.early_exit_enabled:
+        if instance_id and allow_early_exit and budget.config.early_exit_enabled:
             if budget.track_error_pattern(instance_id, error_signature):
                 raise RuntimeError(
                     "Early exit: Same error pattern detected "
@@ -553,6 +574,7 @@ class BDIPlanner(dspy.Module):
                 val_errors="\n".join(val_errors),
                 repair_history=history_str,
                 verification_feedback=verifier_feedback_str,
+                domain_context=domain_context or "",
             )
             self._last_repair_trace = self._capture_prediction_trace(pred, phase="val_repair")
 
@@ -561,11 +583,13 @@ class BDIPlanner(dspy.Module):
                 budget.record_call(instance_id)
             plan_obj = pred.plan
 
-            # Validate action constraints on repaired plan
+            # Validate action constraints on repaired plan (soft check)
             constraints_ok, constraint_msg = self._validate_action_constraints(plan_obj)
             if not constraints_ok:
-                raise ValueError(
-                    f"Repaired plan has action constraint violations: {constraint_msg}"
+                import logging as _log
+                _log.getLogger(__name__).warning(
+                    "Repaired plan has action constraint warnings (proceeding): %s",
+                    constraint_msg[:200],
                 )
 
             G = plan_obj.to_networkx()

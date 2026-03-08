@@ -71,7 +71,7 @@ def configure_dspy():
                 reasoning_effort=Config.REASONING_EFFORT,
                 max_tokens=16000,
                 timeout=Config.TIMEOUT,
-                num_retries=2,
+                num_retries=10,
                 use_chat_completions=True,  # Use Chat Completions API for NVIDIA
                 chat_template_kwargs=(
                     {'enable_thinking': True, 'clear_thinking': False}
@@ -91,7 +91,7 @@ def configure_dspy():
                 reasoning_effort=Config.REASONING_EFFORT,
                 max_tokens=16000,
                 timeout=Config.TIMEOUT,
-                num_retries=2,
+                num_retries=10,
                 use_chat_completions=False,  # Use Responses API for infiniteai
             )
             dspy.configure(lm=lm)
@@ -113,7 +113,7 @@ def configure_dspy():
     # Add timeout and retry settings for rate limiting and reliability
     # Configurable timeout (default 600s for reasoning models).
     lm_config['timeout'] = Config.TIMEOUT
-    lm_config['num_retries'] = 2  # fewer retries to avoid long stalls
+    lm_config['num_retries'] = 10
     lm_config['extra_headers'] = {'User-Agent': 'python-httpx/0.28.1'}
 
     lm = dspy.LM(**lm_config)

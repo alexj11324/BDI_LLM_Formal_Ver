@@ -9,6 +9,9 @@ import re
 from pathlib import Path
 from typing import List
 
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+PLANBENCH_ROOT = PROJECT_ROOT / "workspaces" / "planbench_data" / "plan-bench"
+
 
 def parse_pddl_problem(pddl_file: str) -> dict:
     """Parse PDDL problem file"""
@@ -56,7 +59,11 @@ def parse_pddl_problem(pddl_file: str) -> dict:
         goal_content = goal_match.group(1)
         goal_predicates = re.findall(r'\(([^)]+)\)', goal_content)
     else:
-        goal_predicates = []
+        single_goal_match = re.search(r':goal\s*(\([^)]+\))', content, re.DOTALL)
+        if single_goal_match:
+            goal_predicates = re.findall(r'\(([^)]+)\)', single_goal_match.group(1))
+        else:
+            goal_predicates = []
 
     # Phase 1: Extract init_state for physics validation
     init_state = {
@@ -103,7 +110,7 @@ def resolve_domain_file(domain_name: str, base_path: str = None) -> str:
     Falls back to pddlgenerators/ domain.pddl otherwise.
     """
     if base_path is None:
-        base_path = str(Path(__file__).resolve().parent.parent.parent / "workspaces/planbench_data/plan-bench")
+        base_path = str(PLANBENCH_ROOT)
 
     # Map PDDL domain name -> instance directory name
     dir_map = {
@@ -111,6 +118,8 @@ def resolve_domain_file(domain_name: str, base_path: str = None) -> str:
         "blocksworld": "blocksworld",
         "logistics": "logistics",
         "depots": "depots",
+        "obfuscated_deceptive_logistics": "obfuscated_deceptive_logistics",
+        "obfuscated_randomized_logistics": "obfuscated_randomized_logistics",
     }
     dir_name = dir_map.get(domain_name, domain_name.split("-")[0])
 

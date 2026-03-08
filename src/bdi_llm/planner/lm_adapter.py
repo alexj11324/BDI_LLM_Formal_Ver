@@ -5,6 +5,8 @@ import time
 from typing import Any
 
 import dspy
+import requests
+from requests.adapters import HTTPAdapter
 
 
 class _MockMessage:
@@ -40,7 +42,7 @@ class ResponsesAPILM(dspy.BaseLM):
     - NVIDIA NIM Chat Completions API (with reasoning_content capture)
     """
     def __init__(self, model, api_key, api_base, reasoning_effort='low',
-                 max_tokens=16000, timeout=600, num_retries=2,
+                 max_tokens=16000, timeout=600, num_retries=10,
                  use_chat_completions=False,
                  chat_template_kwargs: dict[str, Any] | None = None):
         """
@@ -58,6 +60,16 @@ class ResponsesAPILM(dspy.BaseLM):
         self.chat_template_kwargs = chat_template_kwargs or {}
         self._last_reasoning_content = None  # Store reasoning for logging
         self._last_output_text = None  # Store raw model output text for audit
+
+        # Shared HTTP session with connection pooling for high-concurrency
+        self._session = requests.Session()
+        adapter = HTTPAdapter(
+            pool_connections=300,
+            pool_maxsize=300,
+            max_retries=0,
+        )
+        self._session.mount("https://", adapter)
+        self._session.mount("http://", adapter)
 
     def _messages_to_input(self, messages):
         """Convert DSPy message list to Responses API format.
@@ -118,15 +130,15 @@ class ResponsesAPILM(dspy.BaseLM):
     @staticmethod
     def _raise_response_error(data):
         """Raise normalized RuntimeError for Responses API failure payload."""
-        error = data.get('error', {})
-        code = error.get('code', 'unknown')
-        message = error.get('message', 'unknown error')
+        error = data.get('error') or {}
+        if isinstance(error, str):
+            raise RuntimeError(f"ResponsesAPI error: {error}")
+        code = error.get('code', 'unknown') if isinstance(error, dict) else 'unknown'
+        message = error.get('message', 'unknown error') if isinstance(error, dict) else str(error)
         raise RuntimeError(f"ResponsesAPI error: {code} - {message}")
 
     def _call_once_chat_completions(self, messages):
         """Call Chat Completions API (NVIDIA style) with streaming."""
-        import requests
-
         url = f'{self.api_base}/chat/completions'
         headers = {
             'Authorization': f'Bearer {self.api_key}',
@@ -151,7 +163,7 @@ class ResponsesAPILM(dspy.BaseLM):
             # NVIDIA uses reasoning_effort parameter
             payload['reasoning_effort'] = self.reasoning_effort
 
-        resp = requests.post(url, json=payload, headers=headers, stream=True, timeout=self.timeout)
+        resp = self._session.post(url, json=payload, headers=headers, stream=True, timeout=self.timeout)
         resp.raise_for_status()
 
         self._last_reasoning_content = None
@@ -193,8 +205,6 @@ class ResponsesAPILM(dspy.BaseLM):
 
     def _call_once(self, input_items, instructions=None):
         """Call Responses API (infiniteai style)."""
-        import requests
-
         url = f'{self.api_base}/responses'
         headers = {
             'Authorization': f'Bearer {self.api_key}',
@@ -212,13 +222,14 @@ class ResponsesAPILM(dspy.BaseLM):
             payload['instructions'] = instructions
         self._last_reasoning_content = None
         self._last_output_text = None
-        resp = requests.post(url, json=payload, headers=headers,
-                             stream=False, timeout=self.timeout)
+        resp = self._session.post(url, json=payload, headers=headers,
+                                  stream=False, timeout=self.timeout)
         resp.raise_for_status()
         data = resp.json()
 
         # Check for error in response
-        if data.get('status') == 'failed' or 'error' in data:
+        error_val = data.get('error')
+        if data.get('status') == 'failed' or (error_val is not None and error_val is not False):
             self._raise_response_error(data)
 
         # Extract text from response

@@ -813,6 +813,11 @@ class RepairPlan(dspy.Signature):
         "errors, and suggested repair focus). Empty string if unavailable.",
         default="",
     )
+    domain_context: str = dspy.InputField(
+        desc="PDDL domain definition (action schemas, types, predicates). "
+        "Use ONLY the action types defined here. If empty, infer from beliefs.",
+        default="",
+    )
     plan: BDIPlan = dspy.OutputField(
         desc="Corrected plan fixing the validation errors, as a "
         "SINGLE CONNECTED DAG"

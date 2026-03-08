@@ -137,11 +137,11 @@ class BatchEngine:
         self.max_tokens = max_tokens
         self.poll_interval = poll_interval
 
-        _base_url = base_url or Config.OPENAI_API_BASE or "https://dashscope.aliyuncs.com/compatible-mode/v1"
-        self.client = OpenAI(
-            api_key=Config.DASHSCOPE_API_KEY,
-            base_url=_base_url,
-        )
+        client_kwargs = {"api_key": Config.OPENAI_API_KEY}
+        resolved_base_url = base_url or Config.OPENAI_API_BASE
+        if resolved_base_url:
+            client_kwargs["base_url"] = resolved_base_url
+        self.client = OpenAI(**client_kwargs)
 
     def build_jsonl_line(
         self, custom_id: str, messages: list[dict[str, str]]

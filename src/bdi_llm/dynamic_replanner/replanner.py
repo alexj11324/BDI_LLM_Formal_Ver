@@ -23,14 +23,11 @@ class DynamicReplanner:
         self.model_name = model_name
         self.max_retries = max_retries
 
-        # Use Config for API key and base URL so it works with both
-        # DashScope and standard OpenAI environments
-        api_key = Config.DASHSCOPE_API_KEY or Config.OPENAI_API_KEY
-        base_url = Config.OPENAI_API_BASE or 'https://dashscope.aliyuncs.com/compatible-mode/v1'
-        self.client = OpenAI(
-            api_key=api_key,
-            base_url=base_url,
-        )
+        # Use the configured OpenAI-compatible provider settings.
+        client_kwargs = {"api_key": Config.OPENAI_API_KEY}
+        if Config.OPENAI_API_BASE:
+            client_kwargs["base_url"] = Config.OPENAI_API_BASE
+        self.client = OpenAI(**client_kwargs)
 
     def generate_recovery_plan(
         self,

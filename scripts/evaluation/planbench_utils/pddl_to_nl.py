@@ -7,9 +7,47 @@ natural-language beliefs and desires for the BDI planner.
 """
 from typing import Tuple
 
+from src.bdi_llm.planner.domain_spec import (
+    decode_planbench_literals,
+    load_planbench_domain_intro,
+)
+
+
+def _natural_predicate_list(predicates: list[str]) -> str:
+    if not predicates:
+        return "nothing"
+    if len(predicates) == 1:
+        return predicates[0]
+    if len(predicates) == 2:
+        return f"{predicates[0]} and {predicates[1]}"
+    return ", ".join(predicates[:-1]) + f" and {predicates[-1]}"
+
+
+def pddl_to_nl_planbench_style(pddl_data: dict, domain_intro: str) -> Tuple[str, str]:
+    """Render beliefs/desire in the same style as PlanBench prompt generation."""
+    domain_name = str(pddl_data.get("domain_name", "")).strip()
+    init_preds = decode_planbench_literals(domain_name, pddl_data.get("init", []))
+    goal_preds = decode_planbench_literals(domain_name, pddl_data.get("goal", []))
+    init_text = _natural_predicate_list(init_preds)
+    goal_text = _natural_predicate_list(goal_preds)
+
+    beliefs = (
+        f"{domain_intro.strip()}\n\n"
+        f"As initial conditions I have that, {init_text}."
+    )
+    desire = (
+        f"My goal is to have that {goal_text}.\n\n"
+        "Generate a sequential connected plan using only the available actions."
+    )
+    return beliefs, desire
+
 
 def pddl_to_natural_language(pddl_data: dict, domain: str = "blocksworld") -> Tuple[str, str]:
     """Convert PDDL to natural language (domain-specific)"""
+
+    domain_intro = load_planbench_domain_intro(domain)
+    if domain.startswith("obfuscated_") and domain_intro:
+        return pddl_to_nl_planbench_style(pddl_data, domain_intro)
 
     if domain == "blocksworld":
         return pddl_to_nl_blocksworld(pddl_data)
@@ -222,14 +260,36 @@ def pddl_to_nl_blocksworld(pddl_data: dict) -> Tuple[str, str]:
 
 
 def pddl_to_nl_generic(pddl_data: dict) -> Tuple[str, str]:
-    """Generic PDDL to NL conversion"""
+    """Generic PDDL to NL conversion with complete state/goal preservation."""
     objects = pddl_data['objects']
     init = pddl_data['init']
     goal = pddl_data['goal']
+    domain_name = pddl_data.get("domain_name", "unknown")
 
-    beliefs = f"Domain objects: {', '.join(objects)}. Initial state: {'; '.join(init[:10])}..."
-    desire = f"Achieve goal: {'; '.join(goal[:5])}..."
+    beliefs_parts = [f"Domain: {domain_name}", "", "Objects:"]
+    if objects:
+        beliefs_parts.append("  " + ", ".join(objects))
+    else:
+        beliefs_parts.append("  (none)")
+    beliefs_parts.append("")
+    beliefs_parts.append("Initial state:")
+    if init:
+        for pred in init:
+            beliefs_parts.append(f"  ({pred})")
+    else:
+        beliefs_parts.append("  (none)")
 
+    desire_parts = ["Goal conditions:"]
+    if goal:
+        for pred in goal:
+            desire_parts.append(f"  ({pred})")
+    else:
+        desire_parts.append("  (none parsed)")
+    desire_parts.append("")
+    desire_parts.append("Generate a sequential connected plan using ONLY actions defined in the domain.")
+
+    beliefs = "\n".join(beliefs_parts)
+    desire = "\n".join(desire_parts)
     return beliefs, desire
 
 

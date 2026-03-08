@@ -15,6 +15,8 @@ from src.bdi_llm.planning_task import (
     _parse_pddl_init,
     _parse_pddl_objects,
 )
+from src.bdi_llm.planner import BDIPlanner
+from src.bdi_llm.planner.domain_spec import DomainSpec, extract_actions_from_pddl
 from src.bdi_llm.schemas import ActionNode, BDIPlan, DependencyEdge
 
 # ---------------------------------------------------------------------------
@@ -45,6 +47,41 @@ TYPED_PROBLEM = textwrap.dedent("""\
         (at truck1 cityA)
         (at truck2 cityB))
       (:goal (at truck1 cityB)))
+""")
+
+OBFUSCATED_PROBLEM = textwrap.dedent("""\
+    (define (problem instance-1)
+      (:domain obfuscated_deceptive_logistics)
+      (:objects o0 o1 o2 o3 o4 o5 o6 o7 o8 - object)
+      (:init
+        (cats o0)
+        (cats o1)
+        (stupendous o2)
+        (stupendous o3)
+        (sneeze o4)
+        (sneeze o5)
+        (texture o6)
+        (texture o7)
+        (collect o7 o3)
+        (collect o6 o2)
+        (spring o6)
+        (spring o7)
+        (hand o8)
+        (next o8 o7)
+        (next o1 o6))
+      (:goal (next o8 o6)))
+""")
+
+LOGISTICS_DOMAIN = textwrap.dedent("""\
+    (define (domain logistics-strips)
+      (:action DRIVE-TRUCK
+        :parameters (?truck ?loc-from ?loc-to ?city)
+        :precondition (and)
+        :effect (and))
+      (:action FLY-AIRPLANE
+        :parameters (?airplane ?loc-from ?loc-to)
+        :precondition (and)
+        :effect (and)))
 """)
 
 FIXTURE_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "gripper"
@@ -141,6 +178,27 @@ class TestPDDLTaskAdapter:
         with pytest.raises(TypeError):
             adapter.to_planning_task(123)  # type: ignore[arg-type]
 
+    def test_planbench_style_prompt_when_domain_intro_provided(self):
+        adapter = PDDLTaskAdapter(
+            "obfuscated_deceptive_logistics",
+            domain_context="ctx",
+            domain_intro="I am playing with a set of objects.",
+        )
+
+        task = adapter.to_planning_task({
+            "problem_text": OBFUSCATED_PROBLEM,
+            "task_id": "planbench-style",
+        })
+
+        assert task.beliefs.startswith("I am playing with a set of objects.")
+        assert "As initial conditions I have that" in task.beliefs
+        assert "My goal is to have that" in task.desire
+        assert "object_8" in task.beliefs
+        assert "object_8" in task.desire
+        assert " o8" not in task.beliefs
+        assert " o8" not in task.desire
+        assert task.domain_context == "ctx"
+
 
 # ---------------------------------------------------------------------------
 # PDDLPlanSerializer
@@ -235,3 +293,132 @@ class TestPDDLPlanSerializer:
 
         assert len(actions) == 1
         assert "move" in actions[0]
+
+    def test_schema_order_accepts_hyphenated_pddl_names_for_underscore_params(self):
+        plan = BDIPlan(
+            goal_description="drive then fly",
+            nodes=[
+                ActionNode(
+                    id="drive",
+                    action_type="DRIVE-TRUCK",
+                    description="drive truck",
+                    params={
+                        "truck": "t1",
+                        "loc_from": "l1-0",
+                        "loc_to": "l1-1",
+                        "city": "c1",
+                    },
+                ),
+                ActionNode(
+                    id="fly",
+                    action_type="FLY-AIRPLANE",
+                    description="fly airplane",
+                    params={
+                        "airplane": "a0",
+                        "loc_from": "l0-0",
+                        "loc_to": "l1-0",
+                    },
+                ),
+            ],
+            edges=[
+                DependencyEdge(source="drive", target="fly", relationship="sequential")
+            ],
+        )
+        task = PlanningTask(task_id="t", domain_name="logistics", beliefs="", desire="")
+        schema = {
+            action["name"]: [param_name for param_name, _ptype in action["parameters"]]
+            for action in extract_actions_from_pddl(LOGISTICS_DOMAIN)
+        }
+
+        actions = PDDLPlanSerializer(param_order_map=schema).from_bdi_plan(plan, task)
+
+        assert actions == [
+            "(DRIVE-TRUCK t1 l1-0 l1-1 c1)",
+            "(FLY-AIRPLANE a0 l0-0 l1-0)",
+        ]
+
+    def test_schema_order_falls_back_to_positional_values_and_canonical_action_name(self):
+        plan = BDIPlan(
+            goal_description="drive truck",
+            nodes=[
+                ActionNode(
+                    id="drive",
+                    action_type="drive_truck",
+                    description="drive truck",
+                    params={
+                        "vehicle": "t1",
+                        "start": "l1-0",
+                        "end": "l1-1",
+                        "municipality": "c1",
+                    },
+                )
+            ],
+            edges=[],
+        )
+        task = PlanningTask(task_id="t", domain_name="logistics", beliefs="", desire="")
+        schema = {
+            action["name"]: [param_name for param_name, _ptype in action["parameters"]]
+            for action in extract_actions_from_pddl(LOGISTICS_DOMAIN)
+        }
+
+        actions = PDDLPlanSerializer(param_order_map=schema).from_bdi_plan(plan, task)
+
+        assert actions == ["(DRIVE-TRUCK t1 l1-0 l1-1 c1)"]
+
+    def test_planbench_prompt_symbols_are_encoded_back_for_val(self):
+        plan = BDIPlan(
+            goal_description="move object",
+            nodes=[
+                ActionNode(
+                    id="s1",
+                    action_type="sip",
+                    description="load object into airplane",
+                    params={
+                        "obj": "object_8",
+                        "airplane": "object_1",
+                        "loc": "object_7",
+                    },
+                )
+            ],
+            edges=[],
+        )
+        task = PlanningTask(
+            task_id="t",
+            domain_name="obfuscated_deceptive_logistics",
+            beliefs="",
+            desire="",
+        )
+
+        actions = PDDLPlanSerializer().from_bdi_plan(plan, task)
+
+        assert actions == ["(sip o8 o1 o7)"]
+
+
+class TestGenericConstraintValidation:
+    def test_validate_action_constraints_normalizes_generic_action_and_param_names(self):
+        spec = DomainSpec.from_pddl("logistics-strips", LOGISTICS_DOMAIN)
+        planner = object.__new__(BDIPlanner)
+        planner._domain_spec = spec
+
+        plan = BDIPlan(
+            goal_description="drive truck",
+            nodes=[
+                ActionNode(
+                    id="drive",
+                    action_type="drive_truck",
+                    description="drive truck",
+                    params={
+                        "truck": "t1",
+                        "loc_from": "l1-0",
+                        "loc_to": "l1-1",
+                        "city": "c1",
+                    },
+                )
+            ],
+            edges=[],
+        )
+
+        is_valid, message = BDIPlanner._validate_action_constraints(planner, plan)
+
+        assert is_valid
+        assert message == ""
