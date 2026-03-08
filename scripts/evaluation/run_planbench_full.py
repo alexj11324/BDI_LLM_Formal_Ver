@@ -31,12 +31,98 @@ from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
 
-from bdi_llm.planner import BDIPlanner
+import dspy
+
+from bdi_llm.planner import BDIPlanner, configure_dspy
+from bdi_llm.planner.domain_spec import (
+    DomainSpec,
+    decode_planbench_literals,
+    extract_actions_from_pddl,
+    load_planbench_domain_intro,
+    encode_planbench_symbol,
+)
 from bdi_llm.config import Config
 from bdi_llm.schemas import BDIPlan
+from bdi_llm.planning_task import PDDLPlanSerializer, PlanningTask
 from bdi_llm.verifier import PlanVerifier
 from bdi_llm.plan_repair import repair_and_verify, PlanRepairer
 import networkx as nx
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PLANBENCH_ROOT = PROJECT_ROOT / "workspaces" / "planbench_data" / "plan-bench"
+BUILTIN_PLAN_DOMAINS = {"blocksworld", "logistics", "depots"}
+EXECUTION_STAGES = {"baseline", "bdi", "bdi-repair"}
+STAGE_RESULT_KEYS = {
+    "baseline": "baseline_result",
+    "bdi": "bdi_initial_result",
+    "bdi-repair": "bdi_repair_result",
+}
+
+
+class GenerateBaselineActionSequence(dspy.Signature):
+    """Generate a direct grounded PDDL action sequence without BDI graph scaffolding.
+
+    Output requirements:
+    - Return ONLY grounded PDDL actions, one per line.
+    - Each line must look like `(action-name arg1 arg2 ...)`.
+    - No numbering, JSON, markdown fences, or explanations.
+    - Use the available domain actions and object names from the provided task context.
+    """
+
+    beliefs: str = dspy.InputField(desc="Current state in natural language")
+    desire: str = dspy.InputField(desc="Goal description in natural language")
+    domain_context: str = dspy.InputField(
+        desc="Optional action schema summary and domain predicates. Empty if unavailable.",
+        default="",
+    )
+    allowed_actions: str = dspy.InputField(
+        desc="Comma-separated grounded action names allowed in this domain.",
+        default="",
+    )
+    allowed_objects: str = dspy.InputField(
+        desc="Comma-separated object names allowed in this problem instance.",
+        default="",
+    )
+    output_rules: str = dspy.InputField(
+        desc="Hard output constraints. Follow literally.",
+        default="",
+    )
+    plan_actions: str = dspy.OutputField(
+        desc="A direct grounded PDDL action sequence, one action per line, no extra text"
+    )
+
+
+def resolve_execution_mode(execution_mode: str | None = None) -> str:
+    """Resolve execution stage from explicit arg or environment."""
+    mode = (execution_mode or os.environ.get("AGENT_EXECUTION_MODE") or "bdi-repair")
+    mode = str(mode).strip().lower()
+    if mode not in EXECUTION_STAGES:
+        raise ValueError(f"Unsupported execution mode: {mode}")
+    return mode
+
+
+def execution_mode_flags(execution_mode: str) -> dict[str, bool]:
+    """Return feature gates for one benchmark stage."""
+    mode = resolve_execution_mode(execution_mode)
+    return {
+        "run_baseline": True,
+        "run_bdi": mode in {"bdi", "bdi-repair"},
+        "run_bdi_repair": mode == "bdi-repair",
+        "structural_check": True,
+        "structural_auto_repair": mode == "bdi-repair",
+        "symbolic_check": True,
+        "physics_check": False,
+        "val_repair": mode == "bdi-repair",
+    }
+
+
+def checkpoint_path(output_dir: str, domain: str, execution_mode: str) -> str:
+    """Build a per-domain pipeline checkpoint path."""
+    return f"{output_dir}/checkpoint_{domain}_pipeline.json"
+
+
+def stage_result_key(execution_mode: str) -> str:
+    return STAGE_RESULT_KEYS[resolve_execution_mode(execution_mode)]
 
 # MLflow integration for experiment tracking
 try:
@@ -97,7 +183,11 @@ def parse_pddl_problem(pddl_file: str) -> dict:
         goal_content = goal_match.group(1)
         goal_predicates = re.findall(r'\(([^)]+)\)', goal_content)
     else:
-        goal_predicates = []
+        single_goal_match = re.search(r':goal\s*(\([^)]+\))', content, re.DOTALL)
+        if single_goal_match:
+            goal_predicates = re.findall(r'\(([^)]+)\)', single_goal_match.group(1))
+        else:
+            goal_predicates = []
 
     # Phase 1: Extract init_state for physics validation
     init_state = {
@@ -143,7 +233,7 @@ def resolve_domain_file(domain_name: str, base_path: str = None) -> str:
     Falls back to pddlgenerators/ domain.pddl otherwise.
     """
     if base_path is None:
-        base_path = str(Path(__file__).resolve().parent.parent / "workspaces/planbench_data/plan-bench")
+        base_path = str(PLANBENCH_ROOT)
 
     # Map PDDL domain name -> instance directory name
     dir_map = {
@@ -151,6 +241,8 @@ def resolve_domain_file(domain_name: str, base_path: str = None) -> str:
         "blocksworld": "blocksworld",
         "logistics": "logistics",
         "depots": "depots",
+        "obfuscated_deceptive_logistics": "obfuscated_deceptive_logistics",
+        "obfuscated_randomized_logistics": "obfuscated_randomized_logistics",
     }
     dir_name = dir_map.get(domain_name, domain_name.split("-")[0])
 
@@ -181,6 +273,10 @@ def resolve_domain_file(domain_name: str, base_path: str = None) -> str:
 def pddl_to_natural_language(pddl_data: dict, domain: str = "blocksworld") -> Tuple[str, str]:
     """Convert PDDL to natural language (domain-specific)"""
 
+    domain_intro = load_planbench_domain_intro(domain)
+    if domain.startswith("obfuscated_") and domain_intro:
+        return pddl_to_nl_planbench_style(pddl_data, domain_intro)
+
     if domain == "blocksworld":
         return pddl_to_nl_blocksworld(pddl_data)
     elif domain == "logistics":
@@ -190,6 +286,35 @@ def pddl_to_natural_language(pddl_data: dict, domain: str = "blocksworld") -> Tu
     else:
         # Generic fallback
         return pddl_to_nl_generic(pddl_data)
+
+
+def _natural_predicate_list(predicates: List[str]) -> str:
+    if not predicates:
+        return "nothing"
+    if len(predicates) == 1:
+        return predicates[0]
+    if len(predicates) == 2:
+        return f"{predicates[0]} and {predicates[1]}"
+    return ", ".join(predicates[:-1]) + f" and {predicates[-1]}"
+
+
+def pddl_to_nl_planbench_style(pddl_data: dict, domain_intro: str) -> Tuple[str, str]:
+    """Use the same domain-intro framing style as PlanBench prompt generation."""
+    domain_name = str(pddl_data.get('domain_name', '')).strip()
+    init_preds = decode_planbench_literals(domain_name, pddl_data.get('init', []))
+    goal_preds = decode_planbench_literals(domain_name, pddl_data.get('goal', []))
+    init_text = _natural_predicate_list(init_preds)
+    goal_text = _natural_predicate_list(goal_preds)
+
+    beliefs = (
+        f"{domain_intro.strip()}\n\n"
+        f"As initial conditions I have that, {init_text}."
+    )
+    desire = (
+        f"My goal is to have that {goal_text}.\n\n"
+        "Generate a sequential connected plan using only the available actions."
+    )
+    return beliefs, desire
 
 def pddl_to_nl_blocksworld(pddl_data: dict) -> Tuple[str, str]:
     """Enhanced Blocksworld-specific conversion with clearer state description"""
@@ -390,14 +515,36 @@ def pddl_to_nl_blocksworld(pddl_data: dict) -> Tuple[str, str]:
     return beliefs, desire
 
 def pddl_to_nl_generic(pddl_data: dict) -> Tuple[str, str]:
-    """Generic PDDL to NL conversion"""
+    """Generic PDDL to NL conversion with complete state/goal preservation."""
     objects = pddl_data['objects']
     init = pddl_data['init']
     goal = pddl_data['goal']
+    domain_name = pddl_data.get("domain_name", "unknown")
 
-    beliefs = f"Domain objects: {', '.join(objects)}. Initial state: {'; '.join(init[:10])}..."
-    desire = f"Achieve goal: {'; '.join(goal[:5])}..."
+    beliefs_parts = [f"Domain: {domain_name}", "", "Objects:"]
+    if objects:
+        beliefs_parts.append("  " + ", ".join(objects))
+    else:
+        beliefs_parts.append("  (none)")
+    beliefs_parts.append("")
+    beliefs_parts.append("Initial state:")
+    if init:
+        for pred in init:
+            beliefs_parts.append(f"  ({pred})")
+    else:
+        beliefs_parts.append("  (none)")
 
+    desire_parts = ["Goal conditions:"]
+    if goal:
+        for pred in goal:
+            desire_parts.append(f"  ({pred})")
+    else:
+        desire_parts.append("  (none parsed)")
+    desire_parts.append("")
+    desire_parts.append("Generate a sequential connected plan using ONLY actions defined in the domain.")
+
+    beliefs = "\n".join(beliefs_parts)
+    desire = "\n".join(desire_parts)
     return beliefs, desire
 
 def pddl_to_nl_logistics(pddl_data: dict) -> Tuple[str, str]:
@@ -788,7 +935,518 @@ def pddl_to_nl_depots(pddl_data: dict) -> Tuple[str, str]:
 # BDI PLANNING
 # ============================================================================
 
-def bdi_to_pddl_actions(plan: BDIPlan, domain: str = "blocksworld") -> List[str]:
+def _serialize_plan_nodes(plan: BDIPlan | None) -> List[Dict[str, object]]:
+    """Serialize plan nodes into JSON-safe dicts."""
+    if plan is None:
+        return []
+    return [
+        {
+            "id": node.id,
+            "action_type": node.action_type,
+            "params": dict(node.params),
+            "description": node.description,
+        }
+        for node in plan.nodes
+    ]
+
+
+def _build_domain_runtime(
+    domain: str,
+    pddl_domain_path: str | None,
+    beliefs: str,
+    desire: str,
+    instance_id: str | None,
+    problem_objects: list[str] | None = None,
+    typed_objects: dict[str, str] | None = None,
+) -> dict:
+    """Prepare reusable serializers and prompt context for one instance."""
+    runtime = {
+        "domain_context": "",
+        "domain_spec": None,
+        "generic_serializer": None,
+        "generic_task": None,
+        "allowed_objects": set(problem_objects or []),
+        "typed_objects": {str(k): str(v).lower() for k, v in (typed_objects or {}).items()},
+        "allowed_action_names": set(),
+    }
+    if not pddl_domain_path:
+        return runtime
+
+    domain_text = Path(pddl_domain_path).read_text()
+    domain_spec = DomainSpec.from_pddl(domain, domain_text)
+    param_order_map = {
+        action["name"]: [param_name for param_name, _ptype in action["parameters"]]
+        for action in extract_actions_from_pddl(domain_text)
+    }
+    runtime["domain_context"] = domain_spec.domain_context or ""
+    runtime["domain_spec"] = domain_spec
+    runtime["allowed_action_names"] = {str(name).lower() for name in domain_spec.valid_action_types}
+    runtime["generic_serializer"] = PDDLPlanSerializer(param_order_map=param_order_map)
+    runtime["generic_task"] = PlanningTask(
+        task_id=instance_id or Path(pddl_domain_path).stem,
+        domain_name=domain,
+        beliefs=beliefs,
+        desire=desire,
+        domain_context=domain_spec.domain_context,
+    )
+    return runtime
+
+
+def load_domain_pddl_for_prompt(pddl_domain_path: str) -> str:
+    """Load a prompt-friendly domain context from a PDDL domain file."""
+    domain_text = Path(pddl_domain_path).read_text()
+    domain_name = Path(pddl_domain_path).stem
+    spec = DomainSpec.from_pddl(domain_name, domain_text)
+    return spec.domain_context or domain_text
+
+
+def _plan_to_pddl_actions(plan: BDIPlan, domain: str, runtime: dict) -> List[str]:
+    """Convert a BDI plan to PDDL actions using the best available serializer."""
+    serializer = runtime.get("generic_serializer")
+    task = runtime.get("generic_task")
+    if serializer is not None and task is not None:
+        return serializer.from_bdi_plan(plan, task)
+    return bdi_to_pddl_actions(
+        plan,
+        domain=domain,
+        allowed_objects=runtime.get("allowed_objects"),
+        typed_objects=runtime.get("typed_objects"),
+    )
+
+
+def _normalise_baseline_action_lines(
+    raw_text: str,
+    domain: str,
+    allowed_action_names: set[str] | None = None,
+    allowed_objects: set[str] | None = None,
+) -> List[str]:
+    """Extract grounded PDDL action lines from raw model output."""
+    content = str(raw_text or "").strip()
+    if content.startswith("```"):
+        content = re.sub(r"^```(?:[a-zA-Z0-9_-]+)?\s*", "", content)
+        content = re.sub(r"\s*```$", "", content)
+    candidates = [line.strip() for line in content.splitlines() if line.strip()]
+    actions: List[str] = []
+    for line in candidates:
+        if line[0].isdigit() and "." in line:
+            line = line.split(".", 1)[1].strip()
+        if line.startswith("-"):
+            line = line[1:].strip()
+        if line.startswith("(") and line.endswith(")"):
+            actions.append(line)
+
+    if not actions:
+        actions = [match.group(0).strip() for match in re.finditer(r"\([^()\n]+\)", content)]
+
+    normalised: List[str] = []
+    for action in actions:
+        inner = action.strip()[1:-1].strip()
+        if not inner:
+            continue
+        parts = inner.split()
+        action_name, *args = parts
+        norm_action_name = str(action_name).strip().lower()
+        if allowed_action_names and norm_action_name not in allowed_action_names:
+            continue
+        encoded_args = [encode_planbench_symbol(domain, arg) for arg in args]
+        if allowed_objects:
+            if any(arg not in allowed_objects for arg in encoded_args):
+                continue
+        normalised.append(f"({action_name} {' '.join(encoded_args)})".replace("  ", " ").strip())
+
+    return normalised
+
+
+def generate_baseline_plan(
+    beliefs: str,
+    desire: str,
+    domain_context: str = "",
+    domain: str = "blocksworld",
+    allowed_action_names: set[str] | None = None,
+    allowed_objects: set[str] | None = None,
+) -> dict:
+    """Generate a direct action-sequence baseline without BDI graph prompting."""
+    configure_dspy()
+    predictor = dspy.Predict(GenerateBaselineActionSequence)
+    allowed_actions_text = ", ".join(sorted(allowed_action_names or []))
+    allowed_objects_text = ", ".join(sorted(allowed_objects or []))
+    output_rules = (
+        "Output ONLY grounded PDDL actions, exactly one action per line. "
+        "Do not output JSON, markdown fences, bullets, explanations, or commentary. "
+        "Every line must start with '(' and end with ')'. "
+        "Use only the allowed action names and allowed objects. "
+        "If the domain is obfuscated, preserve the exact obfuscated action names. "
+        "Do not invent object names. Output at least one action when a plan exists."
+    )
+    pred = predictor(
+        beliefs=beliefs,
+        desire=desire,
+        domain_context=domain_context or "",
+        allowed_actions=allowed_actions_text,
+        allowed_objects=allowed_objects_text,
+        output_rules=output_rules,
+    )
+    raw_output = getattr(pred, "plan_actions", "")
+    actions = _normalise_baseline_action_lines(
+        raw_output,
+        domain,
+        allowed_action_names=allowed_action_names,
+        allowed_objects=allowed_objects,
+    )
+    return {
+        "raw_output": raw_output,
+        "plan_actions": actions,
+    }
+
+
+def _default_verification_layers() -> dict:
+    return {
+        "structural": {"valid": None, "errors": [], "hard_errors": [], "warnings": []},
+        "symbolic": {"valid": None, "errors": []},
+        "physics": {"valid": None, "errors": []},
+    }
+
+
+def _make_checkpoint_result(label: str) -> dict:
+    return {
+        "label": label,
+        "execution_mode": label,
+        "success": False,
+        "raw_output": "",
+        "plan_actions": [],
+        "pddl_actions": [],
+        "plan_nodes": [],
+        "verification_layers": _default_verification_layers(),
+        "auto_repair": {"triggered": False, "success": False, "repairs_applied": []},
+        "val_repair": {"attempts": 0, "success": False, "history": []},
+        "symbolic_valid": False,
+    }
+
+
+def _evaluate_plan_actions(
+    plan_actions: List[str],
+    *,
+    domain: str,
+    pddl_problem_path: str | None,
+    pddl_domain_path: str | None,
+    init_state: Dict | None,
+    structural: dict | None = None,
+) -> dict:
+    """Evaluate one checkpoint and return verifier outputs with success=VAL."""
+    from bdi_llm.symbolic_verifier import BlocksworldPhysicsValidator, PDDLSymbolicVerifier
+
+    layers = _default_verification_layers()
+    if structural is not None:
+        layers["structural"] = structural
+
+    symbolic_valid = False
+    symbolic_errors: List[str] = []
+    if pddl_problem_path and pddl_domain_path:
+        verifier = PDDLSymbolicVerifier()
+        symbolic_valid, symbolic_errors = verifier.verify_plan(
+            domain_file=pddl_domain_path,
+            problem_file=pddl_problem_path,
+            plan_actions=plan_actions,
+            verbose=True,
+        )
+    else:
+        symbolic_errors = ["Skipped - Missing PDDL files"]
+    layers["symbolic"] = {"valid": symbolic_valid, "errors": symbolic_errors}
+
+    physics_valid = None
+    physics_errors: List[str] = []
+    if init_state is not None and domain == "blocksworld":
+        physics_validator = BlocksworldPhysicsValidator()
+        physics_valid, physics_errors = physics_validator.validate_plan(plan_actions, init_state)
+    elif init_state is not None:
+        physics_valid = True
+        physics_errors = ["Skipped - No physics validator for this domain"]
+    layers["physics"] = {"valid": physics_valid, "errors": physics_errors}
+
+    return {
+        "verification_layers": layers,
+        "symbolic_valid": bool(symbolic_valid),
+        "success": bool(symbolic_valid),
+    }
+
+
+def _evaluate_bdi_plan_checkpoint(
+    plan: BDIPlan,
+    *,
+    planner: BDIPlanner,
+    beliefs: str,
+    desire: str,
+    domain: str,
+    pddl_problem_path: str | None,
+    pddl_domain_path: str | None,
+    init_state: Dict | None,
+    runtime: dict,
+    instance_id: str | None,
+    allow_structural_auto_repair: bool,
+    allow_val_repair: bool,
+) -> dict:
+    """Evaluate a BDI-generated plan with optional structural and VAL repair."""
+    from bdi_llm.symbolic_verifier import IntegratedVerifier, PDDLSymbolicVerifier
+
+    current_plan = plan
+    result = _make_checkpoint_result("bdi")
+
+    graph = current_plan.to_networkx()
+    struct_result = PlanVerifier.verify(graph)
+    structural = {
+        "valid": struct_result.is_valid,
+        "errors": struct_result.errors,
+        "hard_errors": struct_result.hard_errors,
+        "warnings": struct_result.warnings,
+    }
+
+    if not struct_result.is_valid and allow_structural_auto_repair:
+        result["auto_repair"]["triggered"] = True
+        repaired_plan, repaired_valid, messages = repair_and_verify(current_plan)
+        result["auto_repair"]["repairs_applied"] = messages
+        if repaired_valid:
+            current_plan = repaired_plan
+            result["auto_repair"]["success"] = True
+            graph = current_plan.to_networkx()
+            struct_result = PlanVerifier.verify(graph)
+            structural = {
+                "valid": struct_result.is_valid,
+                "errors": struct_result.errors,
+                "hard_errors": struct_result.hard_errors,
+                "warnings": struct_result.warnings,
+            }
+
+    plan_actions = _plan_to_pddl_actions(current_plan, domain, runtime)
+    evaluation = _evaluate_plan_actions(
+        plan_actions,
+        domain=domain,
+        pddl_problem_path=pddl_problem_path,
+        pddl_domain_path=pddl_domain_path,
+        init_state=init_state,
+        structural=structural,
+    )
+
+    result.update(evaluation)
+    result["plan_actions"] = plan_actions
+    result["pddl_actions"] = plan_actions
+    result["plan_nodes"] = _serialize_plan_nodes(current_plan)
+
+    if allow_val_repair and not result["symbolic_valid"]:
+        verifier = PDDLSymbolicVerifier()
+        val_errors = result["verification_layers"]["symbolic"]["errors"]
+        cumulative_history: List[dict] = []
+        max_val_repairs = 5
+        for repair_attempt in range(1, max_val_repairs + 1):
+            clean_errors = [
+                err for err in val_errors
+                if not str(err).lstrip().startswith("Full VAL output:")
+                and not str(err).lstrip().startswith("\nFull VAL output:")
+            ]
+            result["val_repair"]["attempts"] = repair_attempt
+            result["val_repair"]["history"].append({
+                "attempt": repair_attempt,
+                "errors": clean_errors[:5],
+                "repaired": False,
+            })
+            cumulative_history.append({
+                "attempt": repair_attempt,
+                "plan_actions": plan_actions,
+                "val_errors": clean_errors,
+            })
+
+            verification_context = {
+                "layers": {
+                    "structural": {
+                        "valid": result["verification_layers"]["structural"]["valid"],
+                        "errors": result["verification_layers"]["structural"]["errors"],
+                    },
+                    "symbolic": {
+                        "valid": False,
+                        "errors": clean_errors,
+                    },
+                },
+                "overall_valid": False,
+            }
+            failed_layers = [
+                name for name, layer in verification_context["layers"].items()
+                if not layer.get("valid", False)
+            ]
+            verification_context["error_summary"] = (
+                f"Failed layers: {', '.join(failed_layers)}" if failed_layers else "All layers passed"
+            )
+            verification_feedback = IntegratedVerifier.build_planner_feedback(verification_context)
+
+            repair_result = planner.repair_from_val_errors(
+                beliefs=beliefs,
+                desire=desire,
+                previous_plan_actions=plan_actions,
+                val_errors=clean_errors,
+                repair_history=cumulative_history,
+                verification_feedback=verification_feedback,
+                instance_id=instance_id,
+                domain=domain,
+                domain_context=runtime.get("domain_context") or "",
+                allow_early_exit=False,
+            )
+            current_plan = repair_result.plan
+            plan_actions = _plan_to_pddl_actions(current_plan, domain, runtime)
+            val_valid, val_errors = verifier.verify_plan(
+                domain_file=pddl_domain_path,
+                problem_file=pddl_problem_path,
+                plan_actions=plan_actions,
+                verbose=True,
+            )
+
+            graph = current_plan.to_networkx()
+            struct_result = PlanVerifier.verify(graph)
+            result["verification_layers"]["structural"] = {
+                "valid": struct_result.is_valid,
+                "errors": struct_result.errors,
+                "hard_errors": struct_result.hard_errors,
+                "warnings": struct_result.warnings,
+            }
+            result["verification_layers"]["symbolic"] = {"valid": val_valid, "errors": val_errors}
+            result["plan_actions"] = plan_actions
+            result["pddl_actions"] = plan_actions
+            result["plan_nodes"] = _serialize_plan_nodes(current_plan)
+            result["symbolic_valid"] = bool(val_valid)
+            result["success"] = bool(val_valid)
+
+            if val_valid:
+                result["val_repair"]["success"] = True
+                result["val_repair"]["history"][-1]["repaired"] = True
+                break
+
+    return result
+
+
+def run_planbench_pipeline_for_instance(
+    beliefs: str,
+    desire: str,
+    *,
+    domain: str,
+    pddl_problem_path: str | None,
+    pddl_domain_path: str | None,
+    init_state: Dict | None,
+    objects: list[str] | None,
+    typed_objects: dict[str, str] | None,
+    execution_mode: str,
+    instance_id: str | None,
+) -> dict:
+    """Run baseline -> bdi -> bdi_repair checkpoints for one instance."""
+    mode_flags = execution_mode_flags(execution_mode)
+    runtime = _build_domain_runtime(
+        domain,
+        pddl_domain_path,
+        beliefs,
+        desire,
+        instance_id,
+        problem_objects=objects,
+        typed_objects=typed_objects,
+    )
+
+    baseline_raw = generate_baseline_plan(
+        beliefs=beliefs,
+        desire=desire,
+        domain_context=runtime.get("domain_context") or "",
+        domain=domain,
+        allowed_action_names=runtime.get("allowed_action_names"),
+        allowed_objects=runtime.get("allowed_objects"),
+    )
+    baseline_result = _make_checkpoint_result("baseline")
+    baseline_result["raw_output"] = baseline_raw["raw_output"]
+    baseline_result["plan_actions"] = baseline_raw["plan_actions"]
+    baseline_result["pddl_actions"] = baseline_raw["plan_actions"]
+    baseline_result.update(
+        _evaluate_plan_actions(
+            baseline_raw["plan_actions"],
+            domain=domain,
+            pddl_problem_path=pddl_problem_path,
+            pddl_domain_path=pddl_domain_path,
+            init_state=init_state,
+            structural=None,
+        )
+    )
+
+    pipeline = {
+        "baseline_result": baseline_result,
+        "bdi_initial_result": None,
+        "bdi_repair_result": None,
+    }
+
+    if not mode_flags["run_bdi"]:
+        return pipeline
+
+    if runtime.get("domain_spec") is not None:
+        planner = BDIPlanner(auto_repair=False, domain_spec=runtime["domain_spec"])
+    else:
+        planner = BDIPlanner(auto_repair=False, domain=domain)
+
+    initial_pred = planner.generate_plan(
+        beliefs=beliefs,
+        desire=desire,
+        domain_context=runtime.get("domain_context") or None,
+    )
+    planner.record_generation_trace(initial_pred)
+    initial_plan = initial_pred.plan
+    bdi_initial_result = _evaluate_bdi_plan_checkpoint(
+        initial_plan,
+        planner=planner,
+        beliefs=beliefs,
+        desire=desire,
+        domain=domain,
+        pddl_problem_path=pddl_problem_path,
+        pddl_domain_path=pddl_domain_path,
+        init_state=init_state,
+        runtime=runtime,
+        instance_id=instance_id,
+        allow_structural_auto_repair=False,
+        allow_val_repair=False,
+    )
+    pipeline["bdi_initial_result"] = bdi_initial_result
+
+    if not mode_flags["run_bdi_repair"]:
+        return pipeline
+
+    if bdi_initial_result["success"]:
+        repaired_result = json.loads(json.dumps(bdi_initial_result))
+        repaired_result["label"] = "bdi_repair"
+        repaired_result["execution_mode"] = "bdi_repair"
+        repaired_result["repair_attempted"] = False
+        pipeline["bdi_repair_result"] = repaired_result
+        return pipeline
+
+    if runtime.get("domain_spec") is not None:
+        repair_planner = BDIPlanner(auto_repair=True, domain_spec=runtime["domain_spec"])
+    else:
+        repair_planner = BDIPlanner(auto_repair=True, domain=domain)
+
+    repair_result = _evaluate_bdi_plan_checkpoint(
+        initial_plan,
+        planner=repair_planner,
+        beliefs=beliefs,
+        desire=desire,
+        domain=domain,
+        pddl_problem_path=pddl_problem_path,
+        pddl_domain_path=pddl_domain_path,
+        init_state=init_state,
+        runtime=runtime,
+        instance_id=instance_id,
+        allow_structural_auto_repair=True,
+        allow_val_repair=True,
+    )
+    repair_result["label"] = "bdi_repair"
+    repair_result["execution_mode"] = "bdi_repair"
+    repair_result["repair_attempted"] = True
+    pipeline["bdi_repair_result"] = repair_result
+    return pipeline
+
+def bdi_to_pddl_actions(
+    plan: BDIPlan,
+    domain: str = "blocksworld",
+    allowed_objects: set[str] | None = None,
+    typed_objects: dict[str, str] | None = None,
+) -> List[str]:
     """
     Convert BDI action nodes to PDDL action strings
 
@@ -839,6 +1497,9 @@ def bdi_to_pddl_actions(plan: BDIPlan, domain: str = "blocksworld") -> List[str]
 
         return t
 
+    allowed_objects_set = {str(obj).lower() for obj in (allowed_objects or [])}
+    typed_objects_map = {str(k).lower(): str(v).lower() for k, v in (typed_objects or {}).items()}
+
     # Normalise parameters
     def _normalise_param(val: str) -> str:
         if not val:
@@ -847,7 +1508,54 @@ def bdi_to_pddl_actions(plan: BDIPlan, domain: str = "blocksworld") -> List[str]
         # Remove "block " prefix if present (common LLM artifact)
         if s.startswith("block "):
             s = s[6:].strip()
+        s = s.replace('"', '').replace("'", "")
+        s = re.sub(r'\.replace\(.*$', '', s)
+        s = re.sub(r'_fixme$', '', s)
+        s = re.sub(r'[^a-z0-9_\-\s]', '', s)
+        s = re.sub(r'\s+', ' ', s).strip()
         return s
+
+    def _candidate_pool(expected_types: set[str] | None = None) -> list[str]:
+        if not allowed_objects_set:
+            return []
+        if not expected_types or not typed_objects_map:
+            return sorted(allowed_objects_set)
+        pool = [obj for obj in allowed_objects_set if typed_objects_map.get(obj) in expected_types]
+        return sorted(pool) if pool else sorted(allowed_objects_set)
+
+    def _resolve_object(raw: str, expected_types: set[str] | None = None, description: str = "") -> str:
+        token = _normalise_param(raw)
+        if not token:
+            return ""
+        if not allowed_objects_set:
+            return token
+        if token in allowed_objects_set:
+            return token
+
+        compact = token.replace(' ', '')
+        if compact in allowed_objects_set:
+            return compact
+
+        pool = _candidate_pool(expected_types)
+
+        description_l = description.lower()
+        description_hits = [candidate for candidate in pool if candidate in description_l]
+        if len(description_hits) == 1:
+            return description_hits[0]
+
+        prefix_matches = [candidate for candidate in pool if candidate.startswith(compact)]
+        if len(prefix_matches) == 1:
+            return prefix_matches[0]
+
+        try:
+            import difflib
+            match = difflib.get_close_matches(compact, pool, n=1, cutoff=0.75)
+            if match:
+                return match[0]
+        except Exception:
+            pass
+
+        return ""
 
     def _pick_param(params: Dict, keys: List[str]) -> str:
         for key in keys:
@@ -860,6 +1568,15 @@ def bdi_to_pddl_actions(plan: BDIPlan, domain: str = "blocksworld") -> List[str]
     for node_id in ordered_nodes:
         action_node = node_lookup.get(node_id)
         if not action_node:
+            continue
+
+        if (
+            isinstance(action_node.action_type, str)
+            and action_node.action_type.strip().startswith("(")
+            and action_node.action_type.strip().endswith(")")
+            and not action_node.params
+        ):
+            pddl_actions.append(action_node.action_type.strip())
             continue
 
         canon = _normalise(action_node.action_type)
@@ -1016,6 +1733,7 @@ def bdi_to_pddl_actions(plan: BDIPlan, domain: str = "blocksworld") -> List[str]
 
             # Positional fallback using param_values
             param_values = list(params.values())
+            description = action_node.description.lower() if getattr(action_node, 'description', None) else ""
 
             if canon == "drive":
                 # Drive(?x - truck ?y - place ?z - place)
@@ -1025,6 +1743,10 @@ def bdi_to_pddl_actions(plan: BDIPlan, domain: str = "blocksworld") -> List[str]
                     loc_from = _normalise_param(param_values[1])
                 if not loc_to and len(param_values) >= 3:
                     loc_to = _normalise_param(param_values[2])
+
+                truck = _resolve_object(truck, {"truck"}, description)
+                loc_from = _resolve_object(loc_from, {"depot", "distributor", "place"}, description)
+                loc_to = _resolve_object(loc_to, {"depot", "distributor", "place"}, description)
 
                 if truck and loc_from and loc_to:
                     pddl_actions.append(f"(Drive {truck} {loc_from} {loc_to})")
@@ -1042,6 +1764,11 @@ def bdi_to_pddl_actions(plan: BDIPlan, domain: str = "blocksworld") -> List[str]
                 if not loc and len(param_values) >= 4:
                     loc = _normalise_param(param_values[3])
 
+                hoist = _resolve_object(hoist, {"hoist"}, description)
+                crate = _resolve_object(crate, {"crate"}, description)
+                surface = _resolve_object(surface, {"crate", "pallet", "surface"}, description)
+                loc = _resolve_object(loc, {"depot", "distributor", "place"}, description)
+
                 if hoist and crate and surface and loc:
                     pddl_actions.append(f"(Lift {hoist} {crate} {surface} {loc})")
                 else:
@@ -1057,6 +1784,11 @@ def bdi_to_pddl_actions(plan: BDIPlan, domain: str = "blocksworld") -> List[str]
                     surface = _normalise_param(param_values[2])
                 if not loc and len(param_values) >= 4:
                     loc = _normalise_param(param_values[3])
+
+                hoist = _resolve_object(hoist, {"hoist"}, description)
+                crate = _resolve_object(crate, {"crate"}, description)
+                surface = _resolve_object(surface, {"crate", "pallet", "surface"}, description)
+                loc = _resolve_object(loc, {"depot", "distributor", "place"}, description)
 
                 if hoist and crate and surface and loc:
                     pddl_actions.append(f"(Drop {hoist} {crate} {surface} {loc})")
@@ -1074,6 +1806,11 @@ def bdi_to_pddl_actions(plan: BDIPlan, domain: str = "blocksworld") -> List[str]
                 if not loc and len(param_values) >= 4:
                     loc = _normalise_param(param_values[3])
 
+                hoist = _resolve_object(hoist, {"hoist"}, description)
+                crate = _resolve_object(crate, {"crate"}, description)
+                truck = _resolve_object(truck, {"truck"}, description)
+                loc = _resolve_object(loc, {"depot", "distributor", "place"}, description)
+
                 if hoist and crate and truck and loc:
                     pddl_actions.append(f"(Load {hoist} {crate} {truck} {loc})")
                 else:
@@ -1089,6 +1826,11 @@ def bdi_to_pddl_actions(plan: BDIPlan, domain: str = "blocksworld") -> List[str]
                     truck = _normalise_param(param_values[2])
                 if not loc and len(param_values) >= 4:
                     loc = _normalise_param(param_values[3])
+
+                hoist = _resolve_object(hoist, {"hoist"}, description)
+                crate = _resolve_object(crate, {"crate"}, description)
+                truck = _resolve_object(truck, {"truck"}, description)
+                loc = _resolve_object(loc, {"depot", "distributor", "place"}, description)
 
                 if hoist and crate and truck and loc:
                     pddl_actions.append(f"(Unload {hoist} {crate} {truck} {loc})")
@@ -1112,6 +1854,7 @@ def generate_bdi_plan(
     timeout: int = 60,
     auto_repair: bool = True,
     max_retries: int = 3,
+    execution_mode: str | None = None,
     instance_id: Optional[str] = None,  # NEW: Unique instance identifier for budget tracking
 ) -> Tuple[BDIPlan, bool, dict]:
     """
@@ -1138,7 +1881,10 @@ def generate_bdi_plan(
     )
 
     start_time = time.time()
+    resolved_mode = resolve_execution_mode(execution_mode)
+    mode_flags = execution_mode_flags(resolved_mode)
     metrics = {
+        'execution_mode': resolved_mode,
         'generation_time': 0,
         'verification_layers': {
             'structural': {'valid': False, 'errors': [], 'hard_errors': [], 'warnings': []},
@@ -1158,7 +1904,9 @@ def generate_bdi_plan(
         'overall_valid': False,
         'num_nodes': 0,
         'num_edges': 0,
-        'retries': 0
+        'retries': 0,
+        'pddl_actions': [],
+        'plan_nodes': [],
     }
     if Config.SAVE_REASONING_TRACE:
         metrics['reasoning_trace'] = {
@@ -1171,10 +1919,49 @@ def generate_bdi_plan(
     last_error = None
     for attempt in range(max_retries):
         try:
-            planner = BDIPlanner(auto_repair=auto_repair, domain=domain)
-            result = planner.generate_plan(beliefs=beliefs, desire=desire)
+            generic_domain = domain not in BUILTIN_PLAN_DOMAINS
+            domain_context = None
+            generic_serializer = None
+            generic_task = None
+
+            if generic_domain:
+                if not pddl_domain_path:
+                    raise ValueError(
+                        "Generic PDDL planning requires pddl_domain_path for action schema extraction."
+                    )
+                domain_text = Path(pddl_domain_path).read_text()
+                domain_spec = DomainSpec.from_pddl(domain, domain_text)
+                param_order_map = {
+                    action["name"]: [param_name for param_name, _ptype in action["parameters"]]
+                    for action in extract_actions_from_pddl(domain_text)
+                }
+                generic_serializer = PDDLPlanSerializer(param_order_map=param_order_map)
+                generic_task = PlanningTask(
+                    task_id=instance_id or Path(pddl_problem_path or "generic").stem,
+                    domain_name=domain,
+                    beliefs=beliefs,
+                    desire=desire,
+                    domain_context=domain_spec.domain_context,
+                )
+                domain_context = load_domain_pddl_for_prompt(pddl_domain_path)
+                planner = BDIPlanner(auto_repair=auto_repair, domain_spec=domain_spec)
+            else:
+                planner = BDIPlanner(auto_repair=auto_repair, domain=domain)
+
+            def plan_to_pddl_actions(plan_obj: BDIPlan) -> List[str]:
+                if generic_serializer is not None and generic_task is not None:
+                    return generic_serializer.from_bdi_plan(plan_obj, generic_task)
+                return bdi_to_pddl_actions(plan_obj, domain=domain)
+
+            result = planner.generate_plan(
+                beliefs=beliefs,
+                desire=desire,
+                domain_context=domain_context,
+            )
             planner.record_generation_trace(result)
             plan = result.plan
+            metrics['plan_nodes'] = _serialize_plan_nodes(plan)
+            metrics['pddl_actions'] = plan_to_pddl_actions(plan)
             metrics['retries'] = attempt
             if Config.SAVE_REASONING_TRACE:
                 metrics['reasoning_trace']['generation'] = planner.get_last_generation_trace()
@@ -1190,7 +1977,7 @@ def generate_bdi_plan(
             struct_warnings = struct_result.warnings
 
             # If structural verification fails and auto_repair is enabled at this level too
-            if not struct_valid and auto_repair:
+            if not struct_valid and auto_repair and mode_flags['structural_auto_repair']:
                 metrics['auto_repair']['triggered'] = True
                 repaired_plan, repaired_valid, messages = repair_and_verify(plan)
                 if repaired_valid:
@@ -1212,21 +1999,28 @@ def generate_bdi_plan(
             metrics['num_edges'] = len(plan.edges)
 
             # Layer 2: Symbolic Verification (PDDL/VAL) with repair loop
-            symbolic_valid = False
-            symbolic_errors = ["Skipped - Structural failure"]
-            max_val_repairs = 3
+            symbolic_valid = True
+            symbolic_errors = [f"Skipped - execution mode: {resolved_mode}"]
+            max_val_repairs = 5
 
-            # VAL is the ultimate validator - if VAL says plan works, it works.
-            # Even if structural verification fails, we should still try VAL.
-            # Set still_try_val to True to let VAL check even structurally failed plans.
-            still_try_val = not struct_valid  # Key fix: try VAL even if structural fails
-            if still_try_val:
-                print(f"    Structural verification failed, but still attempting VAL verification")
+            if mode_flags['symbolic_check']:
+                symbolic_valid = False
+                symbolic_errors = ["Skipped - Structural failure"]
 
-            if (struct_valid or still_try_val) and pddl_problem_path and pddl_domain_path:
+                # VAL is the ultimate validator - if VAL says plan works, it works.
+                # Even if structural verification fails, we should still try VAL.
+                # Set still_try_val to True to let VAL check even structurally failed plans.
+                still_try_val = not struct_valid  # Key fix: try VAL even if structural fails
+                if still_try_val:
+                    print(f"    Structural verification failed, but still attempting VAL verification")
+            else:
+                still_try_val = False
+
+            if mode_flags['symbolic_check'] and (struct_valid or still_try_val) and pddl_problem_path and pddl_domain_path:
                 try:
                     # Convert BDI plan to PDDL actions
-                    pddl_actions = bdi_to_pddl_actions(plan, domain=domain)
+                    pddl_actions = plan_to_pddl_actions(plan)
+                    metrics['pddl_actions'] = pddl_actions
 
                     # Initialize VAL verifier
                     val_verifier = PDDLSymbolicVerifier()
@@ -1240,7 +2034,7 @@ def generate_bdi_plan(
                     # VAL error-driven repair loop (with cumulative history)
                     val_repair_attempt = 0
                     cumulative_repair_history = []  # Accumulate all previous attempts
-                    while not symbolic_valid and val_repair_attempt < max_val_repairs:
+                    while mode_flags['val_repair'] and not symbolic_valid and val_repair_attempt < max_val_repairs:
                         val_repair_attempt += 1
                         metrics['val_repair']['attempts'] = val_repair_attempt
 
@@ -1305,6 +2099,8 @@ def generate_bdi_plan(
                                 verification_feedback=verification_feedback,
                                 instance_id=instance_id,  # For budget tracking
                                 domain=domain,  # For cache keying
+                                domain_context=domain_context,
+                                allow_early_exit=False,
                             )
                             if Config.SAVE_REASONING_TRACE:
                                 repair_trace = planner.get_last_repair_trace()
@@ -1327,9 +2123,10 @@ def generate_bdi_plan(
                                 struct_valid = struct_valid_r  # Update for outer scope
                             else:
                                 struct_valid = struct_valid_r  # Update for outer scope
+                            struct_errors = struct_errors_r
 
                             # Re-convert and re-verify with VAL (even if structural fails)
-                            pddl_actions = bdi_to_pddl_actions(plan, domain=domain)
+                            pddl_actions = plan_to_pddl_actions(plan)
                             symbolic_valid, symbolic_errors = val_verifier.verify_plan(
                                 domain_file=pddl_domain_path,
                                 problem_file=pddl_problem_path,
@@ -1347,18 +2144,19 @@ def generate_bdi_plan(
 
                         except Exception as repair_err:
                             print(f"    VAL repair {val_repair_attempt} failed: {str(repair_err)[:100]}")
-                            break
+                            continue
 
                 except Exception as e:
                     symbolic_valid = False
                     symbolic_errors = [f"Symbolic verification error: {str(e)}"]
             else:
-                # No VAL verification because PDDL files are missing
-                symbolic_errors = ["Skipped - Missing PDDL files"]
-                # If no PDDL files provided, we consider symbolic layer 'passed' (or skipped)
-                # to not break existing tests, but for PlanBench it should be provided.
-                if pddl_problem_path is None:
-                    symbolic_valid = True
+                if mode_flags['symbolic_check']:
+                    # No VAL verification because PDDL files are missing
+                    symbolic_errors = ["Skipped - Missing PDDL files"]
+                    # If no PDDL files provided, we consider symbolic layer 'passed' (or skipped)
+                    # to not break existing tests, but for PlanBench it should be provided.
+                    if pddl_problem_path is None:
+                        symbolic_valid = True
 
             metrics['verification_layers']['symbolic']['valid'] = symbolic_valid
             metrics['verification_layers']['symbolic']['errors'] = symbolic_errors
@@ -1366,14 +2164,13 @@ def generate_bdi_plan(
             # Layer 3: Physics validation (if init_state provided)
             # This is now a "fallback" or "double-check" layer
             physics_valid = True
-            physics_errors = []
+            physics_errors = [f"Skipped - execution mode: {resolved_mode}"]
 
-            if init_state is not None and struct_valid:
-                # Convert BDI plan to PDDL actions (if not done already)
-                pddl_actions = bdi_to_pddl_actions(plan, domain=domain)
-
+            if mode_flags['physics_check'] and init_state is not None and struct_valid:
                 # Validate physics (only for blocksworld domain)
                 if domain == "blocksworld":
+                    pddl_actions = plan_to_pddl_actions(plan)
+                    metrics['pddl_actions'] = pddl_actions
                     physics_validator = BlocksworldPhysicsValidator()
                     physics_valid, physics_errors = physics_validator.validate_plan(
                         pddl_actions, init_state
@@ -1390,16 +2187,20 @@ def generate_bdi_plan(
             # KEY PRINCIPLE: VAL is the ultimate validator - if VAL says plan works, it works.
             # A plan that passes VAL is considered valid even with minor structural issues.
             # Structural validation is a heuristic; VAL's symbolic execution is ground truth.
-            if symbolic_valid and pddl_problem_path and pddl_domain_path:
+            if mode_flags['symbolic_check'] and symbolic_valid and pddl_problem_path and pddl_domain_path:
                 # VAL passed = plan works (regardless of structural status)
                 overall_valid = True
                 print(f"    Overall: VALID (VAL passed, structural={struct_valid}, physics={physics_valid})")
             else:
-                # No VAL verification available - fall back to structural + physics
-                overall_valid = struct_valid and physics_valid
-                print(f"    Overall: {'VALID' if overall_valid else 'INVALID'} (no VAL, structural={struct_valid}, physics={physics_valid})")
+                # No VAL verification available - fall back to local layers only.
+                overall_valid = struct_valid and (physics_valid if mode_flags['physics_check'] else True)
+                print(
+                    f"    Overall: {'VALID' if overall_valid else 'INVALID'} "
+                    f"(mode={resolved_mode}, structural={struct_valid}, physics={physics_valid})"
+                )
 
             metrics['overall_valid'] = overall_valid
+            metrics['plan_nodes'] = _serialize_plan_nodes(plan)
 
             return plan, overall_valid, metrics
 
@@ -1427,6 +2228,7 @@ def generate_bdi_plan(
 
             # Return empty plan
             plan = BDIPlan(goal_description=desire, nodes=[], edges=[])
+            metrics['plan_nodes'] = []
             return plan, False, metrics
 
     # Should not reach here, but just in case
@@ -1435,6 +2237,7 @@ def generate_bdi_plan(
     metrics['verification_layers']['structural']['hard_errors'] = [f"Max retries ({max_retries}) exceeded: {last_error}"]
     metrics['verification_layers']['structural']['warnings'] = []
     plan = BDIPlan(goal_description=desire, nodes=[], edges=[])
+    metrics['plan_nodes'] = []
     return plan, False, metrics
 
 # ============================================================================
@@ -1462,7 +2265,7 @@ def save_checkpoint_atomic(results: dict, checkpoint_file: str) -> None:
         json.dump(results, f, indent=2)
     os.replace(tmp_file, checkpoint_file)
 
-def evaluate_single_instance(instance_file: str, domain: str) -> dict:
+def evaluate_single_instance(instance_file: str, domain: str, execution_mode: str | None = None) -> dict:
     """
     Evaluate a single PDDL instance.
 
@@ -1476,7 +2279,8 @@ def evaluate_single_instance(instance_file: str, domain: str) -> dict:
     instance_result = {
         'instance_file': instance_file,
         'instance_name': Path(instance_file).stem,
-        'timestamp': datetime.now().isoformat()
+        'timestamp': datetime.now().isoformat(),
+        'execution_mode': resolve_execution_mode(execution_mode),
     }
 
     try:
@@ -1501,18 +2305,24 @@ def evaluate_single_instance(instance_file: str, domain: str) -> dict:
         domain_name = pddl_data.get('domain_name', 'blocksworld')
         domain_file = resolve_domain_file(domain_name)
 
-        plan, is_valid, metrics = generate_bdi_plan(
+        pipeline_results = run_planbench_pipeline_for_instance(
             beliefs=beliefs,
             desire=desire,
+            domain=domain,
             pddl_problem_path=instance_file,
             pddl_domain_path=domain_file,
             init_state=init_state,
-            domain=domain,
+            objects=pddl_data.get('objects', []),
+            typed_objects=pddl_data.get('typed_objects', {}),
+            execution_mode=instance_result['execution_mode'],
             instance_id=instance_file,  # Use instance file path as unique ID
         )
 
-        instance_result['bdi_metrics'] = metrics
-        instance_result['success'] = is_valid
+        instance_result.update(pipeline_results)
+        selected_key = stage_result_key(instance_result['execution_mode'])
+        selected_result = instance_result.get(selected_key) or {}
+        instance_result['bdi_metrics'] = selected_result  # legacy alias
+        instance_result['success'] = bool(selected_result.get('success', False))
 
     except Exception as e:
         instance_result['success'] = False
@@ -1528,7 +2338,8 @@ def run_batch_evaluation(
     parallel: bool = False,
     max_workers: int = 200,
     instances_file: str = None,
-    checkpoint_every: int = 1
+    checkpoint_every: int = 1,
+    execution_mode: str | None = None,
 ) -> dict:
     """Run evaluation on all instances in a domain with MLflow tracking"""
     global MLFLOW_AVAILABLE
@@ -1537,8 +2348,10 @@ def run_batch_evaluation(
     print(f"  PLANBENCH FULL EVALUATION: {domain}")
     print(f"{'='*80}\n")
 
+    resolved_mode = resolve_execution_mode(execution_mode)
+
     # Setup
-    base_path = Path(__file__).resolve().parent.parent / "workspaces/planbench_data/plan-bench"
+    base_path = PLANBENCH_ROOT
     os.makedirs(output_dir, exist_ok=True)
 
     # Find instances
@@ -1555,7 +2368,7 @@ def run_batch_evaluation(
             instances = instances[:max_instances]
         print(f"Found {len(instances)} instances")
 
-    checkpoint_file = f"{output_dir}/checkpoint_{domain}.json"
+    checkpoint_file = checkpoint_path(output_dir, domain, resolved_mode)
     effective_resume = resume_from
     if effective_resume is None and os.path.exists(checkpoint_file):
         effective_resume = checkpoint_file
@@ -1581,6 +2394,7 @@ def run_batch_evaluation(
 
             # Log parameters
             mlflow.log_param("domain", domain)
+            mlflow.log_param("execution_mode", resolved_mode)
             mlflow.log_param("max_instances", max_instances if max_instances else "all")
             mlflow.log_param("total_instances", len(instances))
             mlflow.log_param("resume_from", effective_resume if effective_resume else "none")
@@ -1594,10 +2408,13 @@ def run_batch_evaluation(
             print("   Continuing without MLflow tracking...")
             MLFLOW_AVAILABLE = False
 
+    selected_result_key = stage_result_key(resolved_mode)
+
     # Load checkpoint if resuming
     completed = set()
     results = {
         'domain': domain,
+        'execution_mode': resolved_mode,
         'timestamp': datetime.now().isoformat(),
         'total_instances': len(instances),
         'results': []
@@ -1608,7 +2425,11 @@ def run_batch_evaluation(
         with open(effective_resume, 'r') as f:
             checkpoint = json.load(f)
             results['results'] = checkpoint.get('results', [])
-            completed = set(r['instance_file'] for r in results['results'])
+            completed = {
+                r['instance_file']
+                for r in results['results']
+                if r.get(selected_result_key) is not None
+            }
         print(f"Skipping {len(completed)} completed instances")
 
     # Evaluate each instance
@@ -1630,7 +2451,7 @@ def run_batch_evaluation(
 
         def rate_limited_evaluate(instance_file, domain):
             with api_semaphore:
-                return evaluate_single_instance(instance_file, domain)
+                return evaluate_single_instance(instance_file, domain, resolved_mode)
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             # Submit all tasks
@@ -1683,7 +2504,7 @@ def run_batch_evaluation(
     else:
         # Serial execution mode (original behavior)
         for instance_file in tqdm(instances_to_process, desc=f"Evaluating {domain}"):
-            instance_result = evaluate_single_instance(instance_file, domain)
+            instance_result = evaluate_single_instance(instance_file, domain, resolved_mode)
 
             results['results'].append(instance_result)
 
@@ -1699,80 +2520,69 @@ def run_batch_evaluation(
     # Always persist latest progress snapshot
     save_checkpoint_atomic(results, checkpoint_file)
 
-    # Final statistics with comparative analysis
-    # Count structural-only vs multi-layer success
-    structural_only_success = sum(
-        1 for r in results['results']
-        if r.get('bdi_metrics', {}).get('verification_layers', {}).get('structural', {}).get('valid', False)
-    )
-    overall_success = sum(
-        1 for r in results['results']
-        if r.get('bdi_metrics', {}).get('overall_valid', False)
+    def _checkpoint_stats(result_key: str) -> dict:
+        attempted = [r for r in results['results'] if r.get(result_key) is not None]
+        success = sum(1 for r in attempted if r.get(result_key, {}).get('success', False))
+        return {
+            'attempted': len(attempted),
+            'success_count': success,
+            'success_rate': success / len(attempted) if attempted else 0,
+        }
+
+    baseline_stats = _checkpoint_stats('baseline_result')
+    bdi_stats = _checkpoint_stats('bdi_initial_result')
+    bdi_repair_stats = _checkpoint_stats('bdi_repair_result')
+
+    repair_contribution = sum(
+        1
+        for r in results['results']
+        if r.get('bdi_initial_result') is not None
+        and r.get('bdi_repair_result') is not None
+        and not r.get('bdi_initial_result', {}).get('success', False)
+        and r.get('bdi_repair_result', {}).get('success', False)
     )
 
-    # Count symbolic and physics failures
-    symbolic_caught_errors = sum(
-        1 for r in results['results']
-        if r.get('bdi_metrics', {}).get('verification_layers', {}).get('structural', {}).get('valid', False)
-        and not r.get('bdi_metrics', {}).get('verification_layers', {}).get('symbolic', {}).get('valid', False)
-    )
-    physics_caught_errors = sum(
-        1 for r in results['results']
-        if r.get('bdi_metrics', {}).get('verification_layers', {}).get('structural', {}).get('valid', False)
-        and not r.get('bdi_metrics', {}).get('verification_layers', {}).get('physics', {}).get('valid', False)
-    )
-
-    # Count auto-repair statistics
-    auto_repair_triggered = sum(
-        1 for r in results['results']
-        if r.get('bdi_metrics', {}).get('auto_repair', {}).get('triggered', False)
-    )
-    auto_repair_success = sum(
-        1 for r in results['results']
-        if r.get('bdi_metrics', {}).get('auto_repair', {}).get('success', False)
-    )
-
-    # VAL repair loop statistics
     val_repair_triggered = sum(
         1 for r in results['results']
-        if r.get('bdi_metrics', {}).get('val_repair', {}).get('attempts', 0) > 0
+        if (r.get('bdi_repair_result') or {}).get('val_repair', {}).get('attempts', 0) > 0
     )
     val_repair_success = sum(
         1 for r in results['results']
-        if r.get('bdi_metrics', {}).get('val_repair', {}).get('success', False)
+        if (r.get('bdi_repair_result') or {}).get('val_repair', {}).get('success', False)
     )
     val_repair_total_attempts = sum(
-        r.get('bdi_metrics', {}).get('val_repair', {}).get('attempts', 0)
+        (r.get('bdi_repair_result') or {}).get('val_repair', {}).get('attempts', 0)
         for r in results['results']
     )
 
+    selected_stats = {
+        'baseline': baseline_stats,
+        'bdi': bdi_stats,
+        'bdi-repair': bdi_repair_stats,
+    }[resolved_mode]
+
     results['summary'] = {
         'total_evaluated': len(results['results']),
-        'success_count': success_count,
-        'failed_count': failed_count,
-        'success_rate': success_count / len(results['results']) if results['results'] else 0,
-        'avg_generation_time': sum(
-            r.get('bdi_metrics', {}).get('generation_time', 0)
-            for r in results['results']
-        ) / len(results['results']) if results['results'] else 0,
-        'structural_only_success': structural_only_success,
-        'symbolic_caught_errors': symbolic_caught_errors,
-        'physics_caught_errors': physics_caught_errors,
-        'auto_repair': {
-            'triggered': auto_repair_triggered,
-            'successful': auto_repair_success,
-            'success_rate': auto_repair_success / auto_repair_triggered if auto_repair_triggered > 0 else 0
+        'stage': resolved_mode,
+        'success_count': selected_stats['success_count'],
+        'failed_count': selected_stats['attempted'] - selected_stats['success_count'],
+        'success_rate': selected_stats['success_rate'],
+        'baseline': baseline_stats,
+        'bdi': bdi_stats,
+        'bdi_repair': bdi_repair_stats,
+        'repair_contribution': {
+            'successful_repairs': repair_contribution,
         },
         'val_repair': {
             'triggered': val_repair_triggered,
             'successful': val_repair_success,
             'total_attempts': val_repair_total_attempts,
-            'success_rate': val_repair_success / val_repair_triggered if val_repair_triggered > 0 else 0
-        }
+            'success_rate': val_repair_success / val_repair_triggered if val_repair_triggered > 0 else 0,
+        },
     }
 
     # Save final results
-    output_file = f"{output_dir}/results_{domain}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    output_file = f"{output_dir}/results_{domain}_{resolved_mode}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     with open(output_file, 'w') as f:
         json.dump(results, f, indent=2)
 
@@ -1785,19 +2595,11 @@ def run_batch_evaluation(
             mlflow.log_metric("success_rate", summary['success_rate'])
             mlflow.log_metric("success_count", summary['success_count'])
             mlflow.log_metric("failed_count", summary['failed_count'])
-            mlflow.log_metric("avg_generation_time", summary['avg_generation_time'])
+            mlflow.log_metric("baseline_success_rate", summary['baseline']['success_rate'])
+            mlflow.log_metric("bdi_success_rate", summary['bdi']['success_rate'])
+            mlflow.log_metric("bdi_repair_success_rate", summary['bdi_repair']['success_rate'])
+            mlflow.log_metric("repair_contribution", summary['repair_contribution']['successful_repairs'])
 
-            # Log verification layer metrics
-            mlflow.log_metric("structural_only_success", summary['structural_only_success'])
-            mlflow.log_metric("symbolic_caught_errors", summary['symbolic_caught_errors'])
-            mlflow.log_metric("physics_caught_errors", summary['physics_caught_errors'])
-
-            # Log auto-repair metrics
-            mlflow.log_metric("auto_repair_triggered", summary['auto_repair']['triggered'])
-            mlflow.log_metric("auto_repair_successful", summary['auto_repair']['successful'])
-            mlflow.log_metric("auto_repair_success_rate", summary['auto_repair']['success_rate'])
-
-            # Log VAL repair metrics
             mlflow.log_metric("val_repair_triggered", summary['val_repair']['triggered'])
             mlflow.log_metric("val_repair_successful", summary['val_repair']['successful'])
             mlflow.log_metric("val_repair_total_attempts", summary['val_repair']['total_attempts'])
@@ -1819,25 +2621,20 @@ def run_batch_evaluation(
     print(f"  EVALUATION COMPLETE")
     print(f"{'='*80}")
     print(f"\nDomain: {domain}")
+    print(f"Stage: {resolved_mode}")
     print(f"Total instances: {len(results['results'])}")
-    print(f"\n--- Multi-Layer Verification Comparison ---")
-    print(f"Structural-only success: {structural_only_success} ({structural_only_success/len(results['results'])*100:.1f}%)")
-    print(f"Multi-layer success: {overall_success} ({overall_success/len(results['results'])*100:.1f}%)")
-    print(f"Symbolic caught: {symbolic_caught_errors} additional errors")
-    print(f"Physics caught: {physics_caught_errors} additional errors")
-    print(f"\n--- Auto-Repair Statistics ---")
-    print(f"Auto-repair triggered: {auto_repair_triggered}")
-    print(f"Auto-repair successful: {auto_repair_success}")
-    if auto_repair_triggered > 0:
-        print(f"Auto-repair success rate: {auto_repair_success/auto_repair_triggered*100:.1f}%")
+    print(f"\n--- Checkpoint Success ---")
+    print(f"baseline: {baseline_stats['success_count']}/{baseline_stats['attempted']} ({baseline_stats['success_rate']*100:.1f}%)")
+    print(f"bdi: {bdi_stats['success_count']}/{bdi_stats['attempted']} ({bdi_stats['success_rate']*100:.1f}%)")
+    print(f"bdi_repair: {bdi_repair_stats['success_count']}/{bdi_repair_stats['attempted']} ({bdi_repair_stats['success_rate']*100:.1f}%)")
+    print(f"Repair contribution inside bdi_repair: {repair_contribution}")
     print(f"\n--- VAL Repair Loop Statistics ---")
     print(f"VAL repair triggered: {val_repair_triggered}")
     print(f"VAL repair successful: {val_repair_success}")
     print(f"VAL repair total attempts: {val_repair_total_attempts}")
     if val_repair_triggered > 0:
         print(f"VAL repair success rate: {val_repair_success/val_repair_triggered*100:.1f}%")
-    print(f"\nFinal success: {success_count} ({success_count/len(results['results'])*100:.1f}%)")
-    print(f"Failed: {failed_count}")
+    print(f"\nSelected stage success: {selected_stats['success_count']}/{selected_stats['attempted']} ({selected_stats['success_rate']*100:.1f}%)")
     print(f"\nResults saved to: {output_file}")
 
     return results
@@ -1851,7 +2648,13 @@ def main():
 
     parser = argparse.ArgumentParser(description="PlanBench Full Benchmark Evaluation")
     parser.add_argument("--domain", type=str,
-                       choices=["blocksworld", "logistics", "depots"],
+                       choices=[
+                           "blocksworld",
+                           "logistics",
+                           "depots",
+                           "obfuscated_deceptive_logistics",
+                           "obfuscated_randomized_logistics",
+                       ],
                        help="Domain to evaluate")
     parser.add_argument("--all_domains", action="store_true",
                        help="Evaluate all domains")
@@ -1869,19 +2672,15 @@ def main():
                        help="File containing list of instance paths to evaluate (one per line)")
     parser.add_argument("--checkpoint_every", type=int, default=1,
                        help="Save checkpoint every N completed instances (default: 1)")
-    parser.add_argument("--execution_mode", type=str, default="FULL_VERIFIED",
-                       choices=["NAIVE", "BDI_ONLY", "FULL_VERIFIED"],
-                       help="Ablation execution mode (default: FULL_VERIFIED)")
+    parser.add_argument("--execution_mode", type=str, default="bdi-repair",
+                       choices=["baseline", "bdi", "bdi-repair"],
+                       help="Run pipeline up to this checkpoint (default: bdi-repair)")
 
     args = parser.parse_args()
 
-    # Check API credentials (accept OpenAI, Anthropic, or Google credentials)
-    if (
-        not os.environ.get("OPENAI_API_KEY")
-        and not os.environ.get("ANTHROPIC_API_KEY")
-        and not os.environ.get("GOOGLE_API_KEY")
-        and not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
-    ):
+    # Check API credentials using project config resolution (supports .env + fallback aliases)
+    credentials = Config.get_credentials()
+    if not any(credentials.values()):
         print("❌ ERROR: No API credential set")
         print("   export OPENAI_API_KEY=your-key")
         print("   OR export ANTHROPIC_API_KEY=your-key")
@@ -1891,14 +2690,20 @@ def main():
 
     # Determine domains to evaluate
     if args.all_domains:
-        domains = ["blocksworld", "logistics", "depots"]
+        domains = [
+            "blocksworld",
+            "depots",
+            "logistics",
+            "obfuscated_deceptive_logistics",
+            "obfuscated_randomized_logistics",
+        ]
     elif args.domain:
         domains = [args.domain]
     else:
         print("❌ ERROR: Must specify --domain or --all_domains")
         sys.exit(1)
 
-    # Set execution mode for ablation studies
+    # Set execution mode for the current benchmark stage
     os.environ['AGENT_EXECUTION_MODE'] = args.execution_mode
     print(f"AGENT_EXECUTION_MODE={args.execution_mode}")
 
@@ -1913,7 +2718,8 @@ def main():
             parallel=args.parallel,
             max_workers=args.workers,
             instances_file=args.instances,
-            checkpoint_every=args.checkpoint_every
+            checkpoint_every=args.checkpoint_every,
+            execution_mode=args.execution_mode,
         )
         all_results[domain] = results
 

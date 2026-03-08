@@ -20,7 +20,6 @@ from .prompts import (  # noqa: F401
 )
 
 # Re-export Signature classes for backward compatibility with
-# scripts/batch/prepare_batch_jsonl.py and other modules.
 from .signatures import (  # noqa: F401
     GeneratePlan,
     GeneratePlanDepots,

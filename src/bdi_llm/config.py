@@ -25,9 +25,7 @@ class Config:
     """Central configuration for BDI-LLM Framework."""
 
     # API Configuration
-    # OPENAI_API_KEY falls back to DASHSCOPE_API_KEY for DashScope-compatible endpoints
-    DASHSCOPE_API_KEY = _resolve_key("DASHSCOPE_API_KEY")
-    OPENAI_API_KEY = _resolve_key("OPENAI_API_KEY", "DASHSCOPE_API_KEY")
+    OPENAI_API_KEY = _resolve_key("OPENAI_API_KEY")
     OPENAI_API_BASE = os.environ.get("OPENAI_API_BASE")
     ANTHROPIC_API_KEY = _resolve_key("ANTHROPIC_API_KEY")
     GOOGLE_API_KEY = _resolve_key("GOOGLE_API_KEY")
@@ -76,7 +74,7 @@ class Config:
     def get_credentials(cls):
         """Read credentials from current environment with class-level fallback."""
         return {
-            "openai": _resolve_key("OPENAI_API_KEY", "DASHSCOPE_API_KEY") or cls.OPENAI_API_KEY,
+            "openai": _resolve_key("OPENAI_API_KEY") or cls.OPENAI_API_KEY,
             "anthropic": _resolve_key("ANTHROPIC_API_KEY") or cls.ANTHROPIC_API_KEY,
             "google": _resolve_key("GOOGLE_API_KEY") or cls.GOOGLE_API_KEY,
             "google_application_credentials": (
