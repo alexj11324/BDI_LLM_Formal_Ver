@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import ast
 import importlib
 import os
 import sys
+import threading
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -13,7 +15,8 @@ from datasets import load_dataset
 from .schemas import TravelPlannerItinerary
 
 
-DEFAULT_TRAVELPLANNER_HOME = Path('workspaces/TravelPlanner_official')
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_TRAVELPLANNER_HOME = PROJECT_ROOT / 'workspaces' / 'TravelPlanner_official'
 
 
 @dataclass
@@ -40,9 +43,19 @@ class TravelPlannerSetupError(RuntimeError):
     pass
 
 
+def _normalize_sample(sample: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(sample)
+    if isinstance(normalized.get('local_constraint'), str):
+        normalized['local_constraint'] = ast.literal_eval(normalized['local_constraint'])
+    return normalized
+
+
 def resolve_travelplanner_home(explicit_home: str | None = None) -> Path:
     raw = explicit_home or os.environ.get('TRAVELPLANNER_HOME') or str(DEFAULT_TRAVELPLANNER_HOME)
-    home = Path(raw).expanduser().resolve()
+    candidate = Path(raw).expanduser()
+    if not candidate.is_absolute():
+        candidate = (PROJECT_ROOT / candidate).resolve()
+    home = candidate.resolve()
     if not home.exists():
         raise TravelPlannerSetupError(
             f'TravelPlanner official repo not found at {home}. '
@@ -73,28 +86,48 @@ def check_travelplanner_database(home: Path) -> None:
 
 @contextmanager
 def _official_import_context(home: Path):
-    cwd = Path.cwd()
+    """Temporarily add TravelPlanner paths to sys.path for imports.
+
+    NOTE: We intentionally do NOT os.chdir() here because chdir is
+    process-global and causes race conditions under ThreadPoolExecutor.
+    """
     added = []
     try:
-        os.chdir(home / 'evaluation')
         for path in [str(home), str(home / 'evaluation')]:
             if path not in sys.path:
                 sys.path.insert(0, path)
                 added.append(path)
         yield
     finally:
-        os.chdir(cwd)
         for path in added:
             if path in sys.path:
                 sys.path.remove(path)
 
 
+# Thread-safe evaluator cache to avoid repeated importlib + database loads
+_evaluator_lock = threading.Lock()
+_evaluator_cache: dict[str, tuple] = {}
+
+
 def load_official_evaluator(home: Path):
-    check_travelplanner_database(home)
-    with _official_import_context(home):
-        commonsense_module = importlib.import_module('commonsense_constraint')
-        hard_module = importlib.import_module('hard_constraint')
-    return commonsense_module.evaluation, hard_module.evaluation
+    cache_key = str(home)
+    cached = _evaluator_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    with _evaluator_lock:
+        # Double-check after acquiring lock
+        cached = _evaluator_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        check_travelplanner_database(home)
+        with _official_import_context(home):
+            commonsense_module = importlib.import_module('commonsense_constraint')
+            hard_module = importlib.import_module('hard_constraint')
+        result = (commonsense_module.evaluation, hard_module.evaluation)
+        _evaluator_cache[cache_key] = result
+        return result
 
 
 def load_travelplanner_split(split: str):
@@ -111,6 +144,7 @@ def evaluate_travelplanner_plan(
 ) -> TravelPlannerEvalResult:
     home = resolve_travelplanner_home(travelplanner_home)
     commonsense_eval, hard_eval = load_official_evaluator(home)
+    sample = _normalize_sample(sample)
 
     if not plan_rows:
         return TravelPlannerEvalResult(

@@ -6,7 +6,8 @@ from ..planning_task import PlanSerializer, PlanningTask
 from .schemas import TravelDayPlan, TravelPlannerItinerary
 
 
-_PLACEHOLDER_CITY = "You don't need to fill in the information for this or later days."
+PLACEHOLDER_CITY = "You don't need to fill in the information for this or later days."
+_PLACEHOLDER_CITY = PLACEHOLDER_CITY
 
 
 class TravelPlannerPlanSerializer(PlanSerializer):
