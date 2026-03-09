@@ -13,20 +13,23 @@ from src.bdi_llm.travelplanner.runner import TravelPlannerSetupError, print_run_
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description='TravelPlanner compatibility runner')
+    parser = argparse.ArgumentParser(description='TravelPlanner BDI runner')
     parser.add_argument('--split', choices=['train', 'validation', 'test'], default='validation')
-    parser.add_argument('--execution_mode', choices=['baseline', 'bdi', 'bdi-repair'], default='bdi-repair')
     parser.add_argument('--max_instances', type=int, default=None)
     parser.add_argument('--output_dir', type=Path, default=Path('runs/travelplanner'))
     parser.add_argument('--travelplanner_home', type=str, default=None)
     parser.add_argument('--workers', type=int, default=1)
     args = parser.parse_args()
-    result = run_split(split=args.split, mode=args.execution_mode, max_instances=args.max_instances, output_dir=args.output_dir, travelplanner_home=args.travelplanner_home, workers=args.workers)
+    result = run_split(split=args.split, mode='bdi', max_instances=args.max_instances, output_dir=args.output_dir, travelplanner_home=args.travelplanner_home, workers=args.workers)
     print_run_result(result)
 
 
 if __name__ == '__main__':
+    import traceback
     try:
         main()
     except TravelPlannerSetupError as exc:
         raise SystemExit(str(exc))
+    except Exception:
+        traceback.print_exc()
+        raise SystemExit(1)

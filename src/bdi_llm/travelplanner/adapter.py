@@ -4,17 +4,18 @@ import json
 from typing import Any
 
 from ..planning_task import PlanningTask, TaskAdapter
+from .reference_info import parse_budget_from_query, grounding_hint_summary, reference_summary
+from .spec import load_travelplanner_spec
 
 
 class TravelPlannerTaskAdapter(TaskAdapter):
     """Convert official TravelPlanner samples into `PlanningTask`."""
 
     def __init__(self, domain_context: str | None = None):
+        spec = load_travelplanner_spec()
         self.domain_context = domain_context or (
-            'TravelPlanner sole-planning benchmark. Output a structured multi-day itinerary. '
-            'For each day include current_city, transportation, breakfast, attraction, '
-            'lunch, dinner, and accommodation. Respect budget, day count, route coherence, '
-            'hotel continuity, commonsense constraints, and hard constraints.'
+            'TravelPlanner sole-planning benchmark. Follow the output spec exactly.\n\n'
+            + spec
         )
 
     @staticmethod
@@ -35,12 +36,27 @@ class TravelPlannerTaskAdapter(TaskAdapter):
         if not query:
             raise ValueError('TravelPlanner sample missing query')
 
-        reference_information = self._stringify_reference_information(
-            raw_input.get('reference_information', '')
+        raw_reference_information = raw_input.get('reference_information', '')
+        reference_information = self._stringify_reference_information(raw_reference_information)
+        query_budget = parse_budget_from_query(query)
+        public_digest = reference_summary(
+            raw_reference_information,
+            query=query,
+            days=raw_input.get('days'),
+            org=raw_input.get('org'),
+            dest=raw_input.get('dest'),
+        )
+        candidate_digest = grounding_hint_summary(
+            raw_reference_information,
+            org=raw_input.get('org'),
+            dest=raw_input.get('dest'),
+            budget=query_budget,
         )
         beliefs = (
             'TRAVELPLANNER SOLE-PLANNING TASK\n\n'
             f'User query:\n{query}\n\n'
+            f'{public_digest}\n\n'
+            f'{candidate_digest}\n\n'
             'Reference information (sandbox facts):\n'
             f'{reference_information}'
         )

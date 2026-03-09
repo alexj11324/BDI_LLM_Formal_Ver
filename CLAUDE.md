@@ -2,214 +2,241 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Project Overview
+## Runtime scope
 
-BDI-LLM is a neuro-symbolic planning framework that combines LLM generation (via DSPy) with formal verification to produce provably correct plans. It evaluates on the PlanBench benchmark across three classical planning domains: Blocksworld, Logistics, and Depots.
+The active runtime is the `src/bdi_llm/` package, the entrypoints in `src/interfaces/`, and the current runners in `scripts/evaluation/`, `scripts/replanning/`, and `scripts/swe_bench/`.
 
-Core pipeline: Natural language input → LLM plan generation (DSPy ChainOfThought) → 3-layer verification (structural + VAL symbolic + domain physics) → error-driven repair loop → verified PDDL plan.
+Do **not** treat these as the mainline runtime unless a task explicitly says so:
+- `scripts/evaluation/_legacy/` — historical runners kept for reference
+- `workspaces/pnsv_workspace/` — architecture/reference workspace, not the default import path used by current runners
 
-## Commands
+## Setup and common commands
+
+### Install
+
+Use the package metadata in `pyproject.toml` for development installs:
 
 ```bash
-# Install
-pip install -r requirements.txt
+pip install -e ".[dev]"
+cp .env.example .env
+```
 
-# Run all tests (no API key needed for unit tests)
+`requirements.txt` is only a minimal subset and is not the best source for a full local dev environment.
+
+### Lint
+
+```bash
+ruff check .
+```
+
+### Tests
+
+```bash
+# All tests
 pytest
 
-# Run a single test file
-pytest tests/unit/test_verifier.py -v
+# Unit tests only
+pytest tests/unit -q
 
-# Evaluation modes
-python scripts/evaluation/run_evaluation.py --mode unit          # offline unit tests
-python scripts/evaluation/run_evaluation.py --mode demo-offline  # offline demo
-python scripts/evaluation/run_evaluation.py --mode demo          # needs API key
-python scripts/evaluation/run_evaluation.py --mode benchmark     # needs API key
+# Single test file
+pytest tests/unit/test_travelplanner_review.py -q
 
-# PlanBench full evaluation
-python scripts/evaluation/run_planbench_full.py --domain blocksworld --max_instances 100
-python scripts/evaluation/run_planbench_full.py --all_domains --max_instances 50
-python scripts/evaluation/run_planbench_full.py --domain blocksworld --resume runs/checkpoint.json
+# Single test
+pytest tests/unit/test_travelplanner_review.py::test_apply_patch_preserves_untouched_days -q
 
-# Ablation modes (NAIVE / BDI_ONLY / FULL_VERIFIED) — sets AGENT_EXECUTION_MODE internally
-python scripts/evaluation/run_planbench_full.py --all_domains --execution_mode NAIVE --output_dir runs/ablation_NAIVE --parallel --workers 30
-python scripts/evaluation/run_planbench_full.py --all_domains --execution_mode BDI_ONLY --output_dir runs/ablation_BDI_ONLY --parallel --workers 30
+# Offline VAL / symbolic integration
+pytest tests/integration/test_val_integration.py -q
 
-# MCP server (exposes generate_verified_plan tool to Claude Code / Cursor / etc.)
+# API-backed planner integration
+pytest tests/integration/test_integration.py -q
+```
+
+Notes:
+- Most unit tests are offline.
+- `tests/integration/test_integration.py` exercises live planner generation and needs API credentials.
+- Local symbolic verification needs a working VAL binary at `workspaces/planbench_data/planner_tools/VAL/validate`.
+
+### Demo and MCP entrypoints
+
+Run these after an editable install so `bdi_llm` imports resolve correctly:
+
+```bash
+python src/interfaces/cli.py
 python src/interfaces/mcp_server.py
-
-# SWE-bench harness
-python scripts/swe_bench/swe_bench_harness.py
-
-# Verify frozen paper data integrity
-python scripts/evaluation/verify_paper_eval_snapshot.py
 ```
 
-## Architecture
+### Generic PDDL / PlanBench-style evaluation
 
-### Core Modules (`src/bdi_llm/`)
-
-- **`schemas.py`** — Pydantic models: `ActionNode`, `DependencyEdge`, `BDIPlan` (with `to_networkx()`)
-- **`planner.py`** — DSPy-based planner with domain-specific Signatures (`GeneratePlan`, `GeneratePlanLogistics`, `GeneratePlanDepots`) and `RepairPlan`. Each Signature embeds state-tracking tables, chain-of-symbol representations, and domain constraints. Logistics includes few-shot demonstrations from VAL-validated gold plans.
-- **`verifier.py`** — Layer 1: structural validation (DAG check, weak connectivity, cycle detection, topological sort)
-- **`symbolic_verifier.py`** — Layer 2: PDDL symbolic verification via VAL binary; Layer 3: domain-specific physics (e.g., `BlocksworldPhysicsValidator` simulates clear/hand state). `IntegratedVerifier` orchestrates all three layers.
-- **`plan_repair.py`** — Auto-repair: connects disconnected subgraphs (virtual START/END nodes), canonicalizes node IDs. `repair_and_verify()` is the main entry point.
-- **`config.py`** — Central config from env vars/.env. Supports OpenAI (default gpt-4o), Gemini, Vertex AI, Anthropic via litellm.
-- **`coding_planner.py`** — Extends `BDIPlanner` for the SWE-bench coding domain. Defines `GeneratePlanCoding` DSPy Signature with coding-specific action types (`read-file`, `edit-file`, `run-test`, `create-file`) and `CodingBDIPlanner`.
-- **`visualizer.py`** — Graph visualization utilities for BDI plan DAGs.
-
-### MCP Server
-
-`src/interfaces/mcp_server.py` exposes a `generate_verified_plan` FastMCP tool. External agents (Claude Code, Cursor, etc.) call it with a `PlanRequest` (goal, domain, context, PDDL paths) and receive a verified plan or error report. Entry point for production use.
-
-### SWE-bench Path
-
-`scripts/swe_bench/swe_bench_harness.py` uses `CodingBDIPlanner` + `PlanVerifier` to run BDI-LLM on SWE-bench instances. Clones repos locally, applies edits, runs tests. `scripts/swe_bench/run_swe_bench_batch.py` batches multiple instances.
-
-### Ablation Modes
-
-`AGENT_EXECUTION_MODE` env var (set automatically by `--execution_mode` flag) controls verification depth:
-- `NAIVE` — LLM generation only, no verification
-- `BDI_ONLY` — structural verification (Layer 1) only
-- `FULL_VERIFIED` — all 3 layers + repair loop (default)
-
-### Data Flow
-
-```
-BDIPlanner.forward() → DSPy ChainOfThought → action constraint validation →
-NetworkX graph → PlanVerifier → [auto-repair if disconnected] →
-PDDLSymbolicVerifier (VAL) → PhysicsValidator →
-[repair_from_val_errors loop, up to 3 attempts] → verified plan
-```
-
-### Key External Dependencies
-
-- **VAL binary**: `planbench_data/planner_tools/VAL/validate` — auto-detected by `symbolic_verifier.py`
-- **PlanBench data**: `planbench_data/plan-bench/` — PDDL problem/domain files
-- **DSPy 3.x**: `dspy.Assert`/`dspy.Suggest` are removed; use native `raise ValueError` instead
-
-## Benchmark Run History & Results
-
-### Completed Full-Dataset Runs
-
-| Model | Date | Blocksworld | Logistics | Depots | Overall | Artifacts |
-|-------|------|-------------|-----------|--------|---------|-----------|
-| Gemini | 2026-02-13 | ~200/200 | 568/570 (99.6%) | 497/500 (99.4%) | — | `artifacts/paper_eval_20260213/` (frozen) |
-| openai/gpt-5 (infiniteai) | 2026-02-23 | 1103/1103 (100%) | 561/572 (98.1%) | 493/501 (98.4%) | 2157/2176 (99.1%) | `mlruns/1,2,3/` |
-
-- **Gemini run** = paper canonical numbers. Stored in frozen `artifacts/paper_eval_20260213/`. Blocksworld only ran ~200 instances.
-- **GPT-5 run** = full-dataset run via `infiniteai.cc` (`openai/gpt-5`，`.env` 配置). Orchestrated by Codex CLI, but benchmark LLM calls went to infiniteai. Results in `mlruns/`. Auto-repair worked for depots (8/8), failed for logistics (11 failures unrepaired).
-- **`runs/scientist_team_dryrun_impl*/`** = empty dry-run shells generated by Codex CLI orchestration, no real benchmark data. Ignore.
-- **Dataset full sizes**: blocksworld ≈ 1103 instances, logistics = 572, depots = 501 (PDDL files in `planbench_data/plan-bench/instances/`).
-- **Checkpoint/resume**: `run_planbench_full.py` auto-resumes if checkpoint exists in output dir. All GPT-5 runs are complete; no resume needed.
-
-### API / Model Configuration
-
-Two separate roles — do not conflate:
-
-- **`.env` (benchmark LLM)**: `OPENAI_API_BASE=https://api.infiniteai.cc/v1`, `LLM_MODEL=openai/gpt-5` — used by `config.py` / `run_planbench_full.py` for actual plan generation
-- **LiteLLM proxy (nebula)**: `https://api.nebula-spaces.com/v1`, model `gpt-5.3-codex`, key `sk-litellm-local` — used by Codex CLI as orchestrator, not for benchmark LLM calls
-
-To check if nebula proxy is up: `curl -s https://api.nebula-spaces.com/v1/models -H "Authorization: Bearer sk-litellm-local"`
-Available models: `sonnet-4-6`, `opus-4-6`, `huan-grok-4-2`, `gpt-5.3-codex`, `gpt-5.3-codex-response`
-
-No built-in API health-check script exists in `scripts/` — add one if needed.
-
-## 当前进行中的跑（2026-02-27，待明天继续）
-
-### 状态：infiniteai quota 用完，明天重启
-
-**进度快照（2026-02-27 晚）：**
-
-| Run | blocksworld | logistics | depots |
-|-----|-------------|-----------|--------|
-| FULL_VERIFIED (`runs/benchmark_gpt5_full`) | ✅ 1103/1103 (90.8% sr) | ~300/572 (未完成) | 未开始 |
-| NAIVE (`runs/ablation_NAIVE`) | ✅ 1103/1103 (91.6% sr) | ~571/572 (未完成) | 未开始 |
-| BDI_ONLY (`runs/ablation_BDI_ONLY`) | ✅ 1103/1103 (91.7% sr) | ✅ 572/572 (82.9% sr) | 进行中 |
-
-**失败原因**：logistics 大量失败是 504 Gateway Timeout（quota 耗尽），不是计划质量问题。真实 sr 约 99%。
-
-**明天重启步骤：**
-
-1. 运行 `strip_timeouts.py` 清掉 checkpoint 里的 timeout 失败记录：
-```python
-# scripts/strip_timeouts.py
-import json, os
-PROJ = '/Users/alexjiang/Desktop/BDI_LLM_Formal_Ver'
-runs = ['benchmark_gpt5_full', 'ablation_NAIVE', 'ablation_BDI_ONLY']
-domains = ['blocksworld', 'logistics', 'depots']
-for run in runs:
-    for domain in domains:
-        ckpt = f'{PROJ}/runs/{run}/checkpoint_{domain}.json'
-        if not os.path.exists(ckpt): continue
-        with open(ckpt) as f: d = json.load(f)
-        before = len(d['results'])
-        d['results'] = [r for r in d['results']
-            if r.get('success') or 'Timeout' not in str(r.get('bdi_metrics', {}))]
-        after = len(d['results'])
-        if before != after:
-            with open(ckpt, 'w') as f: json.dump(d, f, indent=2)
-            print(f'{run}/{domain}: removed {before-after} timeout failures')
-```
-
-2. 用 `--workers 30` 重启（不要用 200，会再次打爆 quota）：
 ```bash
-PYTHON=/Users/alexjiang/opt/anaconda3/envs/ai_scientist/bin/python
-PROJ=/Users/alexjiang/Desktop/BDI_LLM_Formal_Ver
-cd $PROJ
+# Single generic PDDL problem
+python scripts/evaluation/run_generic_pddl_eval.py --domain_pddl tests/fixtures/gripper/domain.pddl --problem_pddl tests/fixtures/gripper/problem1.pddl
 
-tmux new-session -d -s bdi_bench -n full_verified
-tmux send-keys -t bdi_bench:full_verified "$PYTHON scripts/evaluation/run_planbench_full.py --all_domains --execution_mode FULL_VERIFIED --output_dir runs/benchmark_gpt5_full --parallel --workers 30" Enter
+# Batch generic PDDL directory with VAL checking
+python scripts/evaluation/run_generic_pddl_eval.py --domain_pddl tests/fixtures/gripper/domain.pddl --problem_dir tests/fixtures/gripper --execution_mode VERIFY_WITH_VAL
 
-tmux new-window -t bdi_bench -n ablation_naive
-tmux send-keys -t bdi_bench:ablation_naive "$PYTHON scripts/evaluation/run_planbench_full.py --all_domains --execution_mode NAIVE --output_dir runs/ablation_NAIVE --parallel --workers 30" Enter
-
-tmux new-window -t bdi_bench -n ablation_bdi_only
-tmux send-keys -t bdi_bench:ablation_bdi_only "$PYTHON scripts/evaluation/run_planbench_full.py --all_domains --execution_mode BDI_ONLY --output_dir runs/ablation_BDI_ONLY --parallel --workers 30" Enter
+# Verification-only evaluation (generation + structural + VAL, no repair)
+python scripts/evaluation/run_verification_only.py --domain blocksworld --max_instances 10
 ```
 
-checkpoint 会自动 resume，只补跑失败的实例。
+Use `run_generic_pddl_eval.py` as the current generic PDDL runner. Do not default to `_legacy/run_planbench_full.py` unless the task is explicitly about the old pipeline.
 
----
+### TravelPlanner
 
-## Benchmark Execution Environment
-
-**始终在本地 Mac 上跑 benchmark，不要在 OCI 上跑。** 原因：
-- VAL 二进制（`planbench_data/planner_tools/VAL/validate`）是 macOS arm64 Mach-O，在 Linux aarch64 上无法执行
-- 历史上所有成功的跑（包括 GPT-5 全量跑）都是在本地跑的，OCI 只用来跑其他服务
-- 本地 benchmark 用 `ai_scientist` conda env：`/Users/alexjiang/opt/anaconda3/envs/ai_scientist/bin/python`
-
-本地启动全量 + 消融跑（tmux）：
 ```bash
-PYTHON=/Users/alexjiang/opt/anaconda3/envs/ai_scientist/bin/python
-PROJ=/Users/alexjiang/Desktop/BDI_LLM_Formal_Ver
-cd $PROJ
+python scripts/evaluation/run_travelplanner_baseline.py --split validation --max_instances 3 --travelplanner_home workspaces/TravelPlanner_official
+python scripts/evaluation/run_travelplanner_bdi.py --split validation --max_instances 3 --travelplanner_home workspaces/TravelPlanner_official
+python scripts/evaluation/run_travelplanner_repair.py --split validation --max_instances 3 --travelplanner_home workspaces/TravelPlanner_official
 
-# 全量
-tmux new-session -d -s bdi_bench -n full_verified
-tmux send-keys -t bdi_bench:full_verified "$PYTHON scripts/evaluation/run_planbench_full.py --all_domains --execution_mode FULL_VERIFIED --output_dir runs/benchmark_gpt5_full --workers 50 2>&1 | tee runs/benchmark_gpt5_full.log" Enter
+# Release matrix / validation orchestration
+python scripts/evaluation/run_travelplanner_release_matrix.py --run-validation --workers 20 --travelplanner-home workspaces/TravelPlanner_official
 
-# 消融
-tmux new-window -t bdi_bench -n ablation_naive
-tmux send-keys -t bdi_bench:ablation_naive "$PYTHON scripts/evaluation/run_planbench_full.py --all_domains --execution_mode NAIVE --output_dir runs/ablation_NAIVE --workers 50 2>&1 | tee runs/ablation_NAIVE.log" Enter
-
-tmux new-window -t bdi_bench -n ablation_bdi_only
-tmux send-keys -t bdi_bench:ablation_bdi_only "$PYTHON scripts/evaluation/run_planbench_full.py --all_domains --execution_mode BDI_ONLY --output_dir runs/ablation_BDI_ONLY --workers 50 2>&1 | tee runs/ablation_BDI_ONLY.log" Enter
+# Generate test-set submissions
+python scripts/evaluation/run_travelplanner_test_submit.py --mode bdi-repair --output_dir runs/tp_test_submit --workers 100
 ```
 
-## ResponsesAPILM（infiniteai + gpt-5）
+TravelPlanner requires:
+- the official checkout at `workspaces/TravelPlanner_official/` (or `TRAVELPLANNER_HOME` / `--travelplanner_home`)
+- the official database files under that checkout
+- access to the Hugging Face `osunlp/TravelPlanner` dataset
 
-`planner.py` 中的 `ResponsesAPILM` 适配类，用于 infiniteai 的 `/v1/responses` 接口。关键教训：
-- **必须继承 `dspy.BaseLM`**，不能只实现 `__call__`，否则 DSPy 会拒绝接受
-- **infiniteai 只支持 SSE 流式返回**，非流式接口从 OCI IP 访问会被 block；用 `requests` 直接 POST + `stream=True` 解析 SSE
-- **`system` role 在 input[] 里会 400**，必须把 system 消息内容放进 `instructions` 顶层字段，而不是 `input` 数组
+### SWE-bench
 
-## Important Conventions
+```bash
+python scripts/swe_bench/run_swe_bench_batch.py --limit 5 --output_dir runs/swe_bench_results
+```
 
-- **`artifacts/paper_eval_20260213/`** is an immutable frozen evidence snapshot for the paper. Never modify these files. Paper figures/tables must derive only from this directory.
-- **`runs/`** is mutable, non-authoritative output. Do not use for paper claims.
-- **Benchmark rerun lock**: `runs/completed_benchmarks.lock.json` is the default do-not-rerun list for completed benchmark groups. Reuse existing artifacts unless the user explicitly requests a rerun in the current task.
-- **`runs/disabled_obfuscated/` and obfuscated domains are disabled by policy**. Do not launch or resume benchmarks for `obfuscated_*` domains unless the user explicitly overrides this rule in the current task.
-- Environment variables: `LLM_MODEL` (default `openai/gpt-4o`), `OPENAI_API_KEY`, `GOOGLE_API_KEY`, `ANTHROPIC_API_KEY`. See `.env.example`.
-- Tests in `tests/test_integration*.py` require API keys; all other tests run offline.
-- The paper LaTeX source is in `BDI_Paper/` (AAAI 2026 format).
+## Configuration and runtime assumptions
+
+Configuration lives in `src/bdi_llm/config.py` and is loaded from the environment plus `.env`.
+
+Important variables:
+- `OPENAI_API_KEY`
+- `OPENAI_API_BASE`
+- `ANTHROPIC_API_KEY`
+- `GOOGLE_API_KEY`
+- `GOOGLE_APPLICATION_CREDENTIALS`
+- `LLM_MODEL`
+- `VAL_VALIDATOR_PATH`
+- `SAVE_REASONING_TRACE`
+- `REASONING_TRACE_MAX_CHARS`
+
+Important detail: `Config._resolve_key()` ignores placeholder strings like `${VAR}`. Put real values in `.env` or export them in the shell.
+
+The current runtime resolves VAL under:
+- `workspaces/planbench_data/planner_tools/VAL/validate`
+
+If local symbolic verification fails on macOS, check executable permissions:
+
+```bash
+chmod +x workspaces/planbench_data/planner_tools/VAL/validate
+```
+
+## High-level architecture
+
+### 1. Benchmark inputs are normalized into `PlanningTask`
+
+`src/bdi_llm/planning_task.py` defines the benchmark-agnostic planner contract:
+- `PlanningTask` — normalized `beliefs`, `desire`, and optional `domain_context`
+- `TaskAdapter` — converts benchmark-native inputs into `PlanningTask`
+- `PlanSerializer` — converts planner outputs back into benchmark-native format
+
+For generic PDDL, `PDDLTaskAdapter` turns problem files into natural-language beliefs/goals, and `PDDLPlanSerializer` converts a `BDIPlan` back into grounded PDDL actions.
+
+### 2. `BDIPlan` is the core planning data structure
+
+`src/bdi_llm/schemas.py` defines:
+- `ActionNode`
+- `DependencyEdge`
+- `BDIPlan`
+
+`BDIPlan` is a DAG-shaped intermediate plan representation that can be converted to `networkx` for verification.
+
+### 3. `DomainSpec` separates built-in domains from generic PDDL
+
+`src/bdi_llm/planner/domain_spec.py` is the domain abstraction layer.
+
+It provides:
+- built-in specs for `blocksworld`, `logistics`, and `depots`
+- `DomainSpec.from_pddl()` for arbitrary PDDL domains
+- parsed action schemas, required parameters, and prompt-facing `domain_context`
+- optional few-shot demonstrations for some domains
+
+This is the reason the planner can serve both fixed benchmark domains and arbitrary PDDL domains without hardcoding everything in the planner constructor.
+
+### 4. `BDIPlanner` is the main DSPy planning module
+
+`src/bdi_llm/planner/bdi_engine.py` is the main planning entrypoint.
+
+Key behaviors:
+- `generate_plan()` does plan generation only
+- `forward()` adds structural verification on top of generation
+- `_validate_action_constraints()` checks action names and required params against the active `DomainSpec`
+- `repair_from_val_errors()` performs verifier-guided repair with cache/budget controls
+
+Supporting modules:
+- `src/bdi_llm/api_budget.py` — rate limits / repair budget policy
+- `src/bdi_llm/repair_cache.py` — avoids repeating identical repair work
+- `src/bdi_llm/plan_repair.py` — graph-shape repair such as cycle breaking or reconnecting disconnected components
+
+### 5. Verification is layered
+
+There are two distinct verification layers and they should not be conflated:
+
+- `src/bdi_llm/verifier.py` — **structural** verification only
+  - empty graph = hard failure
+  - cycle = hard failure
+  - disconnected components = warning, not a blocker
+
+- `src/bdi_llm/symbolic_verifier.py` — **symbolic / domain** verification
+  - `PDDLSymbolicVerifier` wraps VAL
+  - `IntegratedVerifier` orchestrates symbolic + optional domain-specific checks
+  - `BlocksworldPhysicsValidator` adds Python-side simulation checks beyond raw VAL output
+
+When debugging failures, first determine whether the issue is:
+- graph structure
+- PDDL executability / VAL
+- domain-specific semantics
+
+### 6. MCP server is a thin interface over the planner/verifier stack
+
+`src/interfaces/mcp_server.py` exposes three FastMCP tools:
+- `generate_plan`
+- `verify_plan`
+- `execute_verified_plan`
+
+`execute_verified_plan` is the gated-execution path: it only runs the requested shell command after the supplied PDDL plan passes verification.
+
+### 7. TravelPlanner is a separate non-PDDL pipeline
+
+TravelPlanner does **not** use `BDIPlan`. Its active runtime is under `src/bdi_llm/travelplanner/`.
+
+The flow is:
+1. `travelplanner/adapter.py` converts the official sample into a `PlanningTask`
+2. the adapter injects the output contract from `travelplanner/spec.md` into `domain_context`
+3. `travelplanner/engine.py` generates a `TravelPlannerItinerary`
+4. `travelplanner/serializer.py` converts it into official submission rows
+5. `travelplanner/official.py` evaluates it with the official evaluator from `workspaces/TravelPlanner_official`
+6. `travelplanner/runner.py` handles checkpointing, summaries, and optional MLflow logging
+
+Repair is split into two layers:
+- **non-oracle repair** uses deterministic local critique / patch guardrails from `travelplanner/review.py`
+- **oracle repair** uses evaluator feedback during `bdi-repair` evaluation mode
+
+`TRAVELPLANNER_BDI_PROMPT_VERSION` selects the BDI prompt stack in `travelplanner/engine.py`.
+Current code defaults to `v3`; `v4` remains available as an experimental path.
+
+### 8. Other active subsystems
+
+- `scripts/replanning/run_dynamic_replanning.py` + `src/bdi_llm/dynamic_replanner/` — execution-aware replanning after grounded-action failure
+- `scripts/swe_bench/` + `src/bdi_llm/coding_planner.py` — SWE-bench / coding-domain planner path
+
+## Data and artifact conventions
+
+- `workspaces/planbench_data/` — current PDDL benchmark assets and VAL binary
+- `workspaces/TravelPlanner_official/` — external official TravelPlanner checkout used for evaluation
+- `runs/` — mutable checkpoints and scratch outputs
+- `artifacts/paper_eval_20260213/` — frozen paper evidence snapshot; do not edit or treat mutable reruns as replacements for paper numbers
+
+## Known repo gotcha
+
+The current runtime code resolves PlanBench assets under `workspaces/planbench_data/`, while `Dockerfile` still copies a root-level `planbench_data/` tree. Re-check Dockerfile assumptions before relying on container builds for the current mainline runtime.
