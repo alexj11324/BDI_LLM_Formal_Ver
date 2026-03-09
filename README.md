@@ -88,6 +88,8 @@ chmod +x planbench_data/planner_tools/VAL/validate
 
 ## Architecture Overview
 
+> 📐 **详细运行时流程**请见 [Functional Flow](docs/FUNCTIONAL_FLOW.md)
+
 ### Directory Structure
 
 ```text
@@ -165,7 +167,101 @@ Latest mainline snapshot on `planner-main` using `run_planbench_full.py`, CPA Op
 
 **Key takeaway**: the strict direct `baseline` can fail badly on logistics, while the BDI scaffold recovers most of the domain and the verify-repair loop closes the remaining hard cases to 100%.
 
----
+> *Results provenance: see [RESULTS_PROVENANCE.md](RESULTS_PROVENANCE.md) for exact source files.*
+
+## TravelPlanner
+
+TravelPlanner is the first official non-PDDL benchmark on the new planner mainline. The local runner uses the official benchmark repo and evaluator under `workspaces/TravelPlanner_official`.
+
+### Local Setup
+
+- Official repo path: `workspaces/TravelPlanner_official`
+- Required database files live under `workspaces/TravelPlanner_official/database/`
+- Baseline runner: `python scripts/evaluation/run_travelplanner_baseline.py --split validation --max_instances 3 --travelplanner_home workspaces/TravelPlanner_official`
+- BDI runner: `python scripts/evaluation/run_travelplanner_bdi.py --split validation --max_instances 3 --travelplanner_home workspaces/TravelPlanner_official`
+- Repair runner: `python scripts/evaluation/run_travelplanner_repair.py --split validation --max_instances 3 --travelplanner_home workspaces/TravelPlanner_official`
+
+### Modes
+
+- `baseline`: strict direct itinerary generation baseline
+- `bdi`: structured planner generation without repair
+- `bdi-repair`: structured generation with evaluator-driven repair
+
+### Current Release Configuration
+
+- `baseline`: unchanged
+- `bdi`: default prompt version is `v3`
+- `bdi-repair`: keeps `bdi v3` as the generator and uses the Stage 3 reviewer / patch-scope / acceptance-gate logic as the default repair stack
+- `bdi v4` remains in the codebase as an experimental candidate but is **not** the default, because it regressed on full validation (`98/180` vs `104/180`)
+
+### TravelPlanner Results
+
+#### Current Validation Release Candidate (N=180, Local Official Evaluator)
+
+| Metric | `baseline` | `bdi (v3)` | `bdi-repair (v4 reviewer)` |
+| --- | --- | --- | --- |
+| Delivery Rate | 100.0% | 100.0% | 100.0% |
+| Commonsense Pass Rate | 37.8% | 81.1% | **91.7%** |
+| Hard Constraint Pass Rate | 59.4% | 68.3% | **79.4%** |
+| **Final Pass Rate** | 21.1% (38/180) | 57.8% (104/180) | **70.6% (127/180)** |
+
+#### Current Validation-As-Test Release Candidate (N=180, Non-Oracle Path)
+
+| Metric | `baseline` | `bdi (v3)` | `bdi-repair (v4 reviewer)` |
+| --- | --- | --- | --- |
+| Delivery Rate | 100.0% | 100.0% | 100.0% |
+| Commonsense Pass Rate | 37.8% | 81.1% | **76.1%** |
+| Hard Constraint Pass Rate | 59.4% | 68.3% | **71.1%** |
+| **Final Pass Rate** | 21.1% (38/180) | 57.8% (104/180) | **60.6% (109/180)** |
+
+**Key takeaway**: the current release candidate is no longer the old `validation-only repair` configuration. The converged setup is `bdi v3 + repair v4`. The reviewer-driven repair stack now improves both oracle validation and validation-as-test, while keeping average patch size small enough to indicate local repair rather than itinerary rewriting.
+
+#### Rejected Experimental Candidate
+
+| Candidate | Validation Final Pass |
+| --- | --- |
+| `bdi v4` | 54.4% (98/180) |
+
+`bdi v4` is retained for future experiments, but it is not the default release path because it underperformed `bdi v3`.
+
+#### Historical Validation Snapshot (Pre-Convergence)
+
+These were the earlier TravelPlanner validation numbers before the current converged `bdi v3 + repair v4` configuration:
+
+| Metric | `baseline` | `bdi` | `bdi-repair` |
+| --- | --- | --- | --- |
+| Delivery Rate | 100.0% | 100.0% | 100.0% |
+| Commonsense Pass Rate | 34.4% | 41.7% | **65.0%** |
+| Hard Constraint Pass Rate | 58.9% | 61.1% | **67.2%** |
+| **Final Pass Rate** | 18.3% (33/180) | 26.1% (47/180) | **43.9% (79/180)** |
+
+#### Current Test Set Submission (N=1000, [Official Leaderboard](https://huggingface.co/spaces/osunlp/TravelPlannerLeaderboard))
+
+| Metric | `baseline` | `bdi (v3)` | `bdi-repair (v4 reviewer)` |
+| --- | --- | --- | --- |
+| Delivery Rate | 100.0% | 100.0% | 100.0% |
+| Commonsense Micro | 94.35% | 97.29% | **97.73%** |
+| Commonsense Macro | 59.6% | 80.4% | **83.7%** |
+| Hard Constraint Micro | 81.35% | 84.41% | **84.85%** |
+| Hard Constraint Macro | 64.1% | 72.4% | **73.6%** |
+| **Final Pass Rate** | 38.2% | 60.9% | **64.7%** |
+
+**Release note**: the converged release configuration (`bdi v3 + repair v4`) now improves the official test leaderboard as well, not just local validation. The current default `bdi-repair` submission is materially better than both the unchanged `baseline` and the `bdi` one-shot generator.
+
+#### Historical Test Set Submission (Pre-Convergence Snapshot)
+
+| Metric | `baseline` | `bdi` | `bdi-repair` |
+| --- | --- | --- | --- |
+| Delivery Rate | 100.0% | 100.0% | 100.0% |
+| Commonsense Micro | 87.6% | **89.0%** | 76.1% |
+| Commonsense Macro | 34.9% | **37.5%** | 2.0% |
+| Hard Constraint Micro | **80.1%** | 78.1% | 30.3% |
+| Hard Constraint Macro | **62.3%** | 59.8% | 21.3% |
+| **Final Pass Rate** | 19.3% | **21.9%** | 0.7% |
+
+**Historical note**: these test leaderboard numbers were produced before the current converged release configuration. They remain useful as a provenance checkpoint, but they do not reflect the current default `bdi v3 + repair v4` setup.
+
+> *Results provenance: see [RESULTS_PROVENANCE.md](RESULTS_PROVENANCE.md) for exact source files and submission details.*
 
 ## Available Scripts
 
@@ -256,6 +352,8 @@ The server exposes `generate_verified_plan` ensuring tools invoke commands only 
 
 - [**Conductor Setup**](docs/conductor/index.md): Design guidelines, Git strategies, and project intent. *(moved from `conductor/`)*
 - [**C4 Architecture**](docs/c4/c4-context.md): Deep-dive into Context & Container boundaries.
+- [**Functional Flow**](docs/FUNCTIONAL_FLOW.md): Current end-to-end runtime flow for engineers inheriting the codebase.
 - [**Technical Reference**](docs/TECHNICAL_REFERENCE.md): 10-chapter technical development manual.
 - [**Benchmarking Status**](docs/BENCHMARKS.md): Historical execution outcomes against PlanBench.
+- [**Results Provenance**](RESULTS_PROVENANCE.md): Exact source files and configs for every reported benchmark number.
 - [**Wiki Catalogue**](docs/wiki-catalogue.md): Full top-level repository index.

@@ -141,6 +141,26 @@ BDI_LLM_Formal_Ver/
 
 ---
 
+## TravelPlanner
+
+TravelPlanner 是当前主线上第一个正式接入的 non-PDDL benchmark。本地 runner 会直接调用放在 `workspaces/TravelPlanner_official` 下的官方仓库与官方 evaluator。
+
+### 本地准备
+
+- 官方仓库目录：`workspaces/TravelPlanner_official`
+- 必需数据库文件位于：`workspaces/TravelPlanner_official/database/`
+- Baseline 入口：`python scripts/evaluation/run_travelplanner_baseline.py --split validation --max_instances 3 --travelplanner_home workspaces/TravelPlanner_official`
+- BDI 入口：`python scripts/evaluation/run_travelplanner_bdi.py --split validation --max_instances 3 --travelplanner_home workspaces/TravelPlanner_official`
+- Repair 入口：`python scripts/evaluation/run_travelplanner_repair.py --split validation --max_instances 3 --travelplanner_home workspaces/TravelPlanner_official`
+
+### 模式定义
+
+- `baseline`：严格的 direct itinerary generation baseline
+- `bdi`：结构化生成，不做 repair
+- `bdi-repair`：结构化生成并基于 evaluator 反馈进行修复
+
+---
+
 ## 操作常用脚本矩阵
 
 你可以使用提供的独立脚本来运行不同细分领域的框架控制体：
