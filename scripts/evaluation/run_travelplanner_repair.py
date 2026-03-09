@@ -13,13 +13,9 @@ from src.bdi_llm.travelplanner.runner import TravelPlannerSetupError
 
 
 def main() -> None:
-    parser = build_split_runner_parser(
-        'TravelPlanner compatibility runner',
-        include_execution_mode=True,
-        default_execution_mode='bdi-repair',
-    )
+    parser = build_split_runner_parser('TravelPlanner BDI-repair runner')
     args = parser.parse_args()
-    run_split_from_args(args)
+    run_split_from_args(args, fixed_mode='bdi-repair')
 
 
 if __name__ == '__main__':
