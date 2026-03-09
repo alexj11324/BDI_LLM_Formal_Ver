@@ -53,8 +53,10 @@ cd BDI_LLM_Formal_Ver
 It is highly recommended to use a virtual environment (`venv`, `conda`, `uv`, etc.):
 
 ```bash
-pip install -r requirements.txt
+pip install -e ".[dev]"
 ```
+
+`requirements.txt` is only a minimal subset and is not the best source for a full local development environment.
 
 ### 3. Environment Setup
 
@@ -80,7 +82,7 @@ Configure the following standard LLM variables inside `.env`:
 
 If you are running the `VAL` verifier locally on macOS (ARM64), ensure it has executable permissions:
 ```bash
-chmod +x planbench_data/planner_tools/VAL/validate
+chmod +x workspaces/planbench_data/planner_tools/VAL/validate
 ```
 *(If you are on Linux or Windows, we recommend using the Docker build, which automatically compiles VAL).*
 
@@ -88,7 +90,8 @@ chmod +x planbench_data/planner_tools/VAL/validate
 
 ## Architecture Overview
 
-> 📐 **详细运行时流程**请见 [Functional Flow](docs/FUNCTIONAL_FLOW.md)
+> **For the current mainline runtime, active-vs-legacy boundaries, and the generic PDDL / TravelPlanner flows, see** [Functional Flow](docs/FUNCTIONAL_FLOW.md)
+> **For exact benchmark numbers and provenance, see** [RESULTS_PROVENANCE.md](RESULTS_PROVENANCE.md)
 
 ### Directory Structure
 
@@ -108,18 +111,22 @@ BDI_LLM_Formal_Ver/
 │   └── smoke/               # Smoke tests
 ├── docs/                    # All documentation (C4, Conductor, archives)
 ├── configs/                 # Configuration files and code style guides
-└── planbench_data/          # PDDL datasets (Blocksworld, Logistics, etc.)
+├── workspaces/
+│   ├── planbench_data/      # Current PDDL benchmark assets and local VAL binary
+│   └── TravelPlanner_official/  # Official TravelPlanner checkout used for evaluation
 ```
 
-### The PNSV Verification Loop
+### The Current Mainline Verification Loop
 
-1. **Intention Generation**: An initial natural language prompt generates a JSON Intention DAG via DSPy.
-2. **Pydantic Validation**: Automatically casts JSON into a strictly-typed `IntentionDAG` object.
-3. **Core Engine Dispatch**: The `BDIEngine` delegates the DAG to the `VerificationBus`.
-4. **Multi-layer Check**: The Verification Bus passes the graph to specialized plugins (like `PlanBenchVerifier` or `SWEVerifier`). These plugins execute structural checks, PDDL VAL validation, and custom domain simulator logic in parallel.
-5. **Auto-Repair / Distillation**: 
-   - If **failed**: Tracebacks are caught, structured, and passed back into the DSPy engine for auto-correction (up to three loops via the `EpistemicDeadlockError` guard).
-   - If **passed**: The successful trajectory is piped into the generic `R1 Distillation Formatter` and flushed into `.jsonl` trace outputs.
+1. **Task normalization**: benchmark-native input is normalized into `PlanningTask` via adapters such as `PDDLTaskAdapter` or `TravelPlannerTaskAdapter`.
+2. **Plan generation**: `BDIPlanner` generates a structured `BDIPlan` for the PDDL side; TravelPlanner uses its own itinerary-shaped runtime under `src/bdi_llm/travelplanner/`.
+3. **Structural verification**: `PlanVerifier` checks graph-shape invariants such as empty plans and cycles.
+4. **Symbolic / domain verification**: `PDDLSymbolicVerifier` runs `VAL`, and `IntegratedVerifier` can compose symbolic plus domain-specific checks such as Blocksworld physics validation.
+5. **Repair / persistence at the runner layer**:
+   - Generic PDDL runners can invoke verifier-guided repair and persist artifacts under `runs/`.
+   - TravelPlanner can apply non-oracle local patch repair and, on validation only, optional evaluator-guided oracle repair.
+
+See [Functional Flow](docs/FUNCTIONAL_FLOW.md) for the full current-runtime whitepaper.
 
 ---
 
@@ -150,7 +157,7 @@ You must provide *at least one* LLM provider key to use the DSPy planner.
 
 ## Latest Benchmark Snapshot
 
-Latest mainline snapshot on `planner-main` using `run_planbench_full.py`, CPA OpenAI-compatible proxy (`gpt-5(low)`), and `workers=500`.
+Latest reported mainline snapshot on `planner-main`, as documented in `RESULTS_PROVENANCE.md`, using the current PlanBench evaluation stack and CPA OpenAI-compatible proxy (`gpt-5(low)`) with `workers=500`.
 
 **Stage semantics**
 - `baseline`: strict direct action-generation baseline (not the old shared-BDI `NAIVE` ablation)
@@ -267,12 +274,14 @@ These were the earlier TravelPlanner validation numbers before the current conve
 
 | Command | Description |
 | ------- | ----------- |
-| `python scripts/evaluation/run_planbench_full.py --domain blocksworld` | Execute the full 100+ blocksworld domain benchmarks |
-| `python scripts/evaluation/run_evaluation.py --mode demo` | Run a live CLI demo where you input a prompt and watch the engine verify it |
-| `python scripts/evaluation/run_verification_only.py` | Run pure ground-truth validation offline (no LLMs pinged) |
+| `python scripts/evaluation/run_generic_pddl_eval.py --domain_pddl tests/fixtures/gripper/domain.pddl --problem_pddl tests/fixtures/gripper/problem1.pddl` | Run a single generic PDDL problem through the current mainline evaluation path |
+| `python scripts/evaluation/run_verification_only.py --domain blocksworld --max_instances 10` | Run generation + structural + VAL verification without the repair loop |
+| `python scripts/evaluation/run_travelplanner_eval.py --split validation --execution_mode bdi-repair --travelplanner_home workspaces/TravelPlanner_official` | Run the current TravelPlanner validation flow |
+| `python scripts/evaluation/run_travelplanner_release_matrix.py --run-validation --workers 20 --travelplanner-home workspaces/TravelPlanner_official` | Orchestrate the TravelPlanner validation / release matrix |
+| `python src/interfaces/cli.py` | Launch the local CLI demo entrypoint |
 | `python src/interfaces/mcp_server.py` | Launch the server as a Model Context Protocol endpoint |
 
-*Pass `--execution_mode bdi-repair` to run the full baseline → BDI → repair pipeline, `--execution_mode bdi` to stop after the initial BDI checkpoint, or `--execution_mode baseline` for the direct action-generation baseline.*
+Historical monolithic evaluation scripts such as `run_planbench_full.py` and `run_evaluation.py` now live under `scripts/evaluation/_legacy/` and should be treated as legacy paths rather than the current mainline runtime.
 
 ---
 
@@ -291,7 +300,7 @@ pytest tests/
 
 ```bash
 # Ensures end-to-end BDI generation works. Requires valid API keys.
-pytest tests/test_integration.py -q
+pytest tests/integration/test_integration.py -q
 ```
 *(Test cases lacking proper `.env` secrets will gracefully `skip` without failing the pipeline).*
 
@@ -328,7 +337,7 @@ Add this configuration to your local `claude_desktop_config.json`:
 }
 ```
 
-The server exposes `generate_verified_plan` ensuring tools invoke commands only if the verification bus permits the formal transition.
+The server exposes `generate_plan`, `verify_plan`, and `execute_verified_plan`, allowing tools to generate plans, verify PDDL action sequences, and gate shell execution on successful verification.
 
 ---
 
@@ -336,7 +345,7 @@ The server exposes `generate_verified_plan` ensuring tools invoke commands only 
 
 ### Issue: "VAL binary missing or execution denied"
 **Error**: `subprocess.CalledProcessError` or "Permission denied" regarding VAL execution.
-**Fix**: On Mac, run `chmod +x planbench_data/planner_tools/VAL/validate`. On Linux or Windows WSL, you must compile `VAL` from source by executing `make validate` inside the `planner_tools/VAL` directory, OR simply use the Docker container where compilation is guaranteed. 
+**Fix**: On Mac, run `chmod +x workspaces/planbench_data/planner_tools/VAL/validate`. On Linux or Windows WSL, you must compile `VAL` from source by executing `make validate` inside the `planner_tools/VAL` directory, OR simply use the Docker container where compilation is guaranteed.
 
 ### Issue: "Graph Validation Warning: Components disconnected"
 **Context**: This is considered a *soft warning* generated by Layer 1 (Structural Validator) when multiple parallel tasks are requested, forming distinct Directed Acyclic Graph structures without paths intersecting. 
@@ -354,6 +363,6 @@ The server exposes `generate_verified_plan` ensuring tools invoke commands only 
 - [**C4 Architecture**](docs/c4/c4-context.md): Deep-dive into Context & Container boundaries.
 - [**Functional Flow**](docs/FUNCTIONAL_FLOW.md): Current end-to-end runtime flow for engineers inheriting the codebase.
 - [**Technical Reference**](docs/TECHNICAL_REFERENCE.md): 10-chapter technical development manual.
-- [**Benchmarking Status**](docs/BENCHMARKS.md): Historical execution outcomes against PlanBench.
+- [**Benchmarking Status**](docs/BENCHMARKS.md): High-level benchmark surfaces and current snapshot pointers.
 - [**Results Provenance**](RESULTS_PROVENANCE.md): Exact source files and configs for every reported benchmark number.
 - [**Wiki Catalogue**](docs/wiki-catalogue.md): Full top-level repository index.
