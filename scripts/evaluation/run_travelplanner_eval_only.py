@@ -32,10 +32,22 @@ def _init_evaluator(tp_home: str | None):
     load_official_evaluator(Path(_g_tp_home))
 
 
-def _eval_one(args: tuple) -> dict:
+def _resolve_plan_sample_index(raw_plan: dict, input_order: int) -> int:
+    for candidate in (
+        raw_plan.get('task_id'),
+        (raw_plan.get('submission') or {}).get('idx'),
+    ):
+        try:
+            return int(candidate) - 1
+        except (TypeError, ValueError):
+            continue
+    return input_order
+
+
+def _eval_one(args: tuple[int, dict, dict]) -> tuple[int, dict]:
     """Evaluate a single plan in a worker process."""
-    raw_plan, sample_data, split = args
-    from bdi_llm.travelplanner.official import evaluate_travelplanner_plan
+    input_order, raw_plan, sample_data = args
+    from bdi_llm.travelplanner.official import TravelPlannerEvalResult, evaluate_travelplanner_plan
 
     plan_rows = raw_plan.get('submission', {}).get('plan', [])
     try:
@@ -44,20 +56,21 @@ def _eval_one(args: tuple) -> dict:
         result = dict(raw_plan)
         result['metrics'] = metrics.to_summary_dict()
         result['success'] = metrics.final_pass
-        return result
+        return input_order, result
     except Exception as exc:
+        fallback_metrics = TravelPlannerEvalResult(
+            delivery=bool(plan_rows),
+            commonsense_pass=False,
+            hard_constraint_pass=False,
+            final_pass=False,
+            commonsense_details=None,
+            hard_constraint_details=None,
+        )
         result = dict(raw_plan)
-        result['metrics'] = {
-            'delivery': bool(plan_rows),
-            'commonsense_pass': False,
-            'hard_constraint_pass': False,
-            'final_pass': False,
-            'commonsense_details': None,
-            'hard_constraint_details': None,
-        }
+        result['metrics'] = fallback_metrics.to_summary_dict()
         result['success'] = False
         result['error'] = str(exc)
-        return result
+        return input_order, result
 
 
 def main():
@@ -90,18 +103,15 @@ def main():
 
     samples = [dict(row) for row in load_travelplanner_split(args.split)]
 
-    # Match raw plans to samples by task_id (idx)
+    # Match raw plans to samples using stable input order fallback.
     eval_args = []
-    for plan in raw_plans:
-        task_id = plan.get('task_id', '')
-        try:
-            idx = int(task_id) - 1
-        except (ValueError, TypeError):
-            idx = raw_plans.index(plan)
-        if 0 <= idx < len(samples):
-            eval_args.append((plan, samples[idx], args.split))
+    for input_order, plan in enumerate(raw_plans):
+        sample_index = _resolve_plan_sample_index(plan, input_order)
+        if 0 <= sample_index < len(samples):
+            sample = samples[sample_index]
         else:
-            eval_args.append((plan, {}, args.split))
+            sample = {}
+        eval_args.append((input_order, plan, sample))
 
     tp_home = args.travelplanner_home or os.environ.get('TRAVELPLANNER_HOME', '')
 
@@ -109,28 +119,29 @@ def main():
           f"total={total} workers={args.workers}", flush=True)
 
     # Run evaluation with multiprocessing
-    results = []
+    results: list[dict | None] = [None] * total
     completed = 0
+    delivered = 0
+    succeeded = 0
     report_every = max(1, total // 20)
 
     with Pool(processes=args.workers,
               initializer=_init_evaluator,
               initargs=(tp_home,)) as pool:
-        for result in pool.imap_unordered(_eval_one, eval_args, chunksize=4):
-            results.append(result)
+        for input_order, result in pool.imap_unordered(_eval_one, eval_args, chunksize=4):
+            results[input_order] = result
             completed += 1
+            delivered += int(bool(result.get('metrics', {}).get('delivery')))
+            succeeded += int(bool(result.get('success')))
             if completed % report_every == 0 or completed == total:
-                success = sum(1 for r in results if r.get('success'))
-                delivery = sum(1 for r in results if r.get('metrics', {}).get('delivery'))
                 print(f"  [{args.split}/{mode}] eval {completed}/{total} "
-                      f"delivery={delivery} success={success}", flush=True)
+                      f"delivery={delivered} success={succeeded}", flush=True)
 
-    # Sort results by task_id
-    results.sort(key=lambda r: int(r.get('task_id', '0')))
+    ordered_results = [row for row in results if row is not None]
 
     # Build summary
     from bdi_llm.travelplanner.official import summarize_travelplanner_results
-    summary = summarize_travelplanner_results(results)
+    summary = summarize_travelplanner_results(ordered_results)
 
     out_dir = args.output_dir.resolve()
     mode_dir = out_dir / args.split / mode
@@ -143,15 +154,15 @@ def main():
     results_payload = {
         'split': args.split,
         'execution_mode': mode,
-        'results': results,
+        'results': ordered_results,
         'summary': summary,
     }
     results_path.write_text(json.dumps(results_payload, indent=2, ensure_ascii=False))
     with submission_path.open('w', encoding='utf-8') as f:
-        for row in results:
+        for row in ordered_results:
             f.write(json.dumps(row.get('submission', {}), ensure_ascii=False) + '\n')
 
-    print(f"\n✅ Saved {len(results)} evaluated results → {results_path}")
+    print(f"\n✅ Saved {len(ordered_results)} evaluated results → {results_path}")
     print(f"   Summary: {json.dumps(summary, indent=2)}", flush=True)
 
 

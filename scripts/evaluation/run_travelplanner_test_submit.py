@@ -14,7 +14,6 @@ import argparse
 import json
 import sys
 import traceback
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 
@@ -24,6 +23,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from dotenv import load_dotenv
 load_dotenv(PROJECT_ROOT / '.env')
 
+from scripts.evaluation._travelplanner_threading import iter_bounded_indexed_results
 from src.bdi_llm.planner.dspy_config import configure_dspy
 configure_dspy()
 
@@ -43,6 +43,25 @@ def generate_plan(sample: dict, idx: int, mode: str) -> dict:
             'non_oracle_diagnostics': workflow.get('non_oracle_diagnostics', {}),
         },
     }
+
+
+def _failure_payload(sample: dict, idx: int) -> dict:
+    sample_idx = sample.get('idx', idx)
+    return {
+        'submission': {'idx': sample_idx, 'query': sample.get('query', ''), 'plan': []},
+        'diagnostics': {'error': 'generation_failed'},
+    }
+
+
+def _build_checkpoint_payload(
+    submissions: list[dict | None],
+    diagnostics_rows: list[dict | None],
+) -> list[dict]:
+    return [
+        {'submission': submission, 'diagnostics': diagnostics}
+        for submission, diagnostics in zip(submissions, diagnostics_rows)
+        if submission is not None
+    ]
 
 
 def main():
@@ -92,36 +111,27 @@ def main():
         completed = len(done_indices)
         print(f"[{datetime.now().strftime('%H:%M:%S')}] Resumed {completed}/{total} from checkpoint", flush=True)
 
-    def process(i: int):
-        if i in done_indices:
-            return i, {
-                'submission': submissions[i],
-                'diagnostics': diagnostics_rows[i] or {},
-            }
+    def process(i: int, sample: dict) -> dict:
         try:
-            return i, generate_plan(data[i], i + 1, args.mode)
+            return generate_plan(sample, i + 1, args.mode)
         except Exception:
             traceback.print_exc()
-            return i, {
-                'submission': {'idx': i + 1, 'query': data[i].get('query', ''), 'plan': []},
-                'diagnostics': {'error': 'generation_failed'},
-            }
+            return _failure_payload(sample, i + 1)
 
-    with ThreadPoolExecutor(max_workers=args.workers) as pool:
-        futures = {pool.submit(process, i): i for i in range(total)}
-        for fut in as_completed(futures):
-            i, result = fut.result()
-            submissions[i] = result['submission']
-            diagnostics_rows[i] = result.get('diagnostics', {})
-            completed += 1
-            if completed % 10 == 0:
-                print(f"[{datetime.now().strftime('%H:%M:%S')}] [{args.mode}] {completed}/{total}", flush=True)
-                checkpoint_payload = [
-                    {'submission': s, 'diagnostics': d}
-                    for s, d in zip(submissions, diagnostics_rows)
-                    if s is not None
-                ]
-                checkpoint_path.write_text(json.dumps(checkpoint_payload, ensure_ascii=False))
+    pending_items = ((i, data[i]) for i in range(total) if i not in done_indices)
+    for i, result in iter_bounded_indexed_results(
+        pending_items,
+        process,
+        max_workers=args.workers,
+    ):
+        submissions[i] = result['submission']
+        diagnostics_rows[i] = result.get('diagnostics', {})
+        completed += 1
+        if completed % 10 == 0:
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] [{args.mode}] {completed}/{total}", flush=True)
+            checkpoint_path.write_text(
+                json.dumps(_build_checkpoint_payload(submissions, diagnostics_rows), ensure_ascii=False)
+            )
 
     for path in (submission_path, leaderboard_submission_path):
         with path.open('w', encoding='utf-8') as f:
@@ -129,11 +139,7 @@ def main():
                 if record is not None:
                     f.write(json.dumps(record, ensure_ascii=False) + '\n')
 
-    diagnostics_payload = [
-        {'submission': s, 'diagnostics': d}
-        for s, d in zip(submissions, diagnostics_rows)
-        if s is not None
-    ]
+    diagnostics_payload = _build_checkpoint_payload(submissions, diagnostics_rows)
     checkpoint_path.write_text(json.dumps(diagnostics_payload, indent=2, ensure_ascii=False))
     diagnostics_path.write_text(json.dumps(diagnostics_payload, indent=2, ensure_ascii=False))
 

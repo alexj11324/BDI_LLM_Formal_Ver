@@ -8,7 +8,9 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+from collections import deque
 from datetime import datetime
+from threading import Thread
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -17,21 +19,49 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 VALIDATION_MODES = ('baseline', 'bdi', 'bdi-repair')
 
 
+def _stream_pipe(pipe, target, tail: deque[str]) -> None:
+    try:
+        for line in iter(pipe.readline, ''):
+            target.write(line)
+            target.flush()
+            tail.append(line)
+    finally:
+        pipe.close()
+
+
 def run_command(cmd: list[str], *, env: dict[str, str], timeout_seconds: int) -> dict:
     started_at = datetime.now().isoformat()
-    proc = subprocess.run(
+    run_env = env.copy()
+    run_env['PYTHONUNBUFFERED'] = '1'
+    stdout_tail: deque[str] = deque(maxlen=200)
+    stderr_tail: deque[str] = deque(maxlen=200)
+    proc = subprocess.Popen(
         cmd,
         cwd=PROJECT_ROOT,
-        env=env,
-        timeout=timeout_seconds,
-        capture_output=True,
+        env=run_env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
+        bufsize=1,
     )
+    stdout_thread = Thread(target=_stream_pipe, args=(proc.stdout, sys.stdout, stdout_tail), daemon=True)
+    stderr_thread = Thread(target=_stream_pipe, args=(proc.stderr, sys.stderr, stderr_tail), daemon=True)
+    stdout_thread.start()
+    stderr_thread.start()
+    try:
+        returncode = proc.wait(timeout=timeout_seconds)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        stdout_thread.join()
+        stderr_thread.join()
+        raise
+    stdout_thread.join()
+    stderr_thread.join()
     return {
         'command': cmd,
-        'returncode': proc.returncode,
-        'stdout_tail': proc.stdout[-4000:],
-        'stderr_tail': proc.stderr[-4000:],
+        'returncode': returncode,
+        'stdout_tail': ''.join(stdout_tail)[-4000:],
+        'stderr_tail': ''.join(stderr_tail)[-4000:],
         'started_at': started_at,
         'finished_at': datetime.now().isoformat(),
     }

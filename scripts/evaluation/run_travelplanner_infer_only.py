@@ -12,7 +12,6 @@ Usage:
 from __future__ import annotations
 
 import json, sys, traceback
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 
@@ -21,6 +20,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from scripts.evaluation._travelplanner_threading import iter_bounded_indexed_results
 from src.bdi_llm.travelplanner.official import load_travelplanner_split
 from src.bdi_llm.travelplanner.runner import generate_submission
 from src.bdi_llm.planner.dspy_config import configure_dspy
@@ -37,6 +37,18 @@ def infer_sample(sample: dict, *, mode: str) -> dict:
         'submission': workflow['submission'],
         'itinerary': workflow['final_itinerary'].model_dump(),
         'non_oracle_diagnostics': workflow.get('non_oracle_diagnostics', {}),
+    }
+
+
+def _failure_payload(sample: dict, mode: str, exc: Exception) -> dict:
+    sample_idx = sample.get('idx', 0)
+    return {
+        'task_id': str(sample_idx),
+        'query': sample.get('query', ''),
+        'mode': mode,
+        'submission': {'idx': sample_idx, 'query': sample.get('query', ''), 'plan': []},
+        'itinerary': {},
+        'error': str(exc),
     }
 
 
@@ -70,29 +82,21 @@ def main():
     completed = 0
     report_every = max(1, total // 20)
 
-    with ThreadPoolExecutor(max_workers=args.workers) as pool:
-        futs = {
-            pool.submit(infer_sample, s, mode=args.mode): i
-            for i, s in enumerate(data)
-        }
-        for fut in as_completed(futs):
-            idx = futs[fut]
-            try:
-                results[idx] = fut.result()
-            except Exception as exc:
-                results[idx] = {
-                    'task_id': str(data[idx].get('idx', idx+1)),
-                    'query': data[idx].get('query', ''),
-                    'mode': args.mode,
-                    'submission': {'idx': data[idx].get('idx', idx+1),
-                                   'query': data[idx].get('query', ''),
-                                   'plan': []},
-                    'itinerary': {},
-                    'error': str(exc),
-                }
-            completed += 1
-            if completed % report_every == 0 or completed == total:
-                print(f"  [{args.split}/{args.mode}] infer {completed}/{total}", flush=True)
+    def process(i: int, sample: dict) -> dict:
+        try:
+            return infer_sample(sample, mode=args.mode)
+        except Exception as exc:
+            return _failure_payload(sample, args.mode, exc)
+
+    for idx, result in iter_bounded_indexed_results(
+        enumerate(data),
+        process,
+        max_workers=args.workers,
+    ):
+        results[idx] = result
+        completed += 1
+        if completed % report_every == 0 or completed == total:
+            print(f"  [{args.split}/{args.mode}] infer {completed}/{total}", flush=True)
 
     stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     out_file = out_dir / f"raw_plans_{args.split}_{args.mode}_{stamp}.json"

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from functools import lru_cache
 from typing import Any
 
 from ..planning_task import PlanningTask, TaskAdapter
@@ -8,15 +9,20 @@ from .reference_info import parse_budget_from_query, grounding_hint_summary, ref
 from .spec import load_travelplanner_spec
 
 
+@lru_cache(maxsize=1)
+def _default_domain_context() -> str:
+    spec = load_travelplanner_spec()
+    return (
+        'TravelPlanner sole-planning benchmark. Follow the output spec exactly.\n\n'
+        + spec
+    )
+
+
 class TravelPlannerTaskAdapter(TaskAdapter):
     """Convert official TravelPlanner samples into `PlanningTask`."""
 
     def __init__(self, domain_context: str | None = None):
-        spec = load_travelplanner_spec()
-        self.domain_context = domain_context or (
-            'TravelPlanner sole-planning benchmark. Follow the output spec exactly.\n\n'
-            + spec
-        )
+        self.domain_context = domain_context or _default_domain_context()
 
     @staticmethod
     def _stringify_reference_information(reference_information: Any) -> str:
