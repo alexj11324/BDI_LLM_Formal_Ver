@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 import time
 from collections import Counter
 from datetime import datetime, timezone
@@ -14,9 +15,16 @@ from typing import Any, Dict, List
 
 from dotenv import load_dotenv
 
-from swe_bench_harness import LocalSWEBenchHarness
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+SRC_ROOT = PROJECT_ROOT / "src"
+for candidate in (PROJECT_ROOT, SRC_ROOT):
+    candidate_str = str(candidate)
+    if candidate_str not in sys.path:
+        sys.path.insert(0, candidate_str)
 
-load_dotenv()
+from scripts.swe_bench.swe_bench_harness import LocalSWEBenchHarness
+
+load_dotenv(PROJECT_ROOT / ".env")
 
 
 def now_utc() -> str:
@@ -57,6 +65,9 @@ def summarize(results: List[Dict[str, Any]]) -> Dict[str, Any]:
     status_counter: Counter[str] = Counter()
     error_counter: Counter[str] = Counter()
     duration_values: List[float] = []
+    one_shot_count = 0
+    repaired_count = 0
+    total_repair_attempts = 0
 
     for row in results:
         status_counter[str(row.get("status", "unknown"))] += 1
@@ -66,6 +77,11 @@ def summarize(results: List[Dict[str, Any]]) -> Dict[str, Any]:
         duration = row.get("durations_sec", {}).get("total")
         if isinstance(duration, (int, float)):
             duration_values.append(float(duration))
+        if row.get("one_shot"):
+            one_shot_count += 1
+        if row.get("repair_success"):
+            repaired_count += 1
+        total_repair_attempts += row.get("repair_attempts", 0)
 
     passed = status_counter.get("passed", 0)
     failed = total - passed
@@ -76,6 +92,11 @@ def summarize(results: List[Dict[str, Any]]) -> Dict[str, Any]:
         "passed": passed,
         "failed": failed,
         "pass_rate": (passed / total) if total else 0.0,
+        "one_shot": one_shot_count,
+        "one_shot_rate": (one_shot_count / total) if total else 0.0,
+        "repaired": repaired_count,
+        "repaired_rate": (repaired_count / total) if total else 0.0,
+        "total_repair_attempts": total_repair_attempts,
         "status_counts": dict(status_counter),
         "error_taxonomy": dict(error_counter),
         "avg_duration_sec": avg_duration,
@@ -107,6 +128,19 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default=None,
         help="Optional text file of instance IDs (one per line).",
+    )
+    parser.add_argument(
+        "--execution_mode",
+        type=str,
+        choices=["baseline", "bdi", "bdi-repair"],
+        default="bdi-repair",
+        help="Execution mode: baseline (no CoT), bdi (CoT + structural), bdi-repair (CoT + repair loop). Default: bdi-repair.",
+    )
+    parser.add_argument(
+        "--max_repair_attempts",
+        type=int,
+        default=3,
+        help="Max repair iterations in bdi-repair mode (default: 3).",
     )
     parser.add_argument(
         "--resume",
@@ -205,8 +239,13 @@ def main() -> int:
             }
         else:
             try:
-                record = harness.run_instance(
-                    instance_id=instance_id,
+                from bdi_llm.swe_bench.runner import evaluate_sample
+                instance_data = harness.get_instance(instance_id)
+                record = evaluate_sample(
+                    instance_data,
+                    mode=args.execution_mode,
+                    harness=harness,
+                    max_repair_attempts=args.max_repair_attempts,
                     test_timeout=args.test_timeout,
                     max_plan_steps=args.max_plan_steps,
                     setup_timeout=args.setup_timeout,
