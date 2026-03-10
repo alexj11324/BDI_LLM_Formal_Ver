@@ -931,6 +931,8 @@ class LocalSWEBenchHarness:
         test_timeout: int = 600,
         max_steps: int = 40,
         auto_installed_packages: Optional[List[str]] = None,
+        planning_reasoning: str = "",
+        failing_test_code: str = "",
     ) -> Dict[str, Any]:
         """Execute BDI coding plan in dependency order."""
         if auto_installed_packages is None:
@@ -1033,6 +1035,8 @@ class LocalSWEBenchHarness:
                         current_content=content_for_llm,
                         issue_description=issue_desc[:4000],
                         step_description=node.description,
+                        planning_reasoning=planning_reasoning[:2000],
+                        failing_test_code=failing_test_code[:3000],
                     )
 
                     # Apply search/replace edit instead of full file replacement
