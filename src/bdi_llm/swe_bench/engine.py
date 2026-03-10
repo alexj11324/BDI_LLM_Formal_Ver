@@ -6,6 +6,7 @@ class with methods for each execution mode.
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import logging
 from dataclasses import dataclass, field
@@ -277,6 +278,16 @@ class SWEBenchGenerator:
         else:
             logger.warning(f"Repair returned empty search_block for {file_path}")
             new_content = current_content
+
+        # AST syntax guardrail: reject repairs that introduce SyntaxError
+        if file_path.endswith(".py") and new_content != current_content:
+            try:
+                ast.parse(new_content)
+            except SyntaxError as e:
+                logger.warning(
+                    f"Repair produced SyntaxError in {file_path}: {e}"
+                )
+                new_content = current_content  # reject repair
 
         return PatchRepairResult(
             file_path=file_path,

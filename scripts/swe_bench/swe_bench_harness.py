@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import ast
 import json
 import logging
 import os
@@ -1060,6 +1061,19 @@ class LocalSWEBenchHarness:
 
                     if not isinstance(new_content, str):
                         raise ValueError("LLM returned non-string file content")
+
+                    # AST syntax guardrail: reject edits that introduce SyntaxError
+                    if rel_path.endswith(".py") and new_content != file_cache[rel_path]:
+                        try:
+                            ast.parse(new_content)
+                        except SyntaxError as e:
+                            logger.warning(
+                                f"Edit produced SyntaxError in {rel_path}: {e}"
+                            )
+                            step_record["status"] = "syntax_error"
+                            step_record["error"] = str(e)
+                            new_content = file_cache[rel_path]  # reject edit
+
                     abs_path.write_text(new_content, encoding="utf-8")
                     file_cache[rel_path] = new_content
                     step_record["bytes"] = len(new_content)
