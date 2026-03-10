@@ -3,6 +3,7 @@
 import dspy
 
 from .planner import BDIPlanner
+from .planner.domain_spec import DomainSpec
 from .planner.prompts import (
     _GRAPH_STRUCTURE_COMMON,
     _LOGICOT_HEADER,
@@ -93,22 +94,27 @@ class ImplementCodeChange(dspy.Signature):
 
 class CodingBDIPlanner(BDIPlanner):
     def __init__(self, auto_repair: bool = True):
-        super().__init__(auto_repair=auto_repair, domain="coding")
+        coding_domain_spec = DomainSpec(
+            name="coding",
+            valid_action_types=frozenset({"read-file", "edit-file", "run-test", "create-file"}),
+            required_params={
+                "read-file": frozenset({"file"}),
+                "edit-file": frozenset({"file", "test"}),
+                "run-test": frozenset({"test"}),
+                "create-file": frozenset({"file"}),
+            },
+            signature_class=GeneratePlanCoding,
+        )
+        super().__init__(auto_repair=auto_repair, domain_spec=coding_domain_spec)
 
-        # Override the signature with our coding-specific one
-        self.generate_plan = dspy.ChainOfThought(GeneratePlanCoding)
-
-        # Add the code implementation module
+        self._generate_program = dspy.ChainOfThought(GeneratePlanCoding)
+        self._baseline_program = dspy.Predict(GeneratePlanCoding)
         self.implement_change = dspy.ChainOfThought(ImplementCodeChange)
 
-        # Define coding-specific constraints
-        self._valid_action_types["coding"] = {
-            "read-file", "edit-file", "run-test", "create-file"
-        }
-
-        self._required_params["coding"] = {
-            "read-file": {"file"},
-            "edit-file": {"file", "test"},
-            "run-test": {"test"},
-            "create-file": {"file"},
-        }
+    def generate_plan_baseline(self, beliefs: str, desire: str) -> BDIPlan:
+        """Generate plan without CoT reasoning (baseline mode)."""
+        pred = self._baseline_program(beliefs=beliefs, desire=desire)
+        plan = pred.plan
+        if plan is None:
+            raise ValueError("LLM returned no parseable plan (baseline)")
+        return plan
