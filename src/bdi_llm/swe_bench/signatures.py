@@ -10,14 +10,13 @@ from __future__ import annotations
 
 import dspy
 
-from ..schemas import BDIPlan
+# Re-export the BDI version from coding_planner
+from ..coding_planner import GeneratePlanCoding  # noqa: F401
 from ..planner.prompts import (
     _GRAPH_STRUCTURE_COMMON,
     _REMINDER,
 )
-
-# Re-export the BDI version from coding_planner
-from ..coding_planner import GeneratePlanCoding  # noqa: F401
+from ..schemas import BDIPlan
 
 
 class GeneratePlanCodingBaseline(dspy.Signature):
@@ -28,7 +27,7 @@ class GeneratePlanCodingBaseline(dspy.Signature):
 
     CODING DOMAIN ACTIONS:
       read-file   : {"file": <path>}
-      edit-file   : {"file": <path>, "test": <test_id>}
+      edit-file   : {"file": <path>, "test": <test_id>, "target": <class_or_function_name>}
       run-test    : {"test": <test_id>}
       create-file : {"file": <path>}
 
@@ -36,6 +35,7 @@ class GeneratePlanCodingBaseline(dspy.Signature):
     1. read-file BEFORE edit-file.
     2. run-test AFTER edit-file.
     3. Minimise edits; do not break passing tests.
+    4. `target` should be the class or function name you intend to modify.
     """
 
     beliefs: str = dspy.InputField(
@@ -66,13 +66,14 @@ class RepairPlanCoding(dspy.Signature):
 
     CODING DOMAIN ACTIONS:
       read-file   : {{"file": <path>}}
-      edit-file   : {{"file": <path>, "test": <test_id>}}
+      edit-file   : {{"file": <path>, "test": <test_id>, "target": <class_or_function_name>}}
       run-test    : {{"test": <test_id>}}
       create-file : {{"file": <path>}}
 
     Preconditions:
     - read-file BEFORE edit-file (you need the content)
     - run-test AFTER edit-file (verify the fix)
+    - `target` should be the class or function name you intend to modify
 
 {_REMINDER}
     """

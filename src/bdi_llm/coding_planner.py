@@ -31,7 +31,7 @@ class GeneratePlanCoding(dspy.Signature):
 
     params:
       read-file   : {{"file": <path>}}
-      edit-file   : {{"file": <path>, "test": <test_id>}}
+      edit-file   : {{"file": <path>, "test": <test_id>, "target": <class_or_function_name>}}
       run-test    : {{"test": <test_id>}}
       create-file : {{"file": <path>}}
 
@@ -41,11 +41,12 @@ class GeneratePlanCoding(dspy.Signature):
     3. `edit-file` takes a "test" parameter to indicate WHICH test failure
        this edit is intended to fix.
     4. If a test is failing, you must edit a file to fix it.
+    5. `target` should be the class or function name you intend to modify.
 
     EXAMPLE PLAN:
     Nodes:
       n1: read-file(src/utils.py)
-      n2: edit-file(src/utils.py, test_id="test_utils.py::test_sort")
+      n2: edit-file(src/utils.py, test_id="test_utils.py::test_sort", target="sort_items")
       n3: run-test(test_utils.py::test_sort)
     Edges:
       n1 -> n2 -> n3
