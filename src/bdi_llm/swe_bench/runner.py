@@ -17,11 +17,7 @@ from typing import Any, Dict, List, Optional
 from ..verifier import PlanVerifier
 from .adapter import SWEBenchTaskAdapter
 from .engine import SWEBenchGenerator
-from .feedback import (
-    build_test_feedback,
-    build_verification_context,
-    format_verification_feedback,
-)
+from .feedback import build_test_feedback
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +43,34 @@ def _reset_to_base_commit(instance_dir: Path, base_commit: str) -> None:
         check=True,
         timeout=60,
     )
+
+
+def _git_show_file(instance_dir: Path, ref: str, rel_path: str) -> str:
+    """Read a file's content at a given git ref (e.g. HEAD, base_commit)."""
+    proc = subprocess.run(
+        ["git", "show", f"{ref}:{rel_path}"],
+        cwd=instance_dir,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    if proc.returncode != 0:
+        return ""  # file didn't exist at that ref (newly created)
+    return proc.stdout or ""
+
+
+def _changed_files(instance_dir: Path) -> List[str]:
+    """Get list of files modified relative to HEAD."""
+    proc = subprocess.run(
+        ["git", "diff", "--name-only"],
+        cwd=instance_dir,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    return [l.strip() for l in (proc.stdout or "").splitlines() if l.strip()]
 
 
 def _repo_snapshot(instance_dir: Path, max_files: int = 250) -> str:
@@ -229,94 +253,90 @@ def evaluate_sample(
     result["tests_passed"] = test_ok
 
     # ------------------------------------------------------------------
-    # Step 4: Repair Loop (BDI-repair mode only)
+    # Step 4: Patch-level Repair Loop (BDI-repair mode only)
+    #
+    # Instead of regenerating the *plan* (which is usually correct),
+    # we repair the *code changes* directly — feeding test errors back
+    # to improve each changed file. This mirrors TravelPlanner's
+    # review.py → repair_patch() pattern.
     # ------------------------------------------------------------------
     if mode == "bdi-repair" and not test_ok:
-        cumulative_history: List[Dict[str, Any]] = []
         seen_signatures: set[str] = set()
-        current_plan = plan
+        repair_history_parts: List[str] = []
+        base_commit = instance.get("base_commit", "HEAD")
 
         for attempt in range(1, max_repair_attempts + 1):
-            # Build feedback
+            # Build feedback from test failures
             test_fb = build_test_feedback(test_output, returncode)
 
             # Early exit: repeated error signature
             err_sig = engine._compute_error_signature(test_fb)
             if err_sig in seen_signatures:
                 logger.info(
-                    f"[{instance_id}] Repair attempt {attempt}: "
-                    f"repeated error signature {err_sig}, stopping"
+                    f"[{instance_id}] Patch repair {attempt}: "
+                    f"repeated error signature, stopping"
                 )
                 break
             seen_signatures.add(err_sig)
 
-            cumulative_history.append({
-                "attempt": attempt,
-                "plan_summary": engine._summarise_plan(current_plan),
-                "test_errors": test_fb,
-            })
-
-            verification_ctx = build_verification_context(
-                structural_result={
-                    "valid": gen_result.structural_valid,
-                    "errors": gen_result.structural_errors,
-                },
-                test_result={
-                    "valid": test_ok,
-                    "errors": test_fb,
-                    "returncode": returncode,
-                },
-            )
-            verification_fb = format_verification_feedback(verification_ctx)
-
-            # Generate repair
-            repair_start = time.time()
-            try:
-                repair_result = engine.repair(
-                    beliefs=task.beliefs,
-                    desire=task.desire,
-                    domain_context=task.domain_context or "",
-                    test_feedback=test_fb,
-                    previous_plan=current_plan,
-                    cumulative_history=cumulative_history,
-                    verification_feedback=verification_fb,
-                )
-            except Exception as exc:
-                logger.warning(
-                    f"[{instance_id}] Repair attempt {attempt} failed: {exc}"
-                )
-                result["repair_attempts"] = attempt
+            # Find which files were changed by the plan execution
+            modified_files = _changed_files(repo_dir)
+            if not modified_files:
+                logger.info(f"[{instance_id}] No files changed, nothing to repair")
                 break
 
-            result["durations_sec"][f"repair_{attempt}"] = round(
+            repair_history = "\n".join(repair_history_parts)
+            repair_start = time.time()
+            any_file_changed = False
+
+            for rel_path in modified_files:
+                original = _git_show_file(repo_dir, base_commit, rel_path)
+                current = (repo_dir / rel_path).read_text(
+                    encoding="utf-8", errors="ignore"
+                )
+
+                try:
+                    patch_result = engine.repair_patch(
+                        file_path=rel_path,
+                        original_content=original,
+                        current_content=current,
+                        issue_description=issue_desc,
+                        test_feedback=test_fb,
+                        repair_history=repair_history,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        f"[{instance_id}] Patch repair failed for {rel_path}: {exc}"
+                    )
+                    continue
+
+                if patch_result.changed:
+                    (repo_dir / rel_path).write_text(
+                        patch_result.new_content, encoding="utf-8"
+                    )
+                    any_file_changed = True
+
+            result["durations_sec"][f"patch_repair_{attempt}"] = round(
                 time.time() - repair_start, 3
             )
-
-            repaired_plan = repair_result.plan
-            current_plan = repaired_plan
             result["repair_attempts"] = attempt
 
-            # Reset, re-execute, re-test
-            try:
-                base_commit = instance.get("base_commit", "")
-                _reset_to_base_commit(repo_dir, base_commit)
-            except Exception as exc:
-                logger.warning(f"[{instance_id}] git reset failed: {exc}")
+            if not any_file_changed:
+                logger.info(
+                    f"[{instance_id}] Patch repair {attempt}: "
+                    f"LLM returned identical content, stopping"
+                )
                 break
 
-            auto_installed_repair: List[str] = []
-            harness.execute_plan(
-                plan=repaired_plan,
-                instance=instance,
-                instance_dir=repo_dir,
-                issue_desc=issue_desc,
-                default_test_command=test_command,
-                python_executable=python_executable,
-                test_timeout=test_timeout,
-                max_steps=max_plan_steps,
-                auto_installed_packages=auto_installed_repair,
+            # Record history for next iteration
+            repair_history_parts.append(
+                f"=== Patch Repair {attempt} ===\n"
+                f"Files repaired: {modified_files}\n"
+                f"Test errors:\n{test_fb}\n"
             )
 
+            # Re-test with the patched files (no repo reset, no re-execution)
+            auto_installed_repair: List[str] = []
             test_ok, test_output, returncode, _ = harness.run_tests_with_dependency_fix(
                 instance_dir=repo_dir,
                 command=test_command,
@@ -329,7 +349,7 @@ def evaluate_sample(
                 result["repair_success"] = True
                 result["tests_passed"] = True
                 logger.info(
-                    f"[{instance_id}] Repair succeeded on attempt {attempt}"
+                    f"[{instance_id}] Patch repair succeeded on attempt {attempt}"
                 )
                 break
 

@@ -19,6 +19,7 @@ from ..verifier import PlanVerifier
 from .signatures import (
     GeneratePlanCoding,
     GeneratePlanCodingBaseline,
+    RepairCodeChange,
     RepairPlanCoding,
 )
 
@@ -37,11 +38,21 @@ class SWEBenchGenerationResult:
 
 @dataclass
 class SWEBenchRepairResult:
-    """Result from one repair attempt."""
+    """Result from one plan-level repair attempt."""
 
     plan: BDIPlan
     raw: Any = None
     attempt: int = 0
+
+
+@dataclass
+class PatchRepairResult:
+    """Result from one patch-level repair attempt."""
+
+    file_path: str
+    new_content: str
+    raw: Any = None
+    changed: bool = False
 
 
 class SWEBenchGenerator:
@@ -60,6 +71,7 @@ class SWEBenchGenerator:
         self._baseline = dspy.Predict(GeneratePlanCodingBaseline)
         self._bdi = dspy.ChainOfThought(GeneratePlanCoding)
         self._repair = dspy.ChainOfThought(RepairPlanCoding)
+        self._repair_patch = dspy.ChainOfThought(RepairCodeChange)
 
     # -----------------------------------------------------------------
     # Generation
@@ -197,3 +209,54 @@ class SWEBenchGenerator:
             )
 
         return SWEBenchRepairResult(plan=plan, raw=pred, attempt=attempt)
+
+    # -----------------------------------------------------------------
+    # Patch-level repair
+    # -----------------------------------------------------------------
+
+    def repair_patch(
+        self,
+        file_path: str,
+        original_content: str,
+        current_content: str,
+        issue_description: str,
+        test_feedback: str,
+        repair_history: str = "",
+    ) -> PatchRepairResult:
+        """Repair a single file's patch using test failure feedback.
+
+        Instead of regenerating the *plan*, this fixes the *code change*
+        directly — analogous to TravelPlanner's ``repair_patch()``.
+
+        Args:
+            file_path: Relative path of the file to repair.
+            original_content: File content at base commit (before edits).
+            current_content: File content after the failed edit.
+            issue_description: The original bug report / issue text.
+            test_feedback: Structured test failure output.
+            repair_history: Summary of prior repair attempts.
+
+        Returns:
+            ``PatchRepairResult`` with the improved file content.
+        """
+        logger.info(f"Patch-level repair for {file_path}")
+
+        pred = self._repair_patch(
+            file_path=file_path,
+            original_content=original_content[:8000],
+            current_content=current_content[:8000],
+            issue_description=issue_description[:4000],
+            test_feedback=test_feedback[:3000],
+            repair_history=repair_history[:2000],
+        )
+
+        new_content = pred.new_content
+        if not isinstance(new_content, str):
+            raise ValueError(f"LLM returned non-string content for {file_path}")
+
+        return PatchRepairResult(
+            file_path=file_path,
+            new_content=new_content,
+            raw=pred,
+            changed=(new_content != current_content),
+        )

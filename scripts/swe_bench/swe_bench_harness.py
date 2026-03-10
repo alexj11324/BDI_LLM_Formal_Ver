@@ -590,18 +590,46 @@ class LocalSWEBenchHarness:
             return [line.strip() for line in value.splitlines() if line.strip()]
         return []
 
+    def _build_repo_aware_test_command(
+        self,
+        instance: Dict[str, Any],
+        tests: List[str],
+        python_executable: str,
+    ) -> List[str] | str:
+        """Core logic for building a repo-spec-aware test command."""
+        spec, _, _ = self._lookup_repo_spec(instance)
+        test_cmd = str(spec.get("test_cmd", "")).strip() if isinstance(spec, dict) else ""
+        eval_commands = spec.get("eval_commands", []) if isinstance(spec, dict) else []
+
+        if test_cmd:
+            shell_parts: List[str] = []
+            if isinstance(eval_commands, list):
+                shell_parts.extend(str(cmd).strip() for cmd in eval_commands if str(cmd).strip())
+
+            if test_cmd == "python":
+                pytest_command = [python_executable, "-m", "pytest", "-q", *tests]
+                return pytest_command if not shell_parts else " && ".join([*shell_parts, shlex.join(pytest_command)])
+
+            if tests:
+                test_cmd = f"{test_cmd} {' '.join(shlex.quote(t) for t in tests)}"
+
+            return " && ".join([*shell_parts, test_cmd]) if shell_parts else test_cmd
+
+        if tests:
+            return [python_executable, "-m", "pytest", "-q", *tests]
+        return [python_executable, "-m", "pytest", "-q"]
+
     def build_test_command(
         self,
         instance: Dict[str, Any],
         python_executable: str = "python",
         max_tests: int = 25,
-    ) -> List[str]:
-        """Construct a focused pytest command for the target instance."""
+    ) -> List[str] | str:
+        """Construct a repo-aware test command for the target instance."""
         fail_to_pass = self.parse_test_field(instance.get("FAIL_TO_PASS"))
-        tests = fail_to_pass[:max_tests]
-        if tests:
-            return [python_executable, "-m", "pytest", "-q", *tests]
-        return [python_executable, "-m", "pytest", "-q"]
+        pass_to_pass = self.parse_test_field(instance.get("PASS_TO_PASS"))
+        tests = (fail_to_pass + pass_to_pass)[:max_tests]
+        return self._build_repo_aware_test_command(instance, tests, python_executable)
 
     def setup_repo(
         self,
@@ -612,6 +640,7 @@ class LocalSWEBenchHarness:
         """Clone and checkout repository for a SWE-bench instance."""
         repo_name = instance["repo"]
         base_commit = instance["base_commit"]
+        env_setup_commit = str(instance.get("environment_setup_commit") or "").strip()
         instance_id = instance["instance_id"]
         instance_dir = self.workspace_dir / instance_id
 
@@ -620,8 +649,9 @@ class LocalSWEBenchHarness:
         instance_dir.mkdir(parents=True, exist_ok=True)
 
         repo_url = f"https://github.com/{repo_name}.git"
+        clone_target = env_setup_commit or base_commit
         subprocess.run(
-            ["git", "clone", repo_url, "."],
+            ["git", "clone", "--no-checkout", repo_url, "."],
             cwd=instance_dir,
             check=True,
             capture_output=True,
@@ -629,19 +659,40 @@ class LocalSWEBenchHarness:
             timeout=clone_timeout,
         )
         subprocess.run(
-            ["git", "checkout", base_commit],
+            ["git", "checkout", clone_target],
             cwd=instance_dir,
             check=True,
             capture_output=True,
             text=True,
             timeout=120,
         )
+        if env_setup_commit and env_setup_commit != base_commit:
+            # env_setup_commit makes the env ref reachable; reset to base_commit for source tree
+            subprocess.run(
+                ["git", "reset", "--hard", base_commit],
+                cwd=instance_dir,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
         return instance_dir
 
     @staticmethod
-    def run_tests(instance_dir: Path, command: List[str], timeout: int = 600) -> Tuple[bool, str, int]:
+    def run_tests(instance_dir: Path, command: List[str] | str, timeout: int = 600) -> Tuple[bool, str, int]:
         """Run tests and return success, output text, and return code."""
+        if isinstance(command, str):
+            return LocalSWEBenchHarness._run_shell_command(script=command, cwd=instance_dir, timeout=timeout)
         return LocalSWEBenchHarness._run_command(command=command, cwd=instance_dir, timeout=timeout)
+
+    def build_step_test_command(
+        self,
+        instance: Dict[str, Any],
+        test_selector: str,
+        python_executable: str,
+    ) -> List[str] | str:
+        """Construct a targeted test command for a single planned run-test step."""
+        return self._build_repo_aware_test_command(instance, [test_selector], python_executable)
 
     @staticmethod
     def extract_missing_modules(output: str) -> List[str]:
@@ -681,7 +732,7 @@ class LocalSWEBenchHarness:
     def run_tests_with_dependency_fix(
         self,
         instance_dir: Path,
-        command: List[str],
+        command: List[str] | str,
         auto_installed_packages: List[str],
         python_executable: str = sys.executable,
         timeout: int = 600,
@@ -779,9 +830,10 @@ class LocalSWEBenchHarness:
     def execute_plan(
         self,
         plan,
+        instance: Dict[str, Any],
         instance_dir: Path,
         issue_desc: str,
-        default_test_command: List[str],
+        default_test_command: List[str] | str,
         python_executable: str,
         test_timeout: int = 600,
         max_steps: int = 40,
@@ -869,9 +921,13 @@ class LocalSWEBenchHarness:
                 elif action == "run-test":
                     test_selector = str(params.get("test", "")).strip()
                     if test_selector:
-                        command = [python_executable, "-m", "pytest", "-q", test_selector]
+                        command = self.build_step_test_command(
+                            instance=instance,
+                            test_selector=test_selector,
+                            python_executable=python_executable,
+                        )
                     else:
-                        command = list(default_test_command)
+                        command = default_test_command[:] if isinstance(default_test_command, list) else default_test_command
                     ok, output, returncode, installed_now = self.run_tests_with_dependency_fix(
                         instance_dir=instance_dir,
                         command=command,
@@ -951,6 +1007,8 @@ class LocalSWEBenchHarness:
             "instance_id": instance_id,
             "repo": instance.get("repo"),
             "base_commit": instance.get("base_commit"),
+            "environment_setup_commit": instance.get("environment_setup_commit"),
+            "version": instance.get("version"),
             "status": "error",
             "tests_passed": False,
             "changed_files": [],
@@ -1004,15 +1062,20 @@ class LocalSWEBenchHarness:
         python_executable = str(env_info.get("python_executable") or sys.executable)
 
         fail_to_pass = self.parse_test_field(instance.get("FAIL_TO_PASS"))
+        pass_to_pass = self.parse_test_field(instance.get("PASS_TO_PASS"))
         beliefs = (
             f"Repository: {instance.get('repo')}\n"
             f"Base commit: {instance.get('base_commit')}\n"
-            f"Known failing tests: {fail_to_pass[:25]}\n\n"
+            f"Environment setup commit: {instance.get('environment_setup_commit')}\n"
+            f"Version: {instance.get('version')}\n"
+            f"Known failing tests: {fail_to_pass[:25]}\n"
+            f"Regression tests to preserve: {pass_to_pass[:25]}\n\n"
             f"Repository file snapshot:\n{self._repo_snapshot(repo_dir)}"
         )
         desire = (
-            "Fix the issue and make failing tests pass.\n\n"
+            "Fix the issue and make failing tests pass without breaking regression tests.\n\n"
             f"Issue:\n{instance.get('problem_statement', '')}"
+            + (f"\n\nHints:\n{instance.get('hints_text', '')}" if instance.get("hints_text") else "")
         )
 
         try:
@@ -1029,11 +1092,14 @@ class LocalSWEBenchHarness:
             return result
 
         default_test_command = self.build_test_command(instance, python_executable=python_executable)
+        result["final_test_command"] = default_test_command
         auto_installed_packages: List[str] = []
         execution = self.execute_plan(
             plan=plan,
+            instance=instance,
             instance_dir=repo_dir,
-            issue_desc=instance.get("problem_statement", ""),
+            issue_desc=(instance.get("problem_statement", "") or "")
+            + (f"\n\nHints:\n{instance.get('hints_text', '')}" if instance.get("hints_text") else ""),
             default_test_command=default_test_command,
             python_executable=python_executable,
             test_timeout=test_timeout,
@@ -1053,7 +1119,6 @@ class LocalSWEBenchHarness:
                 result["error_category"] = "execution_error"
 
         final_test_command = default_test_command
-        result["final_test_command"] = final_test_command
         tests_passed, final_test_output, returncode, final_installed_now = self.run_tests_with_dependency_fix(
             instance_dir=repo_dir,
             command=final_test_command,

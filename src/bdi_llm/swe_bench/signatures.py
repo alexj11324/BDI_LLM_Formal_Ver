@@ -104,3 +104,45 @@ class RepairPlanCoding(dspy.Signature):
     plan: BDIPlan = dspy.OutputField(
         desc="Corrected plan fixing all test failures, as a SINGLE CONNECTED DAG"
     )
+
+
+class RepairCodeChange(dspy.Signature):
+    """Your previous code edit did NOT fix the issue — tests are still failing.
+
+    You are given:
+    1. The file path and its ORIGINAL content (before any edits).
+    2. The CURRENT content (your previous edit that failed tests).
+    3. The test failure output explaining exactly what went wrong.
+    4. The original issue description.
+
+    Produce an IMPROVED version of the file that fixes the test failures
+    without breaking other tests. Return the COMPLETE file content.
+
+    RULES:
+    1. Read the test error output CAREFULLY — identify the root cause.
+    2. Your fix must address the specific assertion/error, not just the symptom.
+    3. Preserve all existing functionality — only change what is needed.
+    4. Do NOT add unrelated refactoring or style changes.
+    """
+
+    file_path: str = dspy.InputField(desc="Path of the file being repaired")
+    original_content: str = dspy.InputField(
+        desc="File content at base commit (before any edits)"
+    )
+    current_content: str = dspy.InputField(
+        desc="File content after your previous edit (which failed tests)"
+    )
+    issue_description: str = dspy.InputField(
+        desc="The GitHub issue / bug report"
+    )
+    test_feedback: str = dspy.InputField(
+        desc="Structured test failure output showing what went wrong"
+    )
+    repair_history: str = dspy.InputField(
+        desc="Summary of previous repair attempts and their outcomes",
+        default="",
+    )
+
+    new_content: str = dspy.OutputField(
+        desc="The complete improved file content that fixes the test failures"
+    )
