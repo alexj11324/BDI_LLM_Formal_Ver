@@ -1,55 +1,16 @@
-## Codebase Patterns
-- Reuse the completed pre-writing artifacts under `runs/spawnteam_paper/` before generating new manuscript-stage outputs.
-- Preserve the frozen-vs-current PlanBench boundary: frozen paper counts live in `artifacts/paper_eval_20260213/`, current-mainline reporting lives in `README.md`, `docs/BENCHMARKS.md`, and `RESULTS_PROVENANCE.md`.
-- Preserve the TravelPlanner field boundary: do not collapse oracle `summary` and non-oracle `validation_as_test_summary`.
-- Treat figure scripts as provenance-sensitive; do not assume script outputs are authoritative without path/source validation.
-- SWE-bench content is appendix-only; it must not displace the main substrate/PDDL/TravelPlanner narrative.
----
-
-## Task 1: Draft manuscript prose plan from existing artifacts — DONE
-- **Completed:** 2026-03-09T20:30:00-04:00
-- **Output:** `runs/spawnteam_paper/lead/manuscript_drafting_plan.md`
-- **Summary:** Read all 5 packets (substrate, planbench, travelplanner, provenance, swebench_appendix) and all 4 lead artifacts (claim_ledger, integrated_outline, dry_run_summary, claim_audit_checklist). Created manuscript drafting plan with: dependency graph, section-to-packet mapping, provenance constraints (frozen-vs-current PlanBench, TravelPlanner field boundary, PDDL runner boundary, figure-script caution), narrative defaults, terminology locks, output file inventory, and claim audit integration requirements.
-
-## Task 2: Write abstract and contribution spine draft — DONE
-- **Completed:** 2026-03-09T20:42:00-04:00
-- **Output:** `runs/spawnteam_paper/lead/abstract_contribution_spine.md`
-- **Summary:** Read claim_ledger, integrated_outline, substrate_packet, planbench_packet, travelplanner_packet, dry_run_summary, and manuscript_drafting_plan. Wrote skeleton abstract centered on shared substrate + layered verification thesis. Contribution spine covers 4 contributions: C1 (shared substrate: PlanningTask, BDIPlan, DomainSpec, BDIPlanner), C2 (layered verification: structural → symbolic → domain-specific), C3 (verifier-guided repair loop), C4 (two evidence surfaces: PDDL with logistics 0→100% recovery + TravelPlanner with 38.2%→64.7% official test). All numbers sourced from packets with explicit provenance labels. TravelPlanner oracle (0.706) explicitly marked as diagnostic upper bound, not deployment claim. Frozen paper snapshot not referenced. SWE-bench excluded per appendix-only rule. Provenance compliance checklist included.
-
-## Task 3: Write methods section skeleton — DONE
-- **Completed:** 2026-03-10T00:10:00-04:00
-- **Output:** `runs/spawnteam_paper/lead/methods_skeleton.md`
-- **Summary:** Read substrate_packet (all 8 canonical claims + approved method facts + caveats), docs/FUNCTIONAL_FLOW.md (full 454-line runtime whitepaper), claim_ledger, integrated_outline, manuscript_drafting_plan, and abstract_contribution_spine (for vocabulary alignment). Also examined source code outlines: planning_task.py (PlanningTask, TaskAdapter, PlanSerializer, PDDLTaskAdapter, PDDLPlanSerializer), schemas.py (ActionNode, DependencyEdge, BDIPlan), domain_spec.py (DomainSpec, extract_actions_from_pddl, build_domain_context), bdi_engine.py (BDIPlanner, generate_plan, forward, repair_from_val_errors), verifier.py (PlanVerifier, VerificationResult), symbolic_verifier.py (PDDLSymbolicVerifier, BlocksworldPhysicsValidator, IntegratedVerifier). Methods skeleton covers 7 subsections: §3.1 normalized task contract, §3.2 plan representation (with explicit TravelPlanner BDIPlan non-use boundary), §3.3 domain abstraction, §3.4 plan generation (runner-on-top-of-shared-planner architecture), §3.5 layered verification (3 layers + IntegratedVerifier with runner-direct-invocation nuance), §3.6 verifier-guided repair loop (PDDL + TravelPlanner oracle/non-oracle distinction), §3.7 end-to-end generic PDDL flow. No benchmark headline numbers. Legacy runner explicitly excluded. SWE-bench absent per appendix-only rule. Provenance compliance checklist included.
-
-## Task 4: Write PDDL results section skeleton — DONE
-- **Completed:** 2026-03-10T00:17:00-04:00
-- **Output:** `runs/spawnteam_paper/lead/pddl_results_skeleton.md`
-- **Summary:** Read planbench_packet (all 5 canonical claims, approved current-mainline table, caveats), provenance_packet (all 7 canonical rules, approved source-of-truth table, 7 risk flags), frozen paper snapshot MANIFEST.json (checkpoint-based paper primary counts), claim_ledger (narrative boundaries and working decisions), integrated_outline (§4 structure), manuscript_drafting_plan (dependency + provenance constraints), and abstract_contribution_spine (for vocabulary alignment). PDDL results skeleton covers 6 subsections: §4.1 experimental setup (runtime/runner boundary clarification, domains, model config), §4.2 main results with two explicitly separated tables (current-mainline five-domain snapshot + frozen paper three-domain snapshot with checkpoint-based denominators and upstream delta note), §4.3 logistics recovery story (0→557→572 narrative from current-mainline), §4.4 cross-domain analysis (blocksworld already solved, depots BDI dip + repair recovery, obfuscated robustness), §4.5 supporting verification harness (scope limitation to 3 domains), §4.6 figures (Figure 2 approximate baseline, Figure 5 estimated intermediates, path-resolution risk). Frozen paper numbers: 1265/1270=99.6% overall. Current-mainline and frozen-paper surfaces never mixed in same unlabeled table. Legacy runner not cited as current. SWE-bench absent. TravelPlanner absent. Provenance compliance checklist included with 10 items all passing.
-
-## Task 5: Write TravelPlanner results section skeleton — DONE
-- **Completed:** 2026-03-10T00:41:00-04:00
-- **Output:** `runs/spawnteam_paper/lead/travelplanner_results_skeleton.md`
-- **Summary:** Read travelplanner_packet (all 6 canonical claims, 3 approved number tables across oracle/validation-as-test/official-test surfaces, 6 caveats), provenance_packet (rule 6 on TravelPlanner dual-field boundary, risk 7 on summary vs validation_as_test_summary), claim_ledger (TravelPlanner narrative boundaries and terminology locks), integrated_outline (§5 structure), manuscript_drafting_plan (dependency + field-boundary constraints), abstract_contribution_spine (for vocabulary alignment), and pddl_results_skeleton (for structural consistency). TravelPlanner results skeleton covers 6 subsections: §5.1 evaluation protocol and oracle/non-oracle distinction (field-boundary rule, summary vs validation_as_test_summary, generate_submission shared path), §5.2 main deployment-aligned results with two separately labeled tables (§5.2.1 official test N=1000 leaderboard: baseline 0.382→bdi 0.609→bdi-repair 0.647; §5.2.2 validation-as-test N=180 non-oracle: baseline 0.211→bdi 0.578→bdi-repair 0.606), §5.3 oracle validation diagnostic upper bound (0.706, explicitly labeled as ceiling not deployment), §5.4 cross-surface comparison consolidation table with repair-visibility semantics per row, §5.5 metric decomposition (commonsense/hard-constraint/delivery analysis, micro/macro naming note), §5.6 narrative position (substrate generality, deployment-aligned evaluation honesty, complementary evidence structure with PDDL). Oracle validation never presented as deployment claim. bdi v4 acknowledged as rejected candidate. No PDDL/PlanBench numbers. No SWE-bench. No frozen paper snapshot mixing. Provenance compliance checklist included with 11 items all passing.
-
-## Task 6: Write provenance and figure policy note for manuscript stage — DONE
-- **Completed:** 2026-03-10T00:45:00-04:00
-- **Output:** `runs/spawnteam_paper/lead/provenance_policy_note.md`
-- **Summary:** Read provenance_packet (all 7 canonical rules, approved source-of-truth table, 7 risk flags) and claim_audit_checklist (all 15 checks across 5 categories). Created machine-friendly provenance policy note with 7 sections: §1 frozen-vs-current PlanBench boundary (rules + approved-source table), §2 PDDL runner boundary (3-tier runner status table), §3 TravelPlanner field boundary (3 evaluation surfaces + 4 rules + source anchors), §4 figure-script policy (general rule + per-figure risk table covering Figures 2-5 + snapshot verifier path risk), §5 SWE-bench boundary (appendix-only scope), §6 terminology locks (6 locked terms from claim_ledger), §7 re-deployable claim audit checklist (17 items across 6 categories: source-of-truth, runtime-boundary, TravelPlanner boundary, figure/tooling, narrative scope). All provenance_packet risks addressed. All claim_audit_checklist items incorporated. Document is concise and structured for machine-friendly drafting context.
-
-## Task 7: Verify all manuscript artifacts — DONE
-- **Completed:** 2026-03-10T00:47:00-04:00
-- **Summary:** Verified all 6 manuscript artifacts exist and contain valid markdown content:
-  - manuscript_drafting_plan.md (139 lines, 6947 bytes) ✅
-  - abstract_contribution_spine.md (107 lines, 7527 bytes) ✅
-  - methods_skeleton.md (173 lines, 12620 bytes) ✅
-  - pddl_results_skeleton.md (125 lines, 9929 bytes) ✅
-  - travelplanner_results_skeleton.md (152 lines, 12729 bytes) ✅
-  - provenance_policy_note.md (129 lines, 7935 bytes) ✅
-- **Claim audit checklist results (all 14 checks passing):**
-  - Source-of-truth: frozen/current tables explicitly separated (2 separate headers in pddl_results), MANIFEST.json referenced, checkpoint denominators distinct ✅
-  - Runtime-boundary: run_generic_pddl_eval.py as current-mainline (9 refs across 3 files), run_verification_only.py as supporting harness, legacy runner excluded ✅
-  - TravelPlanner boundary: 3 surfaces named, summary vs validation_as_test_summary distinguished (refs in travelplanner_results + provenance_policy_note) ✅
-  - Figure/tooling: Figure 2 approximate baseline flagged, Figure 5 estimates flagged, path-resolution risk documented ✅
-  - Narrative scope: SWE-bench appendix-only, no SWE-bench leakage in main results sections ✅
-----------
-ralph-done-8i0pc
+## Task 1: 创建 AST 骨架解析模块 ✅
+- **完成时间**: 2026-03-10T17:35:00-04:00
+- **Commit**: 3508da1 on ralph-loop-js6x6
+- **文件创建**:
+  - `src/bdi_llm/swe_bench/ast_viewport.py` — 339 行，4 个公共函数
+  - `tests/unit/test_ast_viewport.py` — 25 个单元测试全部通过
+- **已实现功能**:
+  1. `file_skeleton(source)` — AST 解析提取 imports、变量、类/函数签名；函数体替换为 `...`；语法错误时 fallback 到 regex
+  2. `extract_entity(source, entity_name)` — 精确匹配 + 模糊子串匹配提取完整源码
+  3. `file_skeleton_with_context(source, entity_name)` — 骨架 + 目标实体完整代码
+  4. `extract_test_function(test_file_source, test_name)` — 支持 `TestClass::test_method` 分隔符的测试函数提取
+- **验证结果**:
+  - 自身模块测试: 339 行 → 56 行骨架（~83% 压缩率）
+  - 25/25 单元测试通过
+  - ruff check 通过（修复了 ast.Str deprecation、未使用 import、import 排序）
+  - 既有单元测试无破坏（47 passed, 1 pre-existing failure in harness test）
