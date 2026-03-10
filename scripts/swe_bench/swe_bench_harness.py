@@ -109,6 +109,10 @@ class LocalSWEBenchHarness:
         env: Optional[Dict[str, str]] = None,
     ) -> Tuple[bool, str, int]:
         try:
+            # Clean env to avoid PYTHONPATH pollution from parent process
+            if env is None:
+                env = os.environ.copy()
+                env.pop("PYTHONPATH", None)
             result = subprocess.run(
                 command,
                 cwd=cwd,
@@ -132,6 +136,7 @@ class LocalSWEBenchHarness:
         prepend_path: Optional[str] = None,
     ) -> Tuple[bool, str, int]:
         env = os.environ.copy()
+        env.pop("PYTHONPATH", None)
         if prepend_path:
             env["PATH"] = prepend_path + os.pathsep + env.get("PATH", "")
 
