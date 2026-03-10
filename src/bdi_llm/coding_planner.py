@@ -1,8 +1,23 @@
+"""Coding BDI Planner for software engineering tasks.
 
+Provides a specialized BDI planner for code modification tasks:
+- ``CodingBDIPlanner`` — BDI planner with coding-specific action types
+- ``GeneratePlanCoding`` — DSPy signature for coding plan generation
+- ``ImplementCodeChange`` — DSPy signature for file editing
+
+Coding domain action types:
+- read-file: Read file contents
+- edit-file: Modify file contents
+- run-test: Execute tests
+- create-file: Create new files
+"""
+
+from __future__ import annotations
 
 import dspy
 
 from .planner import BDIPlanner
+from .planner.domain_spec import DomainSpec
 from .planner.prompts import (
     _GRAPH_STRUCTURE_COMMON,
     _LOGICOT_HEADER,
@@ -71,44 +86,74 @@ class GeneratePlanCoding(dspy.Signature):
 
 
 class ImplementCodeChange(dspy.Signature):
-    __doc__ = """
-    You are a Senior Software Engineer.
-    Your task is to implementing a specific code change (Edit) as part of a larger plan.
+    """You are a Senior Software Engineer implementing a specific code change.
 
     You will be given:
     1. The File Path and its Current Content.
-    2. The Goal (Github Issue).
+    2. The Goal (GitHub Issue).
     3. The specific Plan Step description (e.g., "Add null check to function X").
 
-    You must return the NEW content of the file.
-    """
-    file_path: str = dspy.InputField()
-    current_content: str = dspy.InputField()
-    issue_description: str = dspy.InputField()
-    step_description: str = dspy.InputField()
+    You must return the NEW content of the file with the changes applied.
 
-    # We use a simple output field for now. In a real system, we might use a diff format.
+    Output Format:
+    - Return complete file content (not a diff/patch)
+    - Preserve existing code style and formatting
+    - Ensure all imports and dependencies are maintained
+    """
+    file_path: str = dspy.InputField(desc="Path to the file being edited")
+    current_content: str = dspy.InputField(desc="Current content of the file")
+    issue_description: str = dspy.InputField(desc="GitHub issue description")
+    step_description: str = dspy.InputField(desc="Specific change to implement")
     new_content: str = dspy.OutputField(desc="The complete new content of the file")
 
 
 class CodingBDIPlanner(BDIPlanner):
-    def __init__(self, auto_repair: bool = True):
-        super().__init__(auto_repair=auto_repair, domain="coding")
+    """BDI Planner specialized for coding/software engineering tasks.
 
-        # Override the signature with our coding-specific one
-        self.generate_plan = dspy.ChainOfThought(GeneratePlanCoding)
+    Uses a coding-specific domain spec with action types:
+    - read-file, edit-file, run-test, create-file
 
-        # Add the code implementation module
+    Provides both BDI (with CoT) and baseline (without CoT) generation methods.
+    """
+
+    def __init__(self, auto_repair: bool = True) -> None:
+        """Initialize the coding planner.
+
+        Args:
+            auto_repair: Whether to enable automatic repair on verification failures.
+        """
+        coding_domain_spec = DomainSpec(
+            name="coding",
+            valid_action_types=frozenset({"read-file", "edit-file", "run-test", "create-file"}),
+            required_params={
+                "read-file": frozenset({"file"}),
+                "edit-file": frozenset({"file", "test"}),
+                "run-test": frozenset({"test"}),
+                "create-file": frozenset({"file"}),
+            },
+            signature_class=GeneratePlanCoding,
+        )
+        super().__init__(auto_repair=auto_repair, domain_spec=coding_domain_spec)
+
+        self._generate_program = dspy.ChainOfThought(GeneratePlanCoding)
+        self._baseline_program = dspy.Predict(GeneratePlanCoding)
         self.implement_change = dspy.ChainOfThought(ImplementCodeChange)
 
-        # Define coding-specific constraints
-        self._valid_action_types["coding"] = {
-            "read-file", "edit-file", "run-test", "create-file"
-        }
+    def generate_plan_baseline(self, beliefs: str, desire: str) -> BDIPlan:
+        """Generate plan without CoT reasoning (baseline mode).
 
-        self._required_params["coding"] = {
-            "read-file": {"file"},
-            "edit-file": {"file", "test"},
-            "run-test": {"test"},
-            "create-file": {"file"},
-        }
+        Args:
+            beliefs: Current state (repo structure, filed issues, test status).
+            desire: The goal (fix the issue and pass tests).
+
+        Returns:
+            BDIPlan without structural verification.
+
+        Raises:
+            ValueError: If LLM returns no parseable plan.
+        """
+        pred = self._baseline_program(beliefs=beliefs, desire=desire)
+        plan = pred.plan
+        if plan is None:
+            raise ValueError("LLM returned no parseable plan (baseline)")
+        return plan
