@@ -22,6 +22,31 @@ from .feedback import build_test_feedback
 logger = logging.getLogger(__name__)
 
 
+def _apply_test_patch(instance_dir: Path, test_patch: str) -> bool:
+    """Apply the SWE-bench test_patch that adds/modifies failing test cases.
+
+    Without this patch, FAIL_TO_PASS test IDs may not exist, causing
+    'no tests ran' errors.
+    """
+    if not test_patch or not test_patch.strip():
+        return True
+    proc = subprocess.run(
+        ["git", "apply", "--allow-empty", "-"],
+        input=test_patch,
+        cwd=instance_dir,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    if proc.returncode != 0:
+        logger.warning(
+            f"test_patch apply failed (rc={proc.returncode}): {proc.stderr[:200]}"
+        )
+        return False
+    return True
+
+
 # ---------------------------------------------------------------------------
 # Utility
 # ---------------------------------------------------------------------------
@@ -205,6 +230,13 @@ def evaluate_sample(
         return result
 
     python_executable = str(env_info.get("python_executable") or "python3")
+
+    # ------------------------------------------------------------------
+    # Step 0b: Apply test_patch (adds failing test cases from SWE-bench)
+    # ------------------------------------------------------------------
+    test_patch = instance.get("test_patch", "")
+    if test_patch:
+        _apply_test_patch(repo_dir, test_patch)
 
     # ------------------------------------------------------------------
     # Step 1: Build PlanningTask

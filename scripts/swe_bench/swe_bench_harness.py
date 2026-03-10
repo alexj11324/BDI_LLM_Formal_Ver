@@ -463,6 +463,20 @@ class LocalSWEBenchHarness:
         if not ok:
             return False, logs
 
+        # Pin hypothesis for Python 3.8 envs (newer versions are incompatible)
+        ver_ok, ver_out, _ = self._run_command(
+            [str(env_python), "-c", "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"],
+            cwd=instance_dir,
+            timeout=15,
+        )
+        py_ver = (ver_out or "").strip()
+        if py_ver == "3.8":
+            self._run_command(
+                [str(env_python), "-m", "pip", "install", "-q", "hypothesis<6.80"],
+                cwd=instance_dir,
+                timeout=timeout,
+            )
+
         return True, logs
 
     def _prepare_python_environment(
