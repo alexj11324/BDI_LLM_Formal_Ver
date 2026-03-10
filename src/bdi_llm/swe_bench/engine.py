@@ -36,6 +36,7 @@ class SWEBenchGenerationResult:
     raw: Any = None
     structural_valid: bool = False
     structural_errors: list[str] = field(default_factory=list)
+    reasoning: str = ""
 
 
 @dataclass
@@ -90,7 +91,14 @@ class SWEBenchGenerator:
         plan = pred.plan
         if plan is None:
             raise ValueError("LLM returned no parseable plan (baseline)")
-        return SWEBenchGenerationResult(plan=plan, raw=pred)
+        root_cause = getattr(pred, "root_cause_analysis", "")
+        reasoning = getattr(pred, "reasoning", "")
+        combined = ""
+        if root_cause:
+            combined += f"Root cause: {root_cause}"
+        if reasoning:
+            combined += f"\nStrategy: {reasoning}" if combined else f"Strategy: {reasoning}"
+        return SWEBenchGenerationResult(plan=plan, raw=pred, reasoning=combined)
 
     def generate_bdi(
         self,
@@ -113,7 +121,24 @@ class SWEBenchGenerator:
             raw=pred,
             structural_valid=is_valid,
             structural_errors=list(errors) if errors else [],
+            reasoning=self._build_planning_context(pred),
         )
+
+    # -----------------------------------------------------------------
+    # Helpers
+    # -----------------------------------------------------------------
+
+    @staticmethod
+    def _build_planning_context(pred: Any) -> str:
+        """Merge root_cause_analysis and reasoning into a combined context."""
+        root_cause = getattr(pred, "root_cause_analysis", "")
+        reasoning = getattr(pred, "reasoning", "")
+        parts: list[str] = []
+        if root_cause:
+            parts.append(f"Root cause: {root_cause}")
+        if reasoning:
+            parts.append(f"Strategy: {reasoning}")
+        return "\n".join(parts)
 
     # -----------------------------------------------------------------
     # Repair

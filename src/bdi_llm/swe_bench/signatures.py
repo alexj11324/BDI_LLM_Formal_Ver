@@ -44,6 +44,9 @@ class GeneratePlanCodingBaseline(dspy.Signature):
     desire: str = dspy.InputField(
         desc="Goal: Fix the issue and make failing tests pass"
     )
+    root_cause_analysis: str = dspy.OutputField(
+        desc="What is the exact bug, which file/function, and what change?"
+    )
     plan: BDIPlan = dspy.OutputField(
         desc="Execution plan as a DAG of coding actions"
     )

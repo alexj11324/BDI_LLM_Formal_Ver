@@ -69,6 +69,9 @@ class GeneratePlanCoding(dspy.Signature):
     """
     beliefs: str = dspy.InputField(desc="Current state: Repo structure, filed issues, test status")
     desire: str = dspy.InputField(desc="The goal: Fix the issue and pass tests")
+    root_cause_analysis: str = dspy.OutputField(
+        desc="What is the exact bug, which file/function, and what change?"
+    )
     plan: BDIPlan = dspy.OutputField(desc="Execution plan as a DAG")
 
 
