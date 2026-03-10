@@ -31,7 +31,7 @@ def _apply_test_patch(instance_dir: Path, test_patch: str) -> bool:
     if not test_patch or not test_patch.strip():
         return True
     proc = subprocess.run(
-        ["git", "apply", "--allow-empty", "-"],
+        ["git", "apply", "-"],
         input=test_patch,
         cwd=instance_dir,
         capture_output=True,
