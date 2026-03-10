@@ -14,3 +14,19 @@
   - 25/25 单元测试通过
   - ruff check 通过（修复了 ast.Str deprecation、未使用 import、import 排序）
   - 既有单元测试无破坏（47 passed, 1 pre-existing failure in harness test）
+
+## Task 2: 修改 GeneratePlanCoding 签名支持 target_entity ✅
+- **完成时间**: 2026-03-10T17:42:00-04:00
+- **Commit**: fc0175f on ralph-loop-peesp
+- **修改文件**:
+  - `src/bdi_llm/coding_planner.py` — GeneratePlanCoding 签名
+  - `src/bdi_llm/swe_bench/signatures.py` — GeneratePlanCodingBaseline + RepairPlanCoding 签名
+- **已实现功能**:
+  1. `GeneratePlanCoding`: edit-file params 新增 `"target": <class_or_function_name>`；EXAMPLE PLAN 示例中加入 `target="sort_items"`；PRECONDITIONS 添加规则 #5
+  2. `GeneratePlanCodingBaseline`: edit-file params 新增 `target`；Rules 添加规则 #4
+  3. `RepairPlanCoding`: edit-file params 新增 `target`；Preconditions 添加 target 说明
+  4. `DomainSpec.required_params` 未修改——target 是可选参数，不强制校验
+- **验证结果**:
+  - ruff check 通过（修复了 import 排序，B021 f-string docstring 是预先存在问题）
+  - pytest: 184 passed, 1 failed（失败来自预先存在的 harness test，与本次修改无关）
+  - 向后兼容：不携带 target 的旧计划仍可正常执行
