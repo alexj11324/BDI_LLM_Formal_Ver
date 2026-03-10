@@ -30,3 +30,22 @@
   - ruff check 通过（修复了 import 排序，B021 f-string docstring 是预先存在问题）
   - pytest: 184 passed, 1 failed（失败来自预先存在的 harness test，与本次修改无关）
   - 向后兼容：不携带 target 的旧计划仍可正常执行
+
+## Task 3: 修改 execute_plan 使用 AST 视口替代盲截断 ✅
+- **完成时间**: 2026-03-10T17:55:00-04:00
+- **Commit**: 0c24af7 on ralph-loop-kgtju
+- **修改文件**:
+  - `scripts/swe_bench/swe_bench_harness.py` — 21 insertions, 2 deletions
+- **已实现功能**:
+  1. 导入 `ast_viewport` 模块（`file_skeleton`, `file_skeleton_with_context`）
+  2. 添加 `logging` 模块和 `logger` 实例（修复预先存在的未导入 bug）
+  3. 在 `execute_plan()` 中添加 `skeleton_cache` dict，`read-file` 分支对 `.py` 文件缓存 AST 骨架
+  4. `edit-file` 分支：当 `target` 参数存在且文件为 `.py` 时，使用 `file_skeleton_with_context()` 替代 `content[:12000]`
+  5. 未指定 `target` 或非 Python 文件时 fallback 到 12000 字符截断
+  6. AST 视口上限 15000 字符，防止上下文溢出
+- **验证结果**:
+  - 模块导入测试通过（PYTHONPATH=src）
+  - 56 个单元测试通过（test_ast_viewport + test_verifier + test_plan_repair）
+  - 功能验证：1337 行的 harness 文件，盲截断看不到第 918 行的 `execute_plan`，AST 视口能完整展示
+  - ruff check：无新增 lint 错误（所有 E501/E741 均为预先存在问题）
+  - 4 个 collection error 均为预先存在的 planbench import 问题，与本次修改无关
