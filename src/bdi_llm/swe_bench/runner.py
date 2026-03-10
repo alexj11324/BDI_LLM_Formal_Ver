@@ -7,14 +7,12 @@ Mirrors ``travelplanner/runner.py``:
 
 from __future__ import annotations
 
-import json
 import logging
 import subprocess
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from ..verifier import PlanVerifier
 from .adapter import SWEBenchTaskAdapter
 from .engine import SWEBenchGenerator
 from .feedback import (
@@ -32,25 +30,51 @@ logger = logging.getLogger(__name__)
 
 
 def _reset_to_base_commit(instance_dir: Path, base_commit: str) -> None:
-    """Hard-reset the repo back to base commit for re-execution during repair."""
-    subprocess.run(
-        ["git", "checkout", "--", "."],
-        cwd=instance_dir,
-        capture_output=True,
-        check=True,
-        timeout=60,
-    )
-    subprocess.run(
-        ["git", "clean", "-fd"],
-        cwd=instance_dir,
-        capture_output=True,
-        check=True,
-        timeout=60,
-    )
+    """Hard-reset the repo back to base commit for re-execution during repair.
+
+    Args:
+        instance_dir: Path to the repository directory.
+        base_commit: Base commit SHA to reset to.
+
+    Raises:
+        subprocess.SubprocessError: If git operations fail.
+        subprocess.TimeoutExpired: If git operations timeout.
+    """
+    try:
+        subprocess.run(
+            ["git", "checkout", "--", "."],
+            cwd=instance_dir,
+            capture_output=True,
+            check=True,
+            timeout=60,
+        )
+    except subprocess.SubprocessError as exc:
+        logger.warning(f"Git checkout failed in {instance_dir}: {exc}")
+        raise
+
+    try:
+        subprocess.run(
+            ["git", "clean", "-fd"],
+            cwd=instance_dir,
+            capture_output=True,
+            check=True,
+            timeout=60,
+        )
+    except subprocess.SubprocessError as exc:
+        logger.warning(f"Git clean failed in {instance_dir}: {exc}")
+        raise
 
 
 def _repo_snapshot(instance_dir: Path, max_files: int = 250) -> str:
-    """Create compact repository file listing for planner beliefs."""
+    """Create compact repository file listing for planner beliefs.
+
+    Args:
+        instance_dir: Path to the repository directory.
+        max_files: Maximum number of files to include in snapshot.
+
+    Returns:
+        A formatted string with repository file paths, truncated if needed.
+    """
     try:
         proc = subprocess.run(
             ["git", "ls-files"],
@@ -73,8 +97,8 @@ def _repo_snapshot(instance_dir: Path, max_files: int = 250) -> str:
                 else ""
             )
             return "\n".join(shown) + suffix
-    except Exception:
-        pass
+    except (subprocess.SubprocessError, subprocess.TimeoutExpired) as exc:
+        logger.debug(f"Failed to generate repo snapshot: {exc}")
     return ""
 
 
@@ -84,7 +108,7 @@ def _repo_snapshot(instance_dir: Path, max_files: int = 250) -> str:
 
 
 def evaluate_sample(
-    instance: Dict[str, Any],
+    instance: dict[str, Any],
     *,
     mode: str,
     harness: Any,
@@ -93,13 +117,18 @@ def evaluate_sample(
     max_plan_steps: int = 40,
     setup_timeout: int = 900,
     keep_workspace: bool = True,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Run one SWE-bench instance through the full BDI evaluation loop.
 
     Args:
-        instance: SWE-bench dataset item.
+        instance: SWE-bench dataset item (dict with instance_id, repo, etc.).
         mode: One of ``"baseline"``, ``"bdi"``, ``"bdi-repair"``.
-        harness: ``LocalSWEBenchHarness`` instance.
+        harness: ``LocalSWEBenchHarness`` instance with methods:
+            - setup_repo(instance, cleanup_existing, clone_timeout)
+            - _prepare_python_environment(instance, instance_dir, timeout)
+            - build_test_command(instance, python_executable)
+            - execute_plan(plan, instance, instance_dir, ...)
+            - run_tests_with_dependency_fix(instance_dir, command, ...)
         max_repair_attempts: Max repair iterations (default 3).
         test_timeout: Timeout per test run in seconds.
         max_plan_steps: Maximum plan nodes to execute.
@@ -107,12 +136,28 @@ def evaluate_sample(
         keep_workspace: Whether to keep workspace after execution.
 
     Returns:
-        Result dict with status, pass metrics, repair stats.
+        Result dict with keys:
+            - instance_id: str
+            - repo: str
+            - mode: str
+            - status: str (passed, failed_tests, setup_error, planning_error, etc.)
+            - tests_passed: bool
+            - one_shot: bool (passed on first attempt without repair)
+            - repair_attempts: int
+            - repair_success: bool
+            - changed_files: list[str]
+            - plan_steps_total: int
+            - plan_steps_executed: int
+            - structural_valid: bool
+            - structural_errors: list[str]
+            - durations_sec: dict[str, float]
+            - error: str | None
+            - error_category: str | None
     """
     instance_id = instance.get("instance_id", "unknown")
     start = time.time()
 
-    result: Dict[str, Any] = {
+    result: dict[str, Any] = {
         "instance_id": instance_id,
         "repo": instance.get("repo"),
         "mode": mode,
@@ -125,12 +170,13 @@ def evaluate_sample(
         "plan_steps_total": 0,
         "durations_sec": {},
         "error": None,
+        "error_category": None,
     }
 
     # ------------------------------------------------------------------
     # Step 0: Setup repo + env
     # ------------------------------------------------------------------
-    repo_dir: Optional[Path] = None
+    repo_dir: Path | None = None
     try:
         setup_start = time.time()
         repo_dir = harness.setup_repo(instance, cleanup_existing=True, clone_timeout=setup_timeout)
@@ -138,6 +184,7 @@ def evaluate_sample(
     except Exception as exc:
         result["status"] = "setup_error"
         result["error"] = str(exc)
+        result["error_category"] = "setup_error"
         result["durations_sec"]["total"] = round(time.time() - start, 3)
         return result
 
@@ -151,7 +198,8 @@ def evaluate_sample(
 
     if not env_info.get("ok"):
         result["status"] = "setup_error"
-        result["error"] = str(env_info.get("error", "python_environment_setup_failed"))
+        result["error"] = f"python_environment_setup_failed: {env_info.get('error', 'unknown')}"
+        result["error_category"] = "env_setup_error"
         result["durations_sec"]["total"] = round(time.time() - start, 3)
         return result
 
@@ -182,6 +230,7 @@ def evaluate_sample(
     except Exception as exc:
         result["status"] = "planning_error"
         result["error"] = str(exc)
+        result["error_category"] = "planning_error"
         result["durations_sec"]["planning"] = round(time.time() - plan_start, 3)
         result["durations_sec"]["total"] = round(time.time() - start, 3)
         return result
@@ -200,7 +249,7 @@ def evaluate_sample(
         + (f"\n\nHints:\n{instance.get('hints_text', '')}" if instance.get("hints_text") else "")
     )
     test_command = harness.build_test_command(instance, python_executable=python_executable)
-    auto_installed: List[str] = []
+    auto_installed: list[str] = []
 
     exec_start = time.time()
     execution = harness.execute_plan(
@@ -232,7 +281,7 @@ def evaluate_sample(
     # Step 4: Repair Loop (BDI-repair mode only)
     # ------------------------------------------------------------------
     if mode == "bdi-repair" and not test_ok:
-        cumulative_history: List[Dict[str, Any]] = []
+        cumulative_history: list[dict[str, Any]] = []
         seen_signatures: set[str] = set()
         current_plan = plan
 
@@ -304,7 +353,7 @@ def evaluate_sample(
                 logger.warning(f"[{instance_id}] git reset failed: {exc}")
                 break
 
-            auto_installed_repair: List[str] = []
+            auto_installed_repair: list[str] = []
             harness.execute_plan(
                 plan=repaired_plan,
                 instance=instance,

@@ -11,13 +11,11 @@ from __future__ import annotations
 import dspy
 
 from ..schemas import BDIPlan
+from ..coding_planner import GeneratePlanCoding  # noqa: F401
 from ..planner.prompts import (
     _GRAPH_STRUCTURE_COMMON,
     _REMINDER,
 )
-
-# Re-export the BDI version from coding_planner
-from ..coding_planner import GeneratePlanCoding  # noqa: F401
 
 
 class GeneratePlanCodingBaseline(dspy.Signature):
@@ -50,7 +48,7 @@ class GeneratePlanCodingBaseline(dspy.Signature):
 
 
 class RepairPlanCoding(dspy.Signature):
-    f"""You previously generated a coding plan that FAILED test verification.
+    """You previously generated a coding plan that FAILED test verification.
     The test runner found specific failures in your plan execution.
 
     Fix the plan by addressing EACH error reported by the test runner.
@@ -62,7 +60,7 @@ class RepairPlanCoding(dspy.Signature):
     4. Preserve all passing tests (regression safety).
     5. You may add new read-file/edit-file steps as needed.
 
-{_GRAPH_STRUCTURE_COMMON}
+{graph_structure}
 
     CODING DOMAIN ACTIONS:
       read-file   : {{"file": <path>}}
@@ -74,7 +72,7 @@ class RepairPlanCoding(dspy.Signature):
     - read-file BEFORE edit-file (you need the content)
     - run-test AFTER edit-file (verify the fix)
 
-{_REMINDER}
+{reminder}
     """
 
     beliefs: str = dspy.InputField(
@@ -104,3 +102,11 @@ class RepairPlanCoding(dspy.Signature):
     plan: BDIPlan = dspy.OutputField(
         desc="Corrected plan fixing all test failures, as a SINGLE CONNECTED DAG"
     )
+
+    def __init__(self, *args, **kwargs):
+        # Format docstring with prompts at instantiation
+        self.__doc__ = self.__doc__.format(
+            graph_structure=_GRAPH_STRUCTURE_COMMON,
+            reminder=_REMINDER
+        )
+        super().__init__(*args, **kwargs)
