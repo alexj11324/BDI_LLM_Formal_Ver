@@ -989,6 +989,14 @@ class LocalSWEBenchHarness:
                         step_logs.append(step_record)
                         continue
 
+                    # Block edits to test files — SWE-bench test_patch handles
+                    # test changes; LLM should only edit source code
+                    if "/tests/" in rel_path or basename.startswith("test_") or basename.startswith("tests_"):
+                        step_record["status"] = "skipped"
+                        step_record["reason"] = f"edit blocked for test file: {rel_path}"
+                        step_logs.append(step_record)
+                        continue
+
                     abs_path = self._safe_repo_path(instance_dir, rel_path)
                     if rel_path not in file_cache:
                         if abs_path.exists():

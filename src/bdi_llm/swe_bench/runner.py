@@ -22,6 +22,26 @@ from .feedback import build_test_feedback
 logger = logging.getLogger(__name__)
 
 
+def _restore_test_files(instance_dir: Path, base_commit: str) -> None:
+    """Restore all test files to base_commit state before re-applying test_patch."""
+    all_changed = _changed_files(instance_dir)
+    test_files = [
+        f for f in all_changed
+        if "/tests/" in f or Path(f).name.startswith("test_")
+    ]
+    for rel_path in test_files:
+        try:
+            subprocess.run(
+                ["git", "checkout", base_commit, "--", rel_path],
+                cwd=instance_dir,
+                capture_output=True,
+                check=True,
+                timeout=30,
+            )
+        except Exception:
+            pass
+
+
 def _apply_test_patch(instance_dir: Path, test_patch: str) -> bool:
     """Apply the SWE-bench test_patch that adds/modifies failing test cases.
 
@@ -303,6 +323,12 @@ def evaluate_sample(
     restored = _restore_non_source_files(repo_dir, base_commit)
     if restored:
         result["restored_files"] = restored
+
+    # Restore test files to base_commit state, then re-apply test_patch
+    # (in case plan execution modified test files)
+    _restore_test_files(repo_dir, base_commit)
+    if test_patch:
+        _apply_test_patch(repo_dir, test_patch)
 
     # Final test
     test_ok, test_output, returncode, _ = harness.run_tests_with_dependency_fix(
