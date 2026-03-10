@@ -7,6 +7,7 @@ Mirrors ``travelplanner/runner.py``:
 
 from __future__ import annotations
 
+import difflib
 import json
 import logging
 import re
@@ -486,6 +487,16 @@ def evaluate_sample(
                     encoding="utf-8", errors="ignore"
                 )
 
+                # Compute unified diff for the repair model
+                diff_lines = difflib.unified_diff(
+                    original.splitlines(keepends=True),
+                    current.splitlines(keepends=True),
+                    fromfile=f"a/{rel_path}",
+                    tofile=f"b/{rel_path}",
+                    n=3,
+                )
+                diff_text = "".join(diff_lines)
+
                 try:
                     patch_result = engine.repair_patch(
                         file_path=rel_path,
@@ -494,6 +505,7 @@ def evaluate_sample(
                         issue_description=issue_desc,
                         test_feedback=test_fb,
                         repair_history=repair_history,
+                        diff_text=diff_text,
                     )
                 except Exception as exc:
                     logger.warning(

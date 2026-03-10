@@ -108,32 +108,26 @@ class RepairPlanCoding(dspy.Signature):
 
 
 class RepairCodeChange(dspy.Signature):
-    """Your previous code edit did NOT fix the issue — tests are still failing.
+    """Your previous code edit caused test failures. You are given:
+    1. The original code snippet (before your edit).
+    2. A unified diff showing exactly what you changed.
+    3. The test failure output.
 
-    You are given:
-    1. The file path and its ORIGINAL content (before any edits).
-    2. The CURRENT content (your previous edit that failed tests).
-    3. The test failure output explaining exactly what went wrong.
-    4. The original issue description.
+    DIAGNOSIS PROTOCOL:
+    1. Read the test traceback — identify the exact assertion or exception.
+    2. Read your previous diff — identify which green (+) line caused it.
+    3. Explain the root cause in root_cause_analysis.
+    4. Only then generate the corrective search_block and replace_block.
 
-    Produce a SEARCH/REPLACE edit that fixes the test failures.
-    The search_block must match the CURRENT content exactly.
-    The replace_block is what it should be changed to.
-
-    RULES:
-    1. Read the test error output CAREFULLY — identify the root cause.
-    2. Copy the EXACT code from current_content for search_block.
-    3. Include 3-5 surrounding context lines to make the match unique.
-    4. Keep replace_block minimal — only change what is needed.
-    5. Do NOT rewrite the entire file. Do NOT add unrelated changes.
+    The search_block must match the CURRENT file content (after your edit).
     """
 
     file_path: str = dspy.InputField(desc="Path of the file being repaired")
-    original_content: str = dspy.InputField(
-        desc="File content at base commit (before any edits)"
+    original_snippet: str = dspy.InputField(
+        desc="Original code of the target function/region before any edits"
     )
-    current_content: str = dspy.InputField(
-        desc="File content after your previous edit (which failed tests)"
+    previous_diff: str = dspy.InputField(
+        desc="Unified diff showing the exact changes you made that caused test failures"
     )
     issue_description: str = dspy.InputField(
         desc="The GitHub issue / bug report"
@@ -146,6 +140,9 @@ class RepairCodeChange(dspy.Signature):
         default="",
     )
 
+    root_cause_analysis: str = dspy.OutputField(
+        desc="Which specific line in your previous diff caused the test failure, and why?"
+    )
     search_block: str = dspy.OutputField(
         desc="The exact code block to find in current_content (must match exactly)"
     )

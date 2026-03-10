@@ -7,6 +7,7 @@ class with methods for each execution mode.
 from __future__ import annotations
 
 import ast
+import difflib
 import hashlib
 import logging
 from dataclasses import dataclass, field
@@ -223,6 +224,7 @@ class SWEBenchGenerator:
         issue_description: str,
         test_feedback: str,
         repair_history: str = "",
+        diff_text: str = "",
     ) -> PatchRepairResult:
         """Repair a single file's patch using test failure feedback.
 
@@ -236,16 +238,28 @@ class SWEBenchGenerator:
             issue_description: The original bug report / issue text.
             test_feedback: Structured test failure output.
             repair_history: Summary of prior repair attempts.
+            diff_text: Pre-computed unified diff of original→current.
 
         Returns:
             ``PatchRepairResult`` with the improved file content.
         """
         logger.info(f"Patch-level repair for {file_path}")
 
+        # Compute unified diff if not provided by caller
+        if not diff_text:
+            diff_lines = difflib.unified_diff(
+                original_content.splitlines(keepends=True),
+                current_content.splitlines(keepends=True),
+                fromfile=f"a/{file_path}",
+                tofile=f"b/{file_path}",
+                n=3,
+            )
+            diff_text = "".join(diff_lines)
+
         pred = self._repair_patch(
             file_path=file_path,
-            original_content=original_content[:8000],
-            current_content=current_content[:8000],
+            original_snippet=original_content[:4000],
+            previous_diff=diff_text[:4000],
             issue_description=issue_description[:4000],
             test_feedback=test_feedback[:3000],
             repair_history=repair_history[:2000],
