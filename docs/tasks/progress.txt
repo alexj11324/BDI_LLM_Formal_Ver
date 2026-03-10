@@ -1,0 +1,12 @@
+## Codebase Patterns
+- Reuse the completed pre-writing artifacts under `runs/spawnteam_paper/` before generating new manuscript-stage outputs.
+- Preserve the frozen-vs-current PlanBench boundary: frozen paper counts live in `artifacts/paper_eval_20260213/`, current-mainline reporting lives in `README.md`, `docs/BENCHMARKS.md`, and `RESULTS_PROVENANCE.md`.
+- Preserve the TravelPlanner field boundary: do not collapse oracle `summary` and non-oracle `validation_as_test_summary`.
+- Treat figure scripts as provenance-sensitive; do not assume script outputs are authoritative without path/source validation.
+- SWE-bench content is appendix-only; it must not displace the main substrate/PDDL/TravelPlanner narrative.
+---
+
+## Task 1: Draft manuscript prose plan from existing artifacts — DONE
+- **Completed:** 2026-03-09T20:30:00-04:00
+- **Output:** `runs/spawnteam_paper/lead/manuscript_drafting_plan.md`
+- **Summary:** Read all 5 packets (substrate, planbench, travelplanner, provenance, swebench_appendix) and all 4 lead artifacts (claim_ledger, integrated_outline, dry_run_summary, claim_audit_checklist). Created manuscript drafting plan with: dependency graph, section-to-packet mapping, provenance constraints (frozen-vs-current PlanBench, TravelPlanner field boundary, PDDL runner boundary, figure-script caution), narrative defaults, terminology locks, output file inventory, and claim audit integration requirements.
