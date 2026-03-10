@@ -49,3 +49,20 @@
   - 功能验证：1337 行的 harness 文件，盲截断看不到第 918 行的 `execute_plan`，AST 视口能完整展示
   - ruff check：无新增 lint 错误（所有 E501/E741 均为预先存在问题）
   - 4 个 collection error 均为预先存在的 planbench import 问题，与本次修改无关
+
+## Task 4: 将文件骨架注入 Planner 的 Beliefs ✅
+- **完成时间**: 2026-03-10T17:58:00-04:00
+- **Commit**: d71d3fc on ralph-loop-tl9ec
+- **修改文件**:
+  - `src/bdi_llm/swe_bench/runner.py` — 重写 `_repo_snapshot()` + 新增 `_extract_mentioned_files()` 和 `_mentioned_file_skeletons()`
+  - `src/bdi_llm/swe_bench/adapter.py` — `SWEBenchTaskAdapter` 新增 `mentioned_skeletons` 参数
+- **已实现功能**:
+  1. `_repo_snapshot()`: 从平铺 `git ls-files` (250行) 改为深度限制3层的目录树结构，含文件计数（如 `astropy/  (2000 files)`）
+  2. `_extract_mentioned_files()`: 用正则从 `problem_statement` 中提取 `.py` 路径
+  3. `_mentioned_file_skeletons()`: 对提到的文件调用 `file_skeleton()` 生成 AST 骨架，上限5个文件/3000字符
+  4. `SWEBenchTaskAdapter`: 构造函数接受 `mentioned_skeletons`，在 beliefs 中渲染 "Mentioned files skeleton:" 段落
+  5. `evaluate_sample()`: 在 Step 1 中计算 mentioned_skeletons 并传入 adapter
+- **验证结果**:
+  - 功能验证：beliefs 正确包含 "Repository structure:" 树 + "Mentioned files skeleton:" AST 骨架
+  - 69 个单元测试通过（1 个预先存在的 harness 测试失败与本次修改无关）
+  - ruff check：无新增 lint 错误（所有 UP006/UP035/E741/F401 均为预先存在问题）
