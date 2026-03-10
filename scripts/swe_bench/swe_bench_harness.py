@@ -140,9 +140,13 @@ class LocalSWEBenchHarness:
         if prepend_path:
             env["PATH"] = prepend_path + os.pathsep + env.get("PATH", "")
 
+        # Prepend unset PYTHONPATH to prevent conda env corruption
+        # from parent process or profile sourcing
+        safe_script = f"unset PYTHONPATH; {script}"
+
         try:
             result = subprocess.run(
-                ["bash", "-lc", script],
+                ["bash", "-c", safe_script],
                 cwd=cwd,
                 shell=False,
                 capture_output=True,
@@ -489,19 +493,25 @@ class LocalSWEBenchHarness:
         env_python = env_prefix / ("python.exe" if os.name == "nt" else "bin/python")
 
         # Reuse existing conda env if valid (saves ~740s)
+        # Check both --version AND stdlib import to catch corrupted envs
+        # (e.g. git clean -fd removing .py source files while keeping binaries)
         if env_python.exists():
             try:
                 ok, output, _ = self._run_command(
-                    [str(env_python), "--version"], cwd=instance_dir, timeout=30,
+                    [str(env_python), "-c", "import encodings; print('ok')"],
+                    cwd=instance_dir, timeout=30,
                 )
-                if ok:
+                if ok and "ok" in (output or ""):
+                    ver_ok, ver_out, _ = self._run_command(
+                        [str(env_python), "--version"], cwd=instance_dir, timeout=30,
+                    )
                     return {
                         "ok": True,
                         "used_conda": True,
                         "conda_executable": self.conda_executable,
                         "env_prefix": str(env_prefix),
                         "python_executable": str(env_python),
-                        "python_version": (output or "").strip().split()[-1] if output else "unknown",
+                        "python_version": (ver_out or "").strip().split()[-1] if ver_out else "unknown",
                         "spec_found": bool(spec),
                         "spec_python": preferred_python or None,
                         "setup_steps": [{"step": "reuse_existing_env", "ok": True}],
@@ -697,7 +707,7 @@ class LocalSWEBenchHarness:
                     cwd=instance_dir, capture_output=True, check=True, timeout=60,
                 )
                 subprocess.run(
-                    ["git", "clean", "-fd"],
+                    ["git", "clean", "-fd", "-e", ".swebench_env"],
                     cwd=instance_dir, capture_output=True, check=True, timeout=60,
                 )
                 subprocess.run(
