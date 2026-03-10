@@ -232,6 +232,9 @@ def main() -> int:
     pending_ids = [instance_id for instance_id in all_ids if instance_id not in completed_ids]
     print(f"Running SWE-bench batch: total={len(all_ids)}, pending={len(pending_ids)}")
 
+    # Pre-load dataset so workers don't each download it
+    _ = harness.dataset
+
     def _run_one(instance_id: str) -> Dict[str, Any]:
         """Execute a single instance (called from main thread or worker)."""
         if args.dry_run:
@@ -245,11 +248,20 @@ def main() -> int:
         try:
             from bdi_llm.swe_bench.runner import evaluate_sample
 
+            # Lookup instance from the shared (pre-loaded) harness
+            instance_data = harness.get_instance(instance_id)
+
             # Each worker needs its own harness with isolated workspace
-            worker_harness = harness if args.workers <= 1 else LocalSWEBenchHarness(
-                workspace_dir=str(Path(args.workspace) / f"w_{hash(instance_id) % 10000}")
-            )
-            instance_data = worker_harness.get_instance(instance_id)
+            if args.workers > 1:
+                worker_harness = LocalSWEBenchHarness(
+                    workspace_dir=str(Path(args.workspace) / f"w_{hash(instance_id) % 10000}")
+                )
+                # Share the already-loaded dataset to avoid redundant downloads
+                worker_harness._dataset = harness._dataset
+                worker_harness._dataset_by_id = harness._dataset_by_id
+            else:
+                worker_harness = harness
+
             return evaluate_sample(
                 instance_data,
                 mode=args.execution_mode,
