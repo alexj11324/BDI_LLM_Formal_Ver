@@ -83,3 +83,30 @@
   - ruff check：无新增 lint 错误（UP035 等均为预先存在问题）
   - pytest: 184 passed, 1 failed（失败来自预先存在的 harness test `test_setup_repo_checks_out_env_commit_then_restores_base_tree`，与本次修改无关）
   - 4 个 collection error 来自预先存在的 planbench import 问题
+
+## Task 6: Repair 签名注入 Unified Diff ✅
+- **完成时间**: 2026-03-10T18:20:00-04:00
+- **Commit**: 6ac06b7 on ralph-loop-tl9ec
+- **修改文件**:
+  - `src/bdi_llm/swe_bench/signatures.py` — 重构 RepairCodeChange 签名
+  - `src/bdi_llm/swe_bench/engine.py` — 添加 `import difflib` + `diff_text` 参数 + 自动计算 diff
+  - `src/bdi_llm/swe_bench/runner.py` — 添加 `import difflib` + repair 循环中计算 unified diff
+- **已实现功能**:
+  1. `RepairCodeChange` 签名重构：
+     - 删除 `original_content` 和 `current_content` 输入字段（两份截断的完整文件）
+     - 新增 `original_snippet: str` — 修改前的原始代码片段（4000 字符上限）
+     - 新增 `previous_diff: str` — unified diff 格式的变更记录（4000 字符上限）
+     - 新增输出字段 `root_cause_analysis: str` — 强制模型先诊断再修复
+  2. `engine.py` 的 `repair_patch()` 方法：
+     - 新增 `diff_text: str = ""` 参数
+     - 如果 caller 未提供 diff_text，则用 `difflib.unified_diff()` 自动计算
+     - 传给 `_repair_patch` 的参数从 `original_content[:8000]` + `current_content[:8000]` 改为 `original_snippet[:4000]` + `previous_diff[:4000]`
+  3. `runner.py` 的 repair 循环：
+     - 在调用 `repair_patch()` 前，用 `difflib.unified_diff()` 计算 original→current 的 diff
+     - 将 `diff_text` 传入 `repair_patch()`
+- **验证结果**:
+  - 所有字段替换验证通过：`original_content`/`current_content` 已删除，`original_snippet`/`previous_diff`/`root_cause_analysis` 已添加
+  - `repair_patch()` 参数包含 `diff_text`
+  - 手动 diff 计算测试通过：生成了格式正确的 unified diff（`--- a/test.py`, `+++ b/test.py` 等）
+  - ruff check：无新增 lint 错误（E741/UP006/UP035/F401/B021/C901 均为预先存在问题）
+  - pytest: 184 passed, 1 failed（预先存在的 harness test 失败，与本次修改无关）
