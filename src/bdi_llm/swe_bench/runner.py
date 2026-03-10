@@ -109,7 +109,8 @@ def _changed_files(instance_dir: Path, source_only: bool = False) -> List[str]:
     """Get list of files modified relative to HEAD.
 
     Args:
-        source_only: If True, filter to .py source files only (skip config files).
+        source_only: If True, filter to .py source files only, excluding
+                     test files (which are managed by test_patch, not the LLM).
     """
     proc = subprocess.run(
         ["git", "diff", "--name-only"],
@@ -121,7 +122,12 @@ def _changed_files(instance_dir: Path, source_only: bool = False) -> List[str]:
     )
     files = [l.strip() for l in (proc.stdout or "").splitlines() if l.strip()]
     if source_only:
-        files = [f for f in files if f.endswith(".py")]
+        files = [
+            f for f in files
+            if f.endswith(".py")
+            and "/tests/" not in f
+            and not Path(f).name.startswith("test_")
+        ]
     return files
 
 
