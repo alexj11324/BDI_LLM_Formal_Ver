@@ -66,3 +66,20 @@
   - 功能验证：beliefs 正确包含 "Repository structure:" 树 + "Mentioned files skeleton:" AST 骨架
   - 69 个单元测试通过（1 个预先存在的 harness 测试失败与本次修改无关）
   - ruff check：无新增 lint 错误（所有 UP006/UP035/E741/F401 均为预先存在问题）
+
+## Task 5: 添加 AST 语法护栏 ✅
+- **完成时间**: 2026-03-10T18:10:00-04:00
+- **Commit**: e9b1cb1 on ralph-loop-tl9ec
+- **修改文件**:
+  - `scripts/swe_bench/swe_bench_harness.py` — 添加 `import ast` + 语法检查逻辑（13 行新增）
+  - `src/bdi_llm/swe_bench/engine.py` — 添加 `import ast` + 语法检查逻辑（11 行新增）
+- **已实现功能**:
+  1. `execute_plan()` edit-file 分支：在 `abs_path.write_text(new_content)` 前，对 `.py` 文件调用 `ast.parse(new_content)` 验证语法
+     - SyntaxError 时设置 `step_record["status"] = "syntax_error"` 并回退到原始内容
+  2. `repair_patch()` 返回前：对 `.py` 文件调用 `ast.parse(new_content)` 验证语法
+     - SyntaxError 时回退到 `current_content`（修复前版本），避免修复引入新语法错误
+  3. 两处均仅在文件内容实际发生变化时才做检查（`new_content != original`），避免无谓开销
+- **验证结果**:
+  - ruff check：无新增 lint 错误（UP035 等均为预先存在问题）
+  - pytest: 184 passed, 1 failed（失败来自预先存在的 harness test `test_setup_repo_checks_out_env_commit_then_restores_base_tree`，与本次修改无关）
+  - 4 个 collection error 来自预先存在的 planbench import 问题
