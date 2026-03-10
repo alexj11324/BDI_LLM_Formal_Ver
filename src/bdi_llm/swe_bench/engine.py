@@ -250,9 +250,33 @@ class SWEBenchGenerator:
             repair_history=repair_history[:2000],
         )
 
-        new_content = pred.new_content
-        if not isinstance(new_content, str):
-            raise ValueError(f"LLM returned non-string content for {file_path}")
+        search_block = getattr(pred, "search_block", "")
+        replace_block = getattr(pred, "replace_block", "")
+
+        if search_block and isinstance(search_block, str):
+            if search_block in current_content:
+                new_content = current_content.replace(search_block, replace_block, 1)
+            else:
+                # Fuzzy match: strip trailing whitespace per line
+                search_stripped = "\n".join(
+                    l.rstrip() for l in search_block.splitlines()
+                )
+                current_stripped = "\n".join(
+                    l.rstrip() for l in current_content.splitlines()
+                )
+                if search_stripped in current_stripped:
+                    new_content = current_stripped.replace(
+                        search_stripped, replace_block, 1
+                    )
+                else:
+                    logger.warning(
+                        f"Repair search_block not found in {file_path}, "
+                        f"first 80 chars: {search_block[:80]!r}"
+                    )
+                    new_content = current_content  # no change
+        else:
+            logger.warning(f"Repair returned empty search_block for {file_path}")
+            new_content = current_content
 
         return PatchRepairResult(
             file_path=file_path,

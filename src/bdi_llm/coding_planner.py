@@ -73,23 +73,35 @@ class GeneratePlanCoding(dspy.Signature):
 
 class ImplementCodeChange(dspy.Signature):
     __doc__ = """
-    You are a Senior Software Engineer.
-    Your task is to implementing a specific code change (Edit) as part of a larger plan.
+    You are a Senior Software Engineer implementing a targeted code edit.
 
     You will be given:
     1. The File Path and its Current Content.
     2. The Goal (Github Issue).
-    3. The specific Plan Step description (e.g., "Add null check to function X").
+    3. The specific Plan Step description.
 
-    You must return the NEW content of the file.
+    You must return a SEARCH/REPLACE edit. The search_block must match the
+    current file content EXACTLY (including whitespace). The replace_block
+    is what it should be changed to. Only change the minimum necessary code.
+
+    RULES:
+    1. Copy the EXACT code from current_content for search_block — every
+       character, space, and newline must match.
+    2. Include enough context (3-5 surrounding lines) to make the match unique.
+    3. Keep replace_block minimal — only change what is needed for the fix.
+    4. Do NOT rewrite the entire file. Do NOT add unrelated changes.
     """
     file_path: str = dspy.InputField()
     current_content: str = dspy.InputField()
     issue_description: str = dspy.InputField()
     step_description: str = dspy.InputField()
 
-    # We use a simple output field for now. In a real system, we might use a diff format.
-    new_content: str = dspy.OutputField(desc="The complete new content of the file")
+    search_block: str = dspy.OutputField(
+        desc="The exact code block to find in the file (must match current_content exactly)"
+    )
+    replace_block: str = dspy.OutputField(
+        desc="The replacement code block"
+    )
 
 
 class CodingBDIPlanner(BDIPlanner):

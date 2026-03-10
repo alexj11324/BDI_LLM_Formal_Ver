@@ -1014,7 +1014,31 @@ class LocalSWEBenchHarness:
                         issue_description=issue_desc[:4000],
                         step_description=node.description,
                     )
-                    new_content = getattr(prediction, "new_content", "")
+
+                    # Apply search/replace edit instead of full file replacement
+                    search_block = getattr(prediction, "search_block", "")
+                    replace_block = getattr(prediction, "replace_block", "")
+                    if search_block and isinstance(search_block, str):
+                        current = file_cache[rel_path]
+                        if search_block in current:
+                            new_content = current.replace(search_block, replace_block, 1)
+                        else:
+                            # Fuzzy match: try stripping leading/trailing whitespace per line
+                            search_stripped = "\n".join(l.rstrip() for l in search_block.splitlines())
+                            current_stripped = "\n".join(l.rstrip() for l in current.splitlines())
+                            if search_stripped in current_stripped:
+                                # Apply on stripped version then reconstruct
+                                new_content = current_stripped.replace(search_stripped, replace_block, 1)
+                            else:
+                                logger.warning(
+                                    f"search_block not found in {rel_path}, "
+                                    f"first 80 chars: {search_block[:80]!r}"
+                                )
+                                new_content = current  # no change, skip this edit
+                    else:
+                        logger.warning(f"LLM returned empty search_block for {rel_path}")
+                        new_content = file_cache[rel_path]  # no change
+
                     if not isinstance(new_content, str):
                         raise ValueError("LLM returned non-string file content")
                     abs_path.write_text(new_content, encoding="utf-8")
