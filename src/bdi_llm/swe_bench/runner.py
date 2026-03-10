@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import subprocess
 import time
 from pathlib import Path
@@ -149,8 +150,14 @@ def _restore_non_source_files(instance_dir: Path, base_commit: str) -> List[str]
     return non_source
 
 
-def _repo_snapshot(instance_dir: Path, max_files: int = 250) -> str:
-    """Create compact repository file listing for planner beliefs."""
+def _repo_snapshot(instance_dir: Path, max_depth: int = 3) -> str:
+    """Create a tree-style directory listing (depth-limited) for planner beliefs.
+
+    Instead of a flat ``git ls-files`` dump that wastes tokens on thousands of
+    irrelevant paths, this produces a compact indented tree capped at *max_depth*
+    levels.  The planner can still identify which directories contain source vs
+    test code.
+    """
     try:
         proc = subprocess.run(
             ["git", "ls-files"],
@@ -165,17 +172,107 @@ def _repo_snapshot(instance_dir: Path, max_files: int = 250) -> str:
             for line in (proc.stdout or "").splitlines()
             if line.strip()
         ]
-        if files:
-            shown = files[:max_files]
-            suffix = (
-                f"\n... ({len(files) - max_files} files omitted)"
-                if len(files) > max_files
-                else ""
-            )
-            return "\n".join(shown) + suffix
+        if not files:
+            return ""
+
+        # Build a nested dict representing the directory tree
+        tree: dict = {}
+        for f in files:
+            parts = f.split("/")
+            node = tree
+            for part in parts:
+                node = node.setdefault(part, {})
+
+        # Render tree with depth limit
+        lines_out: list[str] = []
+
+        def _render(subtree: dict, indent: int, depth: int) -> None:
+            if depth > max_depth:
+                if subtree:
+                    lines_out.append("  " * indent + "...")
+                return
+            for name in sorted(subtree):
+                children = subtree[name]
+                if children:  # directory
+                    child_count = sum(
+                        1 for _ in _iter_leaves(children)
+                    )
+                    lines_out.append(
+                        "  " * indent + f"{name}/  ({child_count} files)"
+                    )
+                    _render(children, indent + 1, depth + 1)
+                else:  # file leaf
+                    lines_out.append("  " * indent + name)
+
+        def _iter_leaves(subtree: dict):
+            for v in subtree.values():
+                if v:
+                    yield from _iter_leaves(v)
+                else:
+                    yield 1
+
+        _render(tree, 0, 1)
+        return "\n".join(lines_out)
     except Exception:
         pass
     return ""
+
+
+def _extract_mentioned_files(problem_statement: str) -> list[str]:
+    """Extract .py file paths mentioned in the problem statement."""
+    # Match patterns like `astropy/io/fits/card.py`, `some/module.py`
+    pattern = r'[\w./]+\.py'
+    candidates = re.findall(pattern, problem_statement)
+    # Deduplicate while preserving order
+    seen: set[str] = set()
+    result: list[str] = []
+    for c in candidates:
+        # Normalise: strip leading ./
+        c = c.lstrip("./ ")
+        if c not in seen:
+            seen.add(c)
+            result.append(c)
+    return result
+
+
+def _mentioned_file_skeletons(
+    instance_dir: Path,
+    problem_statement: str,
+    max_files: int = 5,
+    max_total_chars: int = 3000,
+) -> str:
+    """Generate AST skeletons for Python files mentioned in the issue.
+
+    Returns a block of text like::
+
+        --- astropy/io/fits/card.py ---
+        class Card:
+            ...
+    """
+    from .ast_viewport import file_skeleton
+
+    mentioned = _extract_mentioned_files(problem_statement)
+    parts: list[str] = []
+    total_chars = 0
+
+    for rel_path in mentioned[:max_files]:
+        abs_path = instance_dir / rel_path
+        if not abs_path.exists():
+            continue
+        try:
+            source = abs_path.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            continue
+        skeleton = file_skeleton(source)
+        if not skeleton.strip():
+            continue
+        block = f"--- {rel_path} ---\n{skeleton}"
+        if total_chars + len(block) > max_total_chars:
+            break
+        parts.append(block)
+        total_chars += len(block)
+
+    return "\n\n".join(parts)
 
 
 # ---------------------------------------------------------------------------
@@ -268,7 +365,12 @@ def evaluate_sample(
     # Step 1: Build PlanningTask
     # ------------------------------------------------------------------
     snapshot = _repo_snapshot(repo_dir)
-    adapter = SWEBenchTaskAdapter(repo_snapshot=snapshot)
+    problem_stmt = instance.get("problem_statement", "") or ""
+    mentioned_skeletons = _mentioned_file_skeletons(repo_dir, problem_stmt)
+    adapter = SWEBenchTaskAdapter(
+        repo_snapshot=snapshot,
+        mentioned_skeletons=mentioned_skeletons,
+    )
     task = adapter.to_planning_task(instance)
 
     # ------------------------------------------------------------------
