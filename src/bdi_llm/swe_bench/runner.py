@@ -363,6 +363,32 @@ def evaluate_sample(
         _apply_test_patch(repo_dir, test_patch)
 
     # ------------------------------------------------------------------
+    # Step 0c: Extract FAIL_TO_PASS test source code for TDD-style editing
+    # ------------------------------------------------------------------
+    from .ast_viewport import extract_test_function
+
+    fail_to_pass_raw = instance.get("FAIL_TO_PASS", [])
+    if isinstance(fail_to_pass_raw, str):
+        try:
+            fail_to_pass_raw = json.loads(fail_to_pass_raw)
+        except (json.JSONDecodeError, ValueError):
+            fail_to_pass_raw = []
+    test_sources: List[str] = []
+    for test_id in (fail_to_pass_raw or [])[:5]:
+        test_file = str(test_id).split("::")[0]
+        test_path = repo_dir / test_file
+        if test_path.exists():
+            try:
+                source = test_path.read_text(encoding="utf-8", errors="ignore")
+            except Exception:
+                continue
+            func_name = str(test_id).split("::")[-1]
+            func_source = extract_test_function(source, func_name)
+            if func_source:
+                test_sources.append(f"# {test_id}\n{func_source}")
+    failing_test_code = "\n\n".join(test_sources)
+
+    # ------------------------------------------------------------------
     # Step 1: Build PlanningTask
     # ------------------------------------------------------------------
     snapshot = _repo_snapshot(repo_dir)
@@ -398,6 +424,7 @@ def evaluate_sample(
 
     result["durations_sec"]["planning"] = round(time.time() - plan_start, 3)
     plan = gen_result.plan
+    planning_reasoning = gen_result.reasoning or ""
     result["plan_steps_total"] = len(plan.nodes)
     result["structural_valid"] = gen_result.structural_valid
     result["structural_errors"] = gen_result.structural_errors
@@ -423,6 +450,8 @@ def evaluate_sample(
         test_timeout=test_timeout,
         max_steps=max_plan_steps,
         auto_installed_packages=auto_installed,
+        planning_reasoning=planning_reasoning,
+        failing_test_code=failing_test_code,
     )
     result["durations_sec"]["execution"] = round(time.time() - exec_start, 3)
     result["plan_steps_executed"] = execution["executed_steps"]

@@ -96,6 +96,14 @@ class ImplementCodeChange(dspy.Signature):
     current_content: str = dspy.InputField()
     issue_description: str = dspy.InputField()
     step_description: str = dspy.InputField()
+    planning_reasoning: str = dspy.InputField(
+        desc="The planner's diagnosis and repair strategy for this issue",
+        default="",
+    )
+    failing_test_code: str = dspy.InputField(
+        desc="Source code of the failing tests — your edit MUST make these pass",
+        default="",
+    )
 
     search_block: str = dspy.OutputField(
         desc="The exact code block to find in the file (must match current_content exactly)"
