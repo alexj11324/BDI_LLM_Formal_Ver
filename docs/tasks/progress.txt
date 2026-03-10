@@ -10,3 +10,8 @@
 - **Completed:** 2026-03-09T20:30:00-04:00
 - **Output:** `runs/spawnteam_paper/lead/manuscript_drafting_plan.md`
 - **Summary:** Read all 5 packets (substrate, planbench, travelplanner, provenance, swebench_appendix) and all 4 lead artifacts (claim_ledger, integrated_outline, dry_run_summary, claim_audit_checklist). Created manuscript drafting plan with: dependency graph, section-to-packet mapping, provenance constraints (frozen-vs-current PlanBench, TravelPlanner field boundary, PDDL runner boundary, figure-script caution), narrative defaults, terminology locks, output file inventory, and claim audit integration requirements.
+
+## Task 2: Write abstract and contribution spine draft — DONE
+- **Completed:** 2026-03-09T20:42:00-04:00
+- **Output:** `runs/spawnteam_paper/lead/abstract_contribution_spine.md`
+- **Summary:** Read claim_ledger, integrated_outline, substrate_packet, planbench_packet, travelplanner_packet, dry_run_summary, and manuscript_drafting_plan. Wrote skeleton abstract centered on shared substrate + layered verification thesis. Contribution spine covers 4 contributions: C1 (shared substrate: PlanningTask, BDIPlan, DomainSpec, BDIPlanner), C2 (layered verification: structural → symbolic → domain-specific), C3 (verifier-guided repair loop), C4 (two evidence surfaces: PDDL with logistics 0→100% recovery + TravelPlanner with 38.2%→64.7% official test). All numbers sourced from packets with explicit provenance labels. TravelPlanner oracle (0.706) explicitly marked as diagnostic upper bound, not deployment claim. Frozen paper snapshot not referenced. SWE-bench excluded per appendix-only rule. Provenance compliance checklist included.
