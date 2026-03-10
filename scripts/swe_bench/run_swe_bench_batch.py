@@ -248,24 +248,11 @@ def main() -> int:
         try:
             from bdi_llm.swe_bench.runner import evaluate_sample
 
-            # Lookup instance from the shared (pre-loaded) harness
             instance_data = harness.get_instance(instance_id)
-
-            # Each worker needs its own harness with isolated workspace
-            if args.workers > 1:
-                worker_harness = LocalSWEBenchHarness(
-                    workspace_dir=str(Path(args.workspace) / f"w_{hash(instance_id) % 10000}")
-                )
-                # Share the already-loaded dataset to avoid redundant downloads
-                worker_harness._dataset = harness._dataset
-                worker_harness._dataset_by_id = harness._dataset_by_id
-            else:
-                worker_harness = harness
-
             return evaluate_sample(
                 instance_data,
                 mode=args.execution_mode,
-                harness=worker_harness,
+                harness=harness,
                 max_repair_attempts=args.max_repair_attempts,
                 test_timeout=args.test_timeout,
                 max_plan_steps=args.max_plan_steps,
