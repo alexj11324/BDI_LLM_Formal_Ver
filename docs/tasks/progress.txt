@@ -110,3 +110,35 @@
   - 手动 diff 计算测试通过：生成了格式正确的 unified diff（`--- a/test.py`, `+++ b/test.py` 等）
   - ruff check：无新增 lint 错误（E741/UP006/UP035/F401/B021/C901 均为预先存在问题）
   - pytest: 184 passed, 1 failed（预先存在的 harness test 失败，与本次修改无关）
+
+## Task 7: 强化 Repair 签名的推理链 ✅
+- **完成时间**: 2026-03-10T18:25:00-04:00 (确认已在 Task 6 中完成)
+- **无需额外 commit** — 所有代码已在 Task 6 (commit 6ac06b7) 中实现
+- **已实现功能**:
+  1. `RepairCodeChange` docstring 已包含完整诊断协议 (signatures.py L111-123):
+     - Step 1: 读取 test traceback 识别 assertion/exception
+     - Step 2: 读取 previous diff 识别哪个 `+` 行导致失败
+     - Step 3: 在 `root_cause_analysis` 中解释根因
+     - Step 4: 生成修正的 search_block / replace_block
+     - 结尾约束: search_block 必须匹配 CURRENT file content
+  2. `_repair_patch` 已使用 `dspy.ChainOfThought(RepairCodeChange)` (engine.py L77)
+     - DSPy ChainOfThought 自动在 `root_cause_analysis` 前生成 `reasoning`
+     - 形成双重推理链：`reasoning` → `root_cause_analysis` → `search_block` / `replace_block`
+- **验证结果**:
+  - 代码审查确认 signatures.py L110-151 和 engine.py L77 完全满足 PRD 要求
+  - pytest: 184 passed, 1 failed（预先存在的 harness test，与本次无关）
+
+## Task 8: 意图穿透——传递 Planner CoT 给 Editor ✅
+- **完成时间**: 2026-03-10T18:25:00-04:00 (确认已在 Task 3/4 迭代中完成)
+- **无需额外 commit** — 所有代码已在前期 commits 中实现
+- **已实现功能**:
+  1. `ImplementCodeChange` 签名已有 `planning_reasoning` 字段 (coding_planner.py L99-102):
+     - `planning_reasoning: str = dspy.InputField(desc="The planner's diagnosis and repair strategy for this issue", default="")`
+  2. `SWEBenchGenerationResult` 已有 `reasoning: str = ""` 字段 (engine.py L39)
+  3. `generate_bdi()` 中已提取: `reasoning=getattr(pred, "reasoning", "")` (engine.py L117)
+  4. `evaluate_sample()` 已从 `gen_result.reasoning` 提取 planning_reasoning 并传给 `execute_plan()` (runner.py L401, L427)
+  5. `execute_plan()` 已接受 `planning_reasoning: str = ""` 参数 (harness.py L934) 并传给 `implement_change()` (harness.py L1037): `planning_reasoning=planning_reasoning[:2000]`
+- **验证结果**:
+  - 完整数据流已打通: BDI CoT → gen_result.reasoning → planning_reasoning → implement_change
+  - pytest: 184 passed, 1 failed（预先存在的 harness test，与本次无关）
+  - 4 个 collection error 来自预先存在的 planbench import 问题
