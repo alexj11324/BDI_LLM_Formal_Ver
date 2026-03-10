@@ -115,14 +115,16 @@ class RepairCodeChange(dspy.Signature):
     3. The test failure output explaining exactly what went wrong.
     4. The original issue description.
 
-    Produce an IMPROVED version of the file that fixes the test failures
-    without breaking other tests. Return the COMPLETE file content.
+    Produce a SEARCH/REPLACE edit that fixes the test failures.
+    The search_block must match the CURRENT content exactly.
+    The replace_block is what it should be changed to.
 
     RULES:
     1. Read the test error output CAREFULLY — identify the root cause.
-    2. Your fix must address the specific assertion/error, not just the symptom.
-    3. Preserve all existing functionality — only change what is needed.
-    4. Do NOT add unrelated refactoring or style changes.
+    2. Copy the EXACT code from current_content for search_block.
+    3. Include 3-5 surrounding context lines to make the match unique.
+    4. Keep replace_block minimal — only change what is needed.
+    5. Do NOT rewrite the entire file. Do NOT add unrelated changes.
     """
 
     file_path: str = dspy.InputField(desc="Path of the file being repaired")
@@ -143,6 +145,9 @@ class RepairCodeChange(dspy.Signature):
         default="",
     )
 
-    new_content: str = dspy.OutputField(
-        desc="The complete improved file content that fixes the test failures"
+    search_block: str = dspy.OutputField(
+        desc="The exact code block to find in current_content (must match exactly)"
+    )
+    replace_block: str = dspy.OutputField(
+        desc="The replacement code block that fixes the test failures"
     )
