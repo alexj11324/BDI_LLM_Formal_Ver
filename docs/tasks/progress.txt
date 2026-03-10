@@ -142,3 +142,27 @@
   - 完整数据流已打通: BDI CoT → gen_result.reasoning → planning_reasoning → implement_change
   - pytest: 184 passed, 1 failed（预先存在的 harness test，与本次无关）
   - 4 个 collection error 来自预先存在的 planbench import 问题
+
+## Task 9: 注入 FAIL_TO_PASS 测试源码 ✅
+- **完成时间**: 2026-03-10T18:35:00-04:00
+- **Commit**: 6957c56 on ralph-loop-t03o1
+- **修改文件**:
+  - `src/bdi_llm/swe_bench/runner.py` — 新增 Step 0c: 提取 FAIL_TO_PASS 测试源码
+  - `src/bdi_llm/coding_planner.py` — ImplementCodeChange 新增 `failing_test_code` 字段
+  - `scripts/swe_bench/swe_bench_harness.py` — execute_plan() 新增 `failing_test_code` 参数
+- **已实现功能**:
+  1. Step 0c 在 runner.py 的 `evaluate_sample()` 中，test_patch 应用后立即提取 FAIL_TO_PASS 测试源码：
+     - 解析 `FAIL_TO_PASS` 字段（支持 JSON 字符串和列表格式）
+     - 最多处理 5 个测试 ID，用 `extract_test_function()` 提取完整函数源码
+     - 支持 `TestClass::test_method` 格式的测试 ID
+     - 格式化为 `# test_id\n{function_source}` 的文本块
+  2. `ImplementCodeChange` 新增 `failing_test_code: str` 输入字段（default=""，向后兼容）
+     - desc: "Source code of the failing tests — your edit MUST make these pass"
+  3. `execute_plan()` 接收 `failing_test_code` 参数并传给 `implement_change()`
+     - 限制 3000 字符，防止上下文溢出
+  4. **无需修改 `ast_viewport.py`** — `extract_test_function()` 已在 Task 1 中实现
+- **验证结果**:
+  - ruff check：无新增 lint 错误（UP035/UP006/UP045 等均为预先存在问题）
+  - pytest: 184 passed, 1 failed（预先存在的 harness test `test_setup_repo_checks_out_env_commit_then_restores_base_tree`，与本次修改无关）
+  - 4 个 collection error 来自预先存在的 planbench import 问题
+  - 完整数据流已打通: FAIL_TO_PASS → extract_test_function() → failing_test_code → execute_plan() → implement_change()
