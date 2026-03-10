@@ -481,6 +481,31 @@ class LocalSWEBenchHarness:
             }
 
         env_prefix = instance_dir / ".swebench_env"
+        env_python = env_prefix / ("python.exe" if os.name == "nt" else "bin/python")
+
+        # Reuse existing conda env if valid (saves ~740s)
+        if env_python.exists():
+            try:
+                ok, output, _ = self._run_command(
+                    [str(env_python), "--version"], cwd=instance_dir, timeout=30,
+                )
+                if ok:
+                    return {
+                        "ok": True,
+                        "used_conda": True,
+                        "conda_executable": self.conda_executable,
+                        "env_prefix": str(env_prefix),
+                        "python_executable": str(env_python),
+                        "python_version": (output or "").strip().split()[-1] if output else "unknown",
+                        "spec_found": bool(spec),
+                        "spec_python": preferred_python or None,
+                        "setup_steps": [{"step": "reuse_existing_env", "ok": True}],
+                        "constants_load_error": self._constants_load_error,
+                    }
+            except Exception:
+                pass
+            shutil.rmtree(env_prefix, ignore_errors=True)
+
         if env_prefix.exists():
             shutil.rmtree(env_prefix, ignore_errors=True)
 
@@ -637,12 +662,36 @@ class LocalSWEBenchHarness:
         cleanup_existing: bool = True,
         clone_timeout: int = 900,
     ) -> Path:
-        """Clone and checkout repository for a SWE-bench instance."""
+        """Clone and checkout repository for a SWE-bench instance.
+
+        If the instance directory already exists with a valid git repo,
+        resets to base_commit instead of re-cloning (saves ~200s).
+        """
         repo_name = instance["repo"]
         base_commit = instance["base_commit"]
         env_setup_commit = str(instance.get("environment_setup_commit") or "").strip()
         instance_id = instance["instance_id"]
         instance_dir = self.workspace_dir / instance_id
+
+        # Reuse existing repo if valid
+        if instance_dir.exists() and (instance_dir / ".git").is_dir():
+            try:
+                subprocess.run(
+                    ["git", "checkout", "--", "."],
+                    cwd=instance_dir, capture_output=True, check=True, timeout=60,
+                )
+                subprocess.run(
+                    ["git", "clean", "-fd"],
+                    cwd=instance_dir, capture_output=True, check=True, timeout=60,
+                )
+                subprocess.run(
+                    ["git", "reset", "--hard", base_commit],
+                    cwd=instance_dir, capture_output=True, check=True, timeout=60,
+                )
+                return instance_dir
+            except Exception:
+                # Corrupted repo — fall through to re-clone
+                shutil.rmtree(instance_dir, ignore_errors=True)
 
         if cleanup_existing and instance_dir.exists():
             shutil.rmtree(instance_dir)
@@ -667,7 +716,6 @@ class LocalSWEBenchHarness:
             timeout=120,
         )
         if env_setup_commit and env_setup_commit != base_commit:
-            # env_setup_commit makes the env ref reachable; reset to base_commit for source tree
             subprocess.run(
                 ["git", "reset", "--hard", base_commit],
                 cwd=instance_dir,
@@ -887,6 +935,20 @@ class LocalSWEBenchHarness:
                     rel_path = str(params.get("file", "")).strip()
                     if not rel_path:
                         raise ValueError("edit-file missing required param: file")
+
+                    # Block edits to config/build files that should never be modified
+                    _EDIT_BLOCKLIST = {
+                        "pyproject.toml", "setup.py", "setup.cfg",
+                        "tox.ini", "pytest.ini", ".pre-commit-config.yaml",
+                        "Makefile", "Dockerfile", ".gitignore",
+                    }
+                    basename = Path(rel_path).name
+                    if basename in _EDIT_BLOCKLIST:
+                        step_record["status"] = "skipped"
+                        step_record["reason"] = f"edit blocked for config file: {basename}"
+                        step_logs.append(step_record)
+                        continue
+
                     abs_path = self._safe_repo_path(instance_dir, rel_path)
                     if rel_path not in file_cache:
                         if abs_path.exists():
@@ -895,10 +957,13 @@ class LocalSWEBenchHarness:
                             file_cache[rel_path] = ""
                             abs_path.parent.mkdir(parents=True, exist_ok=True)
 
+                    # Truncate large files to avoid LLM context overflow
+                    content_for_llm = file_cache[rel_path][:12000]
+
                     prediction = self.planner.implement_change(
                         file_path=rel_path,
-                        current_content=file_cache[rel_path],
-                        issue_description=issue_desc,
+                        current_content=content_for_llm,
+                        issue_description=issue_desc[:4000],
                         step_description=node.description,
                     )
                     new_content = getattr(prediction, "new_content", "")
