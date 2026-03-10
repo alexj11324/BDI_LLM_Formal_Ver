@@ -324,12 +324,6 @@ def evaluate_sample(
     if restored:
         result["restored_files"] = restored
 
-    # Restore test files to base_commit state, then re-apply test_patch
-    # (in case plan execution modified test files)
-    _restore_test_files(repo_dir, base_commit)
-    if test_patch:
-        _apply_test_patch(repo_dir, test_patch)
-
     # Final test
     test_ok, test_output, returncode, _ = harness.run_tests_with_dependency_fix(
         instance_dir=repo_dir,
