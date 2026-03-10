@@ -166,3 +166,25 @@
   - pytest: 184 passed, 1 failed（预先存在的 harness test `test_setup_repo_checks_out_env_commit_then_restores_base_tree`，与本次修改无关）
   - 4 个 collection error 来自预先存在的 planbench import 问题
   - 完整数据流已打通: FAIL_TO_PASS → extract_test_function() → failing_test_code → execute_plan() → implement_change()
+
+## Task 10: 在 GeneratePlanCoding 中添加 root_cause_analysis 输出 ✅
+- **完成时间**: 2026-03-10T18:42:00-04:00
+- **Commit**: feb07da on ralph-loop-t03o1
+- **修改文件**:
+  - `src/bdi_llm/coding_planner.py` — GeneratePlanCoding 新增 root_cause_analysis OutputField
+  - `src/bdi_llm/swe_bench/signatures.py` — GeneratePlanCodingBaseline 同步新增 root_cause_analysis OutputField
+  - `src/bdi_llm/swe_bench/engine.py` — 新增 `_build_planning_context()` 辅助方法 + 修改 generate_baseline()/generate_bdi() 合并推理上下文
+- **已实现功能**:
+  1. `GeneratePlanCoding` 新增 `root_cause_analysis: str` 输出字段（位于 `plan` 之前），强制 Planner 先诊断 bug 根因
+  2. `GeneratePlanCodingBaseline` 同步新增 `root_cause_analysis` 输出字段，保持一致性
+  3. `SWEBenchGenerator._build_planning_context()` 静态方法：提取 `root_cause_analysis` + `reasoning`，合并为 `"Root cause: ...\nStrategy: ..."` 格式
+  4. `generate_bdi()` 使用 `_build_planning_context()` 替代简单的 `getattr(pred, "reasoning", "")`
+  5. `generate_baseline()` 也提取 `root_cause_analysis` 并合并到 reasoning
+  6. 合并后的 planning_context 通过已有数据流传给 `ImplementCodeChange`：
+     `root_cause_analysis + reasoning → gen_result.reasoning → planning_reasoning → implement_change()`
+- **验证结果**:
+  - ruff check：无新增 lint 错误（E741/B021 均为预先存在问题）
+  - pytest: 184 passed, 1 failed（预先存在的 harness test `test_setup_repo_checks_out_env_commit_then_restores_base_tree`，与本次修改无关）
+  - 4 个 collection error 来自预先存在的 planbench import 问题
+  - 功能验证：`root_cause_analysis` 在两个签名中均位于 `plan` 之前（index 0 vs 1），确保 DSPy 先生成诊断再生成计划
+  - `_build_planning_context()` 正确合并两个字段，输出格式化的 "Root cause: ... \n Strategy: ..." 文本
