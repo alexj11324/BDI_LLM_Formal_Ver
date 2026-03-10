@@ -635,6 +635,17 @@ class LocalSWEBenchHarness:
                 pytest_command = [python_executable, "-m", "pytest", "-q", *tests]
                 return pytest_command if not shell_parts else " && ".join([*shell_parts, shlex.join(pytest_command)])
 
+            # Replace bare pytest/pytest-style commands with python -m pytest
+            # to ensure the conda env's pytest is used
+            if test_cmd.startswith("pytest"):
+                extra_flags = test_cmd[len("pytest"):].strip()
+                pytest_parts = [python_executable, "-m", "pytest"]
+                if extra_flags:
+                    pytest_parts.extend(extra_flags.split())
+                if tests:
+                    pytest_parts.extend(tests)
+                return pytest_parts if not shell_parts else " && ".join([*shell_parts, shlex.join(pytest_parts)])
+
             if tests:
                 test_cmd = f"{test_cmd} {' '.join(shlex.quote(t) for t in tests)}"
 
