@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import shlex
@@ -18,7 +19,10 @@ from typing import Any, Dict, List, Optional, Tuple
 from datasets import load_dataset
 
 from bdi_llm.coding_planner import CodingBDIPlanner
+from bdi_llm.swe_bench.ast_viewport import file_skeleton, file_skeleton_with_context
 from bdi_llm.verifier import PlanVerifier
+
+logger = logging.getLogger(__name__)
 
 class LocalSWEBenchHarness:
     """Runner for SWE-bench instances with local repository execution."""
@@ -944,6 +948,7 @@ class LocalSWEBenchHarness:
             ordered_nodes = ordered_nodes[:max_steps]
 
         file_cache: Dict[str, str] = {}
+        skeleton_cache: Dict[str, str] = {}  # AST skeletons for .py files
         test_runs: List[Dict[str, Any]] = []
         step_logs: List[Dict[str, Any]] = []
         execution_error: Optional[str] = None
@@ -970,6 +975,9 @@ class LocalSWEBenchHarness:
                     content = abs_path.read_text(encoding="utf-8", errors="ignore")
                     file_cache[rel_path] = content
                     step_record["bytes"] = len(content)
+                    # Cache AST skeleton for Python files
+                    if rel_path.endswith(".py"):
+                        skeleton_cache[rel_path] = file_skeleton(content)
 
                 elif action == "edit-file":
                     rel_path = str(params.get("file", "")).strip()
@@ -1005,8 +1013,19 @@ class LocalSWEBenchHarness:
                             file_cache[rel_path] = ""
                             abs_path.parent.mkdir(parents=True, exist_ok=True)
 
-                    # Truncate large files to avoid LLM context overflow
-                    content_for_llm = file_cache[rel_path][:12000]
+                    # AST-aware viewport: show skeleton + target entity instead of
+                    # blind truncation, so the model sees relevant code structure
+                    target_entity = str(params.get("target", "")).strip()
+                    full_content = file_cache[rel_path]
+                    if target_entity and rel_path.endswith(".py"):
+                        content_for_llm = file_skeleton_with_context(
+                            full_content, target_entity
+                        )
+                        if len(content_for_llm) > 15000:
+                            content_for_llm = content_for_llm[:15000]
+                    else:
+                        # Fallback for non-Python files or no target specified
+                        content_for_llm = full_content[:12000]
 
                     prediction = self.planner.implement_change(
                         file_path=rel_path,
