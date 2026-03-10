@@ -37,7 +37,7 @@ def _reset_to_base_commit(instance_dir: Path, base_commit: str) -> None:
         timeout=60,
     )
     subprocess.run(
-        ["git", "clean", "-fd"],
+        ["git", "clean", "-fd", "-e", ".swebench_env"],
         cwd=instance_dir,
         capture_output=True,
         check=True,
