@@ -60,8 +60,12 @@ def _git_show_file(instance_dir: Path, ref: str, rel_path: str) -> str:
     return proc.stdout or ""
 
 
-def _changed_files(instance_dir: Path) -> List[str]:
-    """Get list of files modified relative to HEAD."""
+def _changed_files(instance_dir: Path, source_only: bool = False) -> List[str]:
+    """Get list of files modified relative to HEAD.
+
+    Args:
+        source_only: If True, filter to .py source files only (skip config files).
+    """
     proc = subprocess.run(
         ["git", "diff", "--name-only"],
         cwd=instance_dir,
@@ -70,7 +74,28 @@ def _changed_files(instance_dir: Path) -> List[str]:
         check=False,
         timeout=30,
     )
-    return [l.strip() for l in (proc.stdout or "").splitlines() if l.strip()]
+    files = [l.strip() for l in (proc.stdout or "").splitlines() if l.strip()]
+    if source_only:
+        files = [f for f in files if f.endswith(".py")]
+    return files
+
+
+def _restore_non_source_files(instance_dir: Path, base_commit: str) -> List[str]:
+    """Restore any non-.py files that were accidentally modified."""
+    all_changed = _changed_files(instance_dir)
+    non_source = [f for f in all_changed if not f.endswith(".py")]
+    for rel_path in non_source:
+        try:
+            subprocess.run(
+                ["git", "checkout", base_commit, "--", rel_path],
+                cwd=instance_dir,
+                capture_output=True,
+                check=True,
+                timeout=30,
+            )
+        except Exception:
+            pass
+    return non_source
 
 
 def _repo_snapshot(instance_dir: Path, max_files: int = 250) -> str:
@@ -241,6 +266,12 @@ def evaluate_sample(
     result["durations_sec"]["execution"] = round(time.time() - exec_start, 3)
     result["plan_steps_executed"] = execution["executed_steps"]
 
+    # Restore any non-source files that the plan may have corrupted
+    base_commit = instance.get("base_commit", "HEAD")
+    restored = _restore_non_source_files(repo_dir, base_commit)
+    if restored:
+        result["restored_files"] = restored
+
     # Final test
     test_ok, test_output, returncode, _ = harness.run_tests_with_dependency_fix(
         instance_dir=repo_dir,
@@ -251,6 +282,7 @@ def evaluate_sample(
     )
     result["one_shot"] = test_ok
     result["tests_passed"] = test_ok
+    result["final_test_output_tail"] = (test_output or "")[-4000:]
 
     # ------------------------------------------------------------------
     # Step 4: Patch-level Repair Loop (BDI-repair mode only)
@@ -263,7 +295,6 @@ def evaluate_sample(
     if mode == "bdi-repair" and not test_ok:
         seen_signatures: set[str] = set()
         repair_history_parts: List[str] = []
-        base_commit = instance.get("base_commit", "HEAD")
 
         for attempt in range(1, max_repair_attempts + 1):
             # Build feedback from test failures
@@ -279,10 +310,10 @@ def evaluate_sample(
                 break
             seen_signatures.add(err_sig)
 
-            # Find which files were changed by the plan execution
-            modified_files = _changed_files(repo_dir)
+            # Only repair .py source files (skip config files)
+            modified_files = _changed_files(repo_dir, source_only=True)
             if not modified_files:
-                logger.info(f"[{instance_id}] No files changed, nothing to repair")
+                logger.info(f"[{instance_id}] No source files changed, nothing to repair")
                 break
 
             repair_history = "\n".join(repair_history_parts)
@@ -344,6 +375,8 @@ def evaluate_sample(
                 python_executable=python_executable,
                 timeout=test_timeout,
             )
+
+            result["final_test_output_tail"] = (test_output or "")[-4000:]
 
             if test_ok:
                 result["repair_success"] = True
