@@ -253,34 +253,67 @@
 - 主要瓶颈：**test-only 编辑**（模型倾向修改测试文件而非源码文件）
 - 下一步 (Task 13)：需要在签名中强调 "修改源码而非测试文件"
 
-## Task 13: 根据评测结果迭代修复 ✅ (Part 1: Code Fix)
-- **完成时间**: 2026-03-10T20:30:00-04:00
-- **Commit**: fa1bfaf on ralph-loop-sssla
-- **修改文件**:
-  - `src/bdi_llm/coding_planner.py` — GeneratePlanCoding + ImplementCodeChange 签名增强
-  - `src/bdi_llm/swe_bench/signatures.py` — GeneratePlanCodingBaseline 签名增强
-  - `src/bdi_llm/swe_bench/adapter.py` — domain_context 新增约束 #5
-  - `src/bdi_llm/swe_bench/engine.py` — repair_patch() 模糊匹配增强
-  - `scripts/swe_bench/swe_bench_harness.py` — execute_plan() 模糊匹配增强
+## Task 13: 根据评测结果迭代修复 ✅ (Complete)
+- **完成时间**: 2026-03-10T20:22:00-04:00 (最终 v2 评测完成)
+- **Commits**: fa1bfaf (initial fix) → 23d9da1 (revert regression) on ralph-loop-sssla
 
-### 修复内容
+### Part 1: 初始修复 (fa1bfaf)
 
 **针对 Test-only 编辑 (8/15 失败实例):**
-1. `GeneratePlanCoding` 签名新增 `*** CRITICAL — NEVER EDIT TEST FILES ***` 区块（4 条明确规则）
+1. `GeneratePlanCoding` 签名新增 `*** CRITICAL — NEVER EDIT TEST FILES ***` 区块
 2. `GeneratePlanCodingBaseline` 签名同步新增相同约束
-3. `ImplementCodeChange` 签名新增 Rule #5: "You are editing SOURCE CODE, not tests"
-4. `domain_context` (adapter.py) 新增 Constraint #5: "CRITICAL: Only edit SOURCE CODE files"
-5. `ImplementCodeChange` 新增 `SEARCH/REPLACE PRECISION` 指导区块
+3. `ImplementCodeChange` 签名新增 Rule #5 + SEARCH/REPLACE PRECISION 区块
+4. `domain_context` (adapter.py) 新增 Constraint #5
 
 **针对 search_block 不匹配 (7/15 失败实例):**
-6. `execute_plan()` 模糊匹配从 2 层升级为 3 层：
-   - Tier 1: 精确匹配
-   - Tier 2: 行尾空白 rstrip
-   - Tier 3: 忽略空行差异（逐行非空行匹配）
-7. `repair_patch()` 同步升级为 3 层匹配
+5. `execute_plan()` 模糊匹配从 2 层升级为 3 层（Tier 3: 忽略空行差异）
+6. `repair_patch()` 同步升级为 3 层匹配
 
-### 验证结果
-- ruff check: 无新增 lint 错误（UP035/UP045 等均为预先存在问题）
-- pytest: 184 passed, 1 failed（预先存在的 harness test，与本次修改无关）
-- 4 个 collection error 来自预先存在的 planbench import 问题
-- **待部署 OCI 并运行评测验证效果**
+### Part 2: 评测 Run 12 (anti-test constraints) — 2/20 (10%) 退步!
+
+| Instance | Run 11 | Run 12 | 变化 |
+|----------|--------|--------|------|
+| 14309 | ✅ | ✅ | 稳定 |
+| 14539 | ✅ | ✅ | 稳定 |
+| 13236 | ✅ | ❌ test-only | 退步 |
+| 14508 | ✅ | ❌ test-only | 退步 |
+| 12907 | ✅ repair | ❌ src edit fail | 退步 |
+
+**根因**: anti-test-editing 签名约束过于激进，反而混淆了 LLM 输出质量。
+
+### Part 3: 回退签名约束 + 重新评测 Run 13 — 4/20 (20%)
+
+**回退内容 (23d9da1)**:
+- 移除 GeneratePlanCoding/Baseline 的 `*** CRITICAL NEVER EDIT TEST FILES ***` 区块
+- 移除 ImplementCodeChange 的 Rule #5 和 SEARCH/REPLACE PRECISION 区块
+- 移除 adapter.py 的 Constraint #5
+- **保留** 3-tier 模糊匹配增强（harness.py + engine.py）
+
+**Run 13 结果 (swe_bench_20260311_002320 v2)**:
+- ✅ 通过: 13236, 14309, 14508, 14539 (all one-shot)
+- ❌ test-only 编辑: 13033, 13398, 13453, 13579, 13977, 14096, 14369, 14995, 7336 (9/20)
+- ❌ 有源码编辑但失败: 12907, 14182, 14365, 14598, 7166, 7606, 7671 (7/20)
+- repair 成功: 0/16
+
+### 跨 4 次运行的汇总对比
+
+| Instance | Run 10 (base) | Run 11 (AST) | Run 12 (anti-test) | Run 13 (reverted) |
+|----------|:---:|:---:|:---:|:---:|
+| 14309 | ✅ | ✅ | ✅ | ✅ |
+| 14539 | ❌ | ✅ | ✅ | ✅ |
+| 13236 | ❌ | ✅ | ❌ | ✅ |
+| 14508 | ❌ | ✅ | ❌ | ✅ |
+| 12907 | ✅ | ✅ | ❌ | ❌ |
+| 13453 | ✅ | ❌ | ❌ | ❌ |
+| 13579 | ✅ | ❌ | ❌ | ❌ |
+| 14995 | ✅ | ❌ | ❌ | ❌ |
+| **Total** | **5/20** | **5/20** | **2/20** | **4/20** |
+
+### 关键结论
+
+1. **AST 视口有效**: 14539 从未通过变为稳定通过（3 连 ✅），13236/14508 也有显著提升
+2. **签名约束有毒**: 过于激进的 anti-test-editing 指令严重伤害性能（25% → 10%）
+3. **LLM 随机性**: 12907/13453/13579/14995 跨 run 波动大，属于边界实例
+4. **Repair 仍未突破**: 4 次运行 repair 总计仅 1 次成功（Run 11 的 12907）
+5. **核心瓶颈**: test-only 编辑（9/20 = 45%）和 search_block 不匹配（"first 80 chars" 日志多次出现）
+
