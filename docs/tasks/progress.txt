@@ -252,3 +252,35 @@
 - 通过率持平 (25%)，但**内部结构性改善**显著：零源码编辑消除、repair 有非零成功率、语法护栏生效
 - 主要瓶颈：**test-only 编辑**（模型倾向修改测试文件而非源码文件）
 - 下一步 (Task 13)：需要在签名中强调 "修改源码而非测试文件"
+
+## Task 13: 根据评测结果迭代修复 ✅ (Part 1: Code Fix)
+- **完成时间**: 2026-03-10T20:30:00-04:00
+- **Commit**: fa1bfaf on ralph-loop-sssla
+- **修改文件**:
+  - `src/bdi_llm/coding_planner.py` — GeneratePlanCoding + ImplementCodeChange 签名增强
+  - `src/bdi_llm/swe_bench/signatures.py` — GeneratePlanCodingBaseline 签名增强
+  - `src/bdi_llm/swe_bench/adapter.py` — domain_context 新增约束 #5
+  - `src/bdi_llm/swe_bench/engine.py` — repair_patch() 模糊匹配增强
+  - `scripts/swe_bench/swe_bench_harness.py` — execute_plan() 模糊匹配增强
+
+### 修复内容
+
+**针对 Test-only 编辑 (8/15 失败实例):**
+1. `GeneratePlanCoding` 签名新增 `*** CRITICAL — NEVER EDIT TEST FILES ***` 区块（4 条明确规则）
+2. `GeneratePlanCodingBaseline` 签名同步新增相同约束
+3. `ImplementCodeChange` 签名新增 Rule #5: "You are editing SOURCE CODE, not tests"
+4. `domain_context` (adapter.py) 新增 Constraint #5: "CRITICAL: Only edit SOURCE CODE files"
+5. `ImplementCodeChange` 新增 `SEARCH/REPLACE PRECISION` 指导区块
+
+**针对 search_block 不匹配 (7/15 失败实例):**
+6. `execute_plan()` 模糊匹配从 2 层升级为 3 层：
+   - Tier 1: 精确匹配
+   - Tier 2: 行尾空白 rstrip
+   - Tier 3: 忽略空行差异（逐行非空行匹配）
+7. `repair_patch()` 同步升级为 3 层匹配
+
+### 验证结果
+- ruff check: 无新增 lint 错误（UP035/UP045 等均为预先存在问题）
+- pytest: 184 passed, 1 failed（预先存在的 harness test，与本次修改无关）
+- 4 个 collection error 来自预先存在的 planbench import 问题
+- **待部署 OCI 并运行评测验证效果**
