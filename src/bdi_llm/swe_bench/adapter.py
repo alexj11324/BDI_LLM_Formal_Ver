@@ -96,10 +96,7 @@ class SWEBenchTaskAdapter(TaskAdapter):
             "1. You MUST read-file before edit-file.\n"
             "2. You MUST run-test AFTER edit-file to verify the fix.\n"
             "3. You must NOT break passing regression tests.\n"
-            "4. Minimise the number of file edits.\n"
-            "5. CRITICAL: Only edit SOURCE CODE files. NEVER edit test files "
-            "(files in tests/ or named test_*.py). The tests define expected "
-            "behavior — fix the source code to match them."
+            "4. Minimise the number of file edits."
         )
 
         metadata = {

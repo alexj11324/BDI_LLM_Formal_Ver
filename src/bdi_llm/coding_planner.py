@@ -43,12 +43,6 @@ class GeneratePlanCoding(dspy.Signature):
     4. If a test is failing, you must edit a SOURCE FILE to fix it.
     5. `target` should be the class or function name you intend to modify.
 
-    *** CRITICAL — NEVER EDIT TEST FILES ***
-    - You must ONLY edit source code files (e.g. src/module.py, lib/utils.py).
-    - NEVER use edit-file on test files (files in tests/ or named test_*.py).
-    - The test files define the EXPECTED behavior. Fix the source code to match.
-    - If you edit a test file instead of source code, you WILL fail the evaluation.
-
     EXAMPLE PLAN:
     Nodes:
       n1: read-file(src/utils.py)
@@ -100,14 +94,6 @@ class ImplementCodeChange(dspy.Signature):
     2. Include enough context (3-5 surrounding lines) to make the match unique.
     3. Keep replace_block minimal — only change what is needed for the fix.
     4. Do NOT rewrite the entire file. Do NOT add unrelated changes.
-    5. You are editing SOURCE CODE, not tests. Fix the implementation to match
-       what the tests expect.
-
-    SEARCH/REPLACE PRECISION:
-    - Copy-paste the exact lines from current_content into search_block.
-    - Preserve all indentation exactly (spaces vs tabs matter).
-    - Include 2-3 unchanged lines before and after your target lines.
-    - If the function has a decorator, include the decorator line.
     """
     file_path: str = dspy.InputField()
     current_content: str = dspy.InputField()
