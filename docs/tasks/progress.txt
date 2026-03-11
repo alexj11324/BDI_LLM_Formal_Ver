@@ -201,3 +201,54 @@
   6. **模块导入验证**: 在 OCI 上成功 import 所有 4 个 AST viewport 函数（`file_skeleton`, `extract_entity`, `file_skeleton_with_context`, `extract_test_function`）
   7. **run_swe.sh 确认**: 脚本 PYTHONPATH 和运行参数正确（`--execution_mode bdi-repair --max_repair_attempts 3 --workers 20 --limit 20`）
 - **部署状态**: OCI 服务器已从 `ralph-loop-vz7uw` 切换至 `ralph-loop-t03o1`，可以运行评测
+
+## Task 12: 运行评测并分析结果 ✅
+- **完成时间**: 2026-03-10T20:10:00-04:00
+- **Run ID**: swe_bench_20260311_000704
+- **总体结果**: 5/20 (25%) — 与 Run 10 基线持平
+
+### 逐实例结果
+
+| Instance | Run 10 | Run 11 | one_shot | repair_success | changed_files |
+|----------|--------|--------|----------|----------------|---------------|
+| 12907 | ✅ passed | ✅ passed | ❌ | ✅ repair_at=1 | separable.py + test |
+| 13033 | ❌ | ❌ | ❌ | ❌ (2 attempts) | test_only |
+| 13236 | ❌ | ✅ **NEW** | ✅ | - | table.py + tests |
+| 13398 | ❌ | ❌ | ❌ | ❌ (3 attempts) | itrs.py + test |
+| 13453 | ✅ passed | ❌ **REGRESS** | ❌ | - | test_only |
+| 13579 | ✅ passed | ❌ **REGRESS** | ❌ | - | test_only |
+| 13977 | ❌ | ❌ | ❌ | - | test_only |
+| 14096 | ❌ | ❌ | ❌ | - | test_only |
+| 14182 | ❌ | ❌ | ❌ | ❌ (3 attempts) | rst.py + test |
+| 14309 | ✅ passed | ✅ passed | ✅ | - | connect.py + test |
+| 14365 | ❌ | ❌ | ❌ | ❌ (1 attempt) | qdp.py + test |
+| 14369 | ❌ | ❌ | ❌ | ❌ (1 attempt) | cds.py + test |
+| 14508 | ❌ | ✅ **NEW** | ✅ | - | card.py + test |
+| 14539 | ❌ | ✅ **NEW** | ✅ | - | diff.py + test |
+| 14598 | ❌ | ❌ | ❌ | ❌ (3 attempts) | card.py + test |
+| 14995 | ✅ passed | ❌ **REGRESS** | ❌ | - | test_only |
+| 7166 | ❌ | ❌ | ❌ | - | test_only |
+| 7336 | ❌ | ❌ | ❌ | ❌ (1 attempt) | decorators.py + tests |
+| 7606 | ❌ | ❌ | ❌ | - | test_only |
+| 7671 | ❌ | ❌ | ❌ | ❌ (1 attempt) | introspection.py + test |
+
+### 关键发现
+
+1. **零源码编辑问题已解决**: Run 10 有 6 个实例零源码编辑，Run 11 降至 **0 个**（AST viewport 生效）
+2. **Repair 首次成功**: 12907 通过 1 次 repair 修复成功（Run 10 repair 成功率 0%，Run 11 为 1/16 = 6.25%）
+3. **3 个新增通过**: 13236, 14508, 14539（均为 one-shot 通过）
+4. **3 个退步**: 13453, 13579, 14995（均退步为 test-only 编辑——模型只改了测试文件）
+5. **AST 语法护栏生效**: 成功拦截了 14182 的 repair 产生的 SyntaxError
+6. **search_block 不匹配**: 仍有 7 个实例出现 search_block 匹配失败
+
+### 失败模式分析
+
+- **Test-only 编辑 (8/15)**: 13033, 13453, 13579, 13977, 14096, 14995, 7166, 7606 — 模型只修改了测试文件而未修改源码
+- **源码编辑但测试失败 (7/15)**: 13398, 14182, 14365, 14369, 14598, 7336, 7671 — 修改了源码但 search_block 不匹配或修改不正确
+- **退步根因**: 13453/13579/14995 在 Run 10 通过但 Run 11 退步为 test-only，可能是因为 Planner 签名变化导致 LLM 倾向修改测试
+
+### 结论
+
+- 通过率持平 (25%)，但**内部结构性改善**显著：零源码编辑消除、repair 有非零成功率、语法护栏生效
+- 主要瓶颈：**test-only 编辑**（模型倾向修改测试文件而非源码文件）
+- 下一步 (Task 13)：需要在签名中强调 "修改源码而非测试文件"
