@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import ast
+import difflib
 import json
 import logging
 import os
@@ -94,9 +95,12 @@ class LocalSWEBenchHarness:
         candidates = [
             os.environ.get("CONDA_EXE"),
             shutil.which("conda"),
+            str(Path.home() / "miniconda3" / "bin" / "conda"),
             str(Path.home() / "opt" / "anaconda3" / "bin" / "conda"),
             str(Path.home() / "anaconda3" / "bin" / "conda"),
+            str(Path.home() / "opt" / "miniconda3" / "bin" / "conda"),
             "/opt/miniconda3/bin/conda",
+            "/opt/conda/bin/conda",
         ]
         for candidate in candidates:
             if not candidate:
@@ -445,6 +449,18 @@ class LocalSWEBenchHarness:
                     "metadata-generation-failed",
                     "no module named 'extension_helpers'",
                     "no module named \"extension_helpers\"",
+                    "error: command 'gcc'",
+                    "error: command 'g++'",
+                    "could not find a version that satisfies",
+                    "no matching distribution found",
+                    "externally-managed-environment",
+                    "ld: library not found",
+                    "cmake",
+                    "meson",
+                    "fortran",
+                    "ffibuilder",
+                    "cython",
+                    "distutils",
                 ]
             )
             if degraded_allowed:
@@ -551,6 +567,8 @@ class LocalSWEBenchHarness:
                     "create",
                     "--prefix",
                     str(env_prefix),
+                    "-c", "conda-forge",
+                    "-c", "defaults",
                     f"python={version}",
                     "-y",
                 ],
@@ -649,6 +667,38 @@ class LocalSWEBenchHarness:
             return [line.strip() for line in value.splitlines() if line.strip()]
         return []
 
+    @staticmethod
+    def _django_test_selectors(tests: List[str]) -> List[str]:
+        """Convert Django-style test selectors to runtests.py module arguments.
+
+        SWE-bench stores Django tests as:
+          ``test_method (module.path.ClassName)``
+        but ``runtests.py`` expects dotted module paths:
+          ``module.path``
+
+        Returns deduplicated module paths preserving order.
+        """
+        import re
+        modules: list[str] = []
+        seen: set[str] = set()
+        for t in tests:
+            # Pattern: "test_foo (some.module.ClassName)"
+            m = re.match(r"^[\w]+\s+\((.+)\)$", t.strip())
+            if m:
+                dotted = m.group(1).strip()
+                # Strip the class name — keep up to the last dotted segment
+                parts = dotted.rsplit(".", 1)
+                mod = parts[0] if len(parts) > 1 else dotted
+                if mod not in seen:
+                    seen.add(mod)
+                    modules.append(mod)
+            else:
+                # Already a module path or pytest-style selector
+                if t.strip() and t.strip() not in seen:
+                    seen.add(t.strip())
+                    modules.append(t.strip())
+        return modules
+
     def _build_repo_aware_test_command(
         self,
         instance: Dict[str, Any],
@@ -656,6 +706,11 @@ class LocalSWEBenchHarness:
         python_executable: str,
     ) -> List[str] | str:
         """Core logic for building a repo-spec-aware test command."""
+        repo = str(instance.get("repo", ""))
+        # Convert Django-style selectors to module paths for runtests.py
+        if repo == "django/django":
+            tests = self._django_test_selectors(tests)
+
         spec, _, _ = self._lookup_repo_spec(instance)
         test_cmd = str(spec.get("test_cmd", "")).strip() if isinstance(spec, dict) else ""
         eval_commands = spec.get("eval_commands", []) if isinstance(spec, dict) else []
@@ -663,7 +718,18 @@ class LocalSWEBenchHarness:
         if test_cmd:
             shell_parts: List[str] = []
             if isinstance(eval_commands, list):
-                shell_parts.extend(str(cmd).strip() for cmd in eval_commands if str(cmd).strip())
+                for cmd in eval_commands:
+                    cmd_str = str(cmd).strip()
+                    if not cmd_str:
+                        continue
+                    # Skip system-level commands that require root and fail
+                    # on unprivileged environments (e.g. sed /etc/locale.gen)
+                    if any(
+                        marker in cmd_str
+                        for marker in ["/etc/", "locale-gen", "apt-get", "apt ", "dpkg"]
+                    ):
+                        continue
+                    shell_parts.append(cmd_str)
 
             if test_cmd == "python":
                 pytest_command = [python_executable, "-m", "pytest", "-q", *tests]
@@ -680,10 +746,27 @@ class LocalSWEBenchHarness:
                     pytest_parts.extend(tests)
                 return pytest_parts if not shell_parts else " && ".join([*shell_parts, shlex.join(pytest_parts)])
 
+            # Ensure .py test scripts use the conda env's python
+            if test_cmd.lstrip("./").endswith(".py") or "/runtests.py" in test_cmd:
+                test_cmd = f"{python_executable} {test_cmd}"
+
             if tests:
                 test_cmd = f"{test_cmd} {' '.join(shlex.quote(t) for t in tests)}"
 
             return " && ".join([*shell_parts, test_cmd]) if shell_parts else test_cmd
+
+        # Hardcoded fallback for repos with non-pytest test runners
+        repo = str(instance.get("repo", ""))
+        if repo == "django/django":
+            cmd_parts = [
+                python_executable, "./tests/runtests.py",
+                "--verbosity", "2",
+                "--settings=test_sqlite",
+                "--parallel", "1",
+            ]
+            if tests:
+                cmd_parts.extend(tests)
+            return cmd_parts
 
         if tests:
             return [python_executable, "-m", "pytest", "-q", *tests]
@@ -879,6 +962,123 @@ class LocalSWEBenchHarness:
         return ok, merged_output, returncode, installed_now
 
     @staticmethod
+    def _apply_search_replace(
+        search_block: str,
+        replace_block: str,
+        current: str,
+        rel_path: str = "",
+        edit_line_start: int = 0,
+    ) -> str:
+        """Apply search/replace with 4-tier fuzzy matching.
+
+        Tier 1: exact substring match
+        Tier 2: strip trailing whitespace per line
+        Tier 3: ignore blank line differences (line-by-line)
+        Tier 4: difflib SequenceMatcher fuzzy match (>=0.7 similarity)
+
+        ``edit_line_start`` (1-indexed) narrows Tier 4 search to ±50 lines.
+        """
+        # Tier 1: exact match
+        if search_block in current:
+            return current.replace(search_block, replace_block, 1)
+
+        # Tier 2: strip trailing whitespace per line
+        search_stripped = "\n".join(l.rstrip() for l in search_block.splitlines())
+        current_stripped = "\n".join(l.rstrip() for l in current.splitlines())
+        if search_stripped in current_stripped:
+            return current_stripped.replace(search_stripped, replace_block, 1)
+
+        # Tier 3: ignore blank line differences
+        search_no_blank = "\n".join(
+            l for l in search_stripped.splitlines() if l.strip()
+        )
+        current_no_blank = "\n".join(
+            l for l in current_stripped.splitlines() if l.strip()
+        )
+        if search_no_blank and search_no_blank in current_no_blank:
+            search_lines = [l for l in search_stripped.splitlines() if l.strip()]
+            current_lines = current_stripped.splitlines()
+            match_start = None
+            for i in range(len(current_lines)):
+                if current_lines[i].strip() and current_lines[i].rstrip() == search_lines[0]:
+                    si, ci, matched = 1, i + 1, True
+                    while si < len(search_lines) and ci < len(current_lines):
+                        if not current_lines[ci].strip():
+                            ci += 1
+                            continue
+                        if current_lines[ci].rstrip() != search_lines[si]:
+                            matched = False
+                            break
+                        si += 1
+                        ci += 1
+                    if matched and si == len(search_lines):
+                        match_start = i
+                        match_end = ci
+                        break
+            if match_start is not None:
+                matched_block = "\n".join(current_lines[match_start:match_end])
+                return current_stripped.replace(matched_block, replace_block, 1)
+
+        # Tier 4: difflib fuzzy matching
+        search_lines_t4 = search_block.splitlines()
+        current_lines_t4 = current.splitlines()
+        if search_lines_t4 and current_lines_t4:
+            window = len(search_lines_t4)
+            first_search_line = search_lines_t4[0].strip()
+
+            # Narrow search area using edit_line_start if available
+            if edit_line_start > 0:
+                scan_start = max(0, edit_line_start - 1 - 50)
+                scan_end = min(len(current_lines_t4), edit_line_start - 1 + window + 50)
+            else:
+                scan_start = 0
+                scan_end = len(current_lines_t4)
+
+            # Find candidate start positions by matching first line
+            candidates = []
+            for i in range(scan_start, scan_end):
+                cl = current_lines_t4[i].strip()
+                if not cl:
+                    continue
+                ratio = difflib.SequenceMatcher(None, first_search_line, cl).ratio()
+                if ratio > 0.5:
+                    candidates.append((i, ratio))
+
+            candidates.sort(key=lambda x: -x[1])
+            candidates = candidates[:15]
+
+            best_ratio = 0.0
+            best_start = -1
+            best_end = -1
+            for start_idx, _ in candidates:
+                for size_delta in range(-3, 4):
+                    end = start_idx + window + size_delta
+                    if end <= start_idx or end > len(current_lines_t4):
+                        continue
+                    candidate_block = "\n".join(current_lines_t4[start_idx:end])
+                    ratio = difflib.SequenceMatcher(
+                        None, search_block, candidate_block
+                    ).ratio()
+                    if ratio > best_ratio:
+                        best_ratio = ratio
+                        best_start = start_idx
+                        best_end = end
+
+            if best_ratio >= 0.7 and best_start >= 0:
+                matched_block = "\n".join(current_lines_t4[best_start:best_end])
+                logger.info(
+                    f"Tier 4 fuzzy match for {rel_path}: "
+                    f"ratio={best_ratio:.2f}, lines {best_start+1}-{best_end}"
+                )
+                return current.replace(matched_block, replace_block, 1)
+
+        logger.warning(
+            f"search_block not found in {rel_path} (all 4 tiers failed), "
+            f"first 80 chars: {search_block[:80]!r}"
+        )
+        return current  # no change
+
+    @staticmethod
     def _safe_repo_path(instance_dir: Path, relative_path: str) -> Path:
         """Resolve and validate path stays within repository root."""
         rel = relative_path.strip().lstrip("./")
@@ -1024,8 +1224,23 @@ class LocalSWEBenchHarness:
                         content_for_llm = file_skeleton_with_context(
                             full_content, target_entity
                         )
+                        # Smart truncation: preserve target entity, truncate skeleton
                         if len(content_for_llm) > 15000:
-                            content_for_llm = content_for_llm[:15000]
+                            target_marker = f"=== TARGET: {target_entity}"
+                            marker_pos = content_for_llm.find(target_marker)
+                            if marker_pos > 0:
+                                entity_section = content_for_llm[marker_pos:]
+                                skeleton_budget = 15000 - len(entity_section) - 100
+                                if skeleton_budget > 200:
+                                    content_for_llm = (
+                                        content_for_llm[:skeleton_budget]
+                                        + "\n...\n"
+                                        + entity_section
+                                    )
+                                else:
+                                    content_for_llm = entity_section[:15000]
+                            else:
+                                content_for_llm = content_for_llm[:15000]
                     else:
                         # Fallback for non-Python files or no target specified
                         content_for_llm = full_content[:12000]
@@ -1042,60 +1257,17 @@ class LocalSWEBenchHarness:
                     # Apply search/replace edit instead of full file replacement
                     search_block = getattr(prediction, "search_block", "")
                     replace_block = getattr(prediction, "replace_block", "")
+                    edit_line_start = 0
+                    try:
+                        edit_line_start = int(getattr(prediction, "edit_line_start", 0) or 0)
+                    except (ValueError, TypeError):
+                        pass
                     if search_block and isinstance(search_block, str):
                         current = file_cache[rel_path]
-                        if search_block in current:
-                            new_content = current.replace(search_block, replace_block, 1)
-                        else:
-                            # Tier 2: strip trailing whitespace per line
-                            search_stripped = "\n".join(l.rstrip() for l in search_block.splitlines())
-                            current_stripped = "\n".join(l.rstrip() for l in current.splitlines())
-                            if search_stripped in current_stripped:
-                                new_content = current_stripped.replace(search_stripped, replace_block, 1)
-                            else:
-                                # Tier 3: ignore blank line differences
-                                search_no_blank = "\n".join(
-                                    l for l in search_stripped.splitlines() if l.strip()
-                                )
-                                current_no_blank = "\n".join(
-                                    l for l in current_stripped.splitlines() if l.strip()
-                                )
-                                if search_no_blank and search_no_blank in current_no_blank:
-                                    # Apply on the rstrip version using line-by-line matching
-                                    # Find the matching region in original
-                                    search_lines = [l for l in search_stripped.splitlines() if l.strip()]
-                                    current_lines = current_stripped.splitlines()
-                                    match_start = None
-                                    for i in range(len(current_lines)):
-                                        if current_lines[i].strip() and current_lines[i].rstrip() == search_lines[0]:
-                                            # Check if subsequent non-blank lines match
-                                            si = 1
-                                            ci = i + 1
-                                            matched = True
-                                            while si < len(search_lines) and ci < len(current_lines):
-                                                if not current_lines[ci].strip():
-                                                    ci += 1
-                                                    continue
-                                                if current_lines[ci].rstrip() != search_lines[si]:
-                                                    matched = False
-                                                    break
-                                                si += 1
-                                                ci += 1
-                                            if matched and si == len(search_lines):
-                                                match_start = i
-                                                match_end = ci
-                                                break
-                                    if match_start is not None:
-                                        matched_block = "\n".join(current_lines[match_start:match_end])
-                                        new_content = current_stripped.replace(matched_block, replace_block, 1)
-                                    else:
-                                        new_content = current  # no match
-                                else:
-                                    logger.warning(
-                                        f"search_block not found in {rel_path}, "
-                                        f"first 80 chars: {search_block[:80]!r}"
-                                    )
-                                    new_content = current  # no change, skip this edit
+                        new_content = self._apply_search_replace(
+                            search_block, replace_block, current,
+                            rel_path, edit_line_start,
+                        )
                     else:
                         logger.warning(f"LLM returned empty search_block for {rel_path}")
                         new_content = file_cache[rel_path]  # no change

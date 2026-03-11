@@ -207,7 +207,7 @@ class TestFileSkeletonWithContext:
 
     def test_contains_target_header(self):
         result = file_skeleton_with_context(SAMPLE_SOURCE, "Card")
-        assert "=== TARGET: Card ===" in result
+        assert "=== TARGET: Card" in result
 
     def test_target_has_full_body(self):
         result = file_skeleton_with_context(SAMPLE_SOURCE, "_parse")

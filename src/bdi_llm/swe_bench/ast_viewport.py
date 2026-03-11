@@ -222,27 +222,51 @@ def _source_slice(lines: list[str], node: ast.AST) -> str:
     return "\n".join(lines[start:end])
 
 
+def extract_entity_range(source: str, entity_name: str) -> tuple[str, int, int]:
+    """Like ``extract_entity`` but also returns 1-indexed (start_line, end_line)."""
+    if not entity_name:
+        return "", 0, 0
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return "", 0, 0
+    lines = source.splitlines()
+    match = _find_node(tree, entity_name, exact=True)
+    if not match:
+        match = _find_node(tree, entity_name, exact=False)
+    if match:
+        code = _source_slice(lines, match)
+        return code, match.lineno, match.end_lineno or match.lineno
+    return "", 0, 0
+
+
 # ---------------------------------------------------------------------------
 # file_skeleton_with_context
 # ---------------------------------------------------------------------------
 
-def file_skeleton_with_context(source: str, entity_name: str) -> str:
-    """Return file skeleton plus the full source of *entity_name*.
+def file_skeleton_with_context(
+    source: str, entity_name: str, context_lines: int = 5,
+) -> str:
+    """Return file skeleton plus the full source of *entity_name* with context.
 
-    Format::
-
-        === FILE SKELETON ===
-        {skeleton}
-
-        === TARGET: {entity_name} ===
-        {entity_code}
+    The TARGET section includes *context_lines* extra lines before and after
+    the entity and a header showing the line range so the model knows exactly
+    where the code lives in the file.
     """
     skeleton = file_skeleton(source)
-    entity_code = extract_entity(source, entity_name)
+    entity_code, start_line, end_line = extract_entity_range(source, entity_name)
 
     parts = [f"=== FILE SKELETON ===\n{skeleton}"]
     if entity_code:
-        parts.append(f"\n=== TARGET: {entity_name} ===\n{entity_code}")
+        # Show surrounding context so LLM can build accurate search_block
+        all_lines = source.splitlines()
+        ctx_start = max(0, start_line - 1 - context_lines)
+        ctx_end = min(len(all_lines), end_line + context_lines)
+        context_code = "\n".join(all_lines[ctx_start:ctx_end])
+        parts.append(
+            f"\n=== TARGET: {entity_name} (lines {ctx_start + 1}-{ctx_end}) ===\n"
+            f"{context_code}"
+        )
     else:
         parts.append(
             f"\n=== TARGET: {entity_name} === (not found — showing first 4000 chars)\n"

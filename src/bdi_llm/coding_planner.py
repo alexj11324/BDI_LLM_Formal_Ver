@@ -91,9 +91,14 @@ class ImplementCodeChange(dspy.Signature):
     RULES:
     1. Copy the EXACT code from current_content for search_block — every
        character, space, and newline must match.
-    2. Include enough context (3-5 surrounding lines) to make the match unique.
-    3. Keep replace_block minimal — only change what is needed for the fix.
-    4. Do NOT rewrite the entire file. Do NOT add unrelated changes.
+    2. If current_content shows a line range header like "(lines 42-80)",
+       use those line numbers to locate the right code — but do NOT include
+       line numbers or headers in search_block.
+    3. Include enough context (3-5 surrounding lines) to make the match unique.
+    4. Keep replace_block minimal — only change what is needed for the fix.
+    5. Do NOT rewrite the entire file. Do NOT add unrelated changes.
+    6. Set edit_line_start to the approximate line number where search_block
+       begins in the original file (use 0 if unsure).
     """
     file_path: str = dspy.InputField()
     current_content: str = dspy.InputField()
@@ -113,6 +118,10 @@ class ImplementCodeChange(dspy.Signature):
     )
     replace_block: str = dspy.OutputField(
         desc="The replacement code block"
+    )
+    edit_line_start: int = dspy.OutputField(
+        desc="Approximate line number where search_block starts in the file (0 if unknown)",
+        default=0,
     )
 
 

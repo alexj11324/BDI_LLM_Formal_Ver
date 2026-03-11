@@ -35,7 +35,7 @@ def build_test_feedback(
 
     parts: list[str] = []
 
-    # Extract FAILED lines
+    # Extract FAILED lines (pytest style)
     failed_tests = re.findall(
         r"^FAILED\s+(.+)$",
         test_output,
@@ -47,7 +47,21 @@ def build_test_feedback(
             parts.append(f"  - {test.strip()}")
         parts.append("")
 
-    # Extract ERROR lines
+    # Extract Django-style FAIL/ERROR lines:
+    #   FAIL: test_method (tests.module.TestClass)
+    #   ERROR: test_method (tests.module.TestClass)
+    django_failures = re.findall(
+        r"^(?:FAIL|ERROR):\s+(.+)$",
+        test_output,
+        re.MULTILINE,
+    )
+    if django_failures:
+        parts.append("DJANGO FAILURES:")
+        for test in django_failures[:20]:
+            parts.append(f"  - {test.strip()}")
+        parts.append("")
+
+    # Extract ERROR lines (pytest style)
     error_tests = re.findall(
         r"^ERROR\s+(.+)$",
         test_output,
@@ -57,6 +71,18 @@ def build_test_feedback(
         parts.append("ERROR TESTS:")
         for test in error_tests[:10]:
             parts.append(f"  - {test.strip()}")
+        parts.append("")
+
+    # Detect environment errors (ImportError, ModuleNotFoundError)
+    import_errors = re.findall(
+        r"(?:ImportError|ModuleNotFoundError):\s*(.+?)$",
+        test_output,
+        re.MULTILINE,
+    )
+    if import_errors:
+        parts.append("IMPORT ERRORS (likely environment issue, not code bug):")
+        for err in import_errors[:5]:
+            parts.append(f"  - {err.strip()}")
         parts.append("")
 
     # Extract assertion errors
@@ -84,6 +110,19 @@ def build_test_feedback(
             parts.append(f"  {trimmed}")
             parts.append("")
 
+    # Django-style traceback sections: "=" dividers with test names
+    django_sections = re.findall(
+        r"={50,}\n(FAIL|ERROR):\s+(.+?)\n-{50,}\n([\s\S]*?)(?=\n={50,}|\Z)",
+        test_output,
+    )
+    if django_sections and not short_sections:
+        parts.append("FAILURE DETAILS:")
+        for kind, header, body in django_sections[:5]:
+            trimmed = body.strip()[-500:]
+            parts.append(f"  [{kind}: {header.strip()}]")
+            parts.append(f"  {trimmed}")
+            parts.append("")
+
     # Add summary line from pytest
     summary_match = re.search(
         r"=+\s+([\d]+ (?:failed|error|passed).*?)\s+=+",
@@ -91,6 +130,14 @@ def build_test_feedback(
     )
     if summary_match:
         parts.append(f"SUMMARY: {summary_match.group(1)}")
+
+    # Django-style summary: "Ran X tests... FAILED (failures=N, errors=M)"
+    django_summary = re.search(
+        r"Ran\s+(\d+)\s+tests?.*\n(OK|FAILED\s*\(.*?\))",
+        test_output,
+    )
+    if django_summary and not summary_match:
+        parts.append(f"SUMMARY: {django_summary.group(0).strip()}")
 
     # If nothing was extracted, include raw tail
     if not parts:
