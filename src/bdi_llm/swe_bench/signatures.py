@@ -36,11 +36,6 @@ class GeneratePlanCodingBaseline(dspy.Signature):
     2. run-test AFTER edit-file.
     3. Minimise edits; do not break passing tests.
     4. `target` should be the class or function name you intend to modify.
-
-    *** CRITICAL — NEVER EDIT TEST FILES ***
-    - You must ONLY edit source code files (e.g. src/module.py, lib/utils.py).
-    - NEVER use edit-file on test files (files in tests/ or named test_*.py).
-    - The test files define the EXPECTED behavior. Fix the source code to match.
     """
 
     beliefs: str = dspy.InputField(
