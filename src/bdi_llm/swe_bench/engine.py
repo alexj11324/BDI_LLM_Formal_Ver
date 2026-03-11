@@ -294,59 +294,9 @@ class SWEBenchGenerator:
         replace_block = getattr(pred, "replace_block", "")
 
         if search_block and isinstance(search_block, str):
-            if search_block in current_content:
-                new_content = current_content.replace(search_block, replace_block, 1)
-            else:
-                # Tier 2: strip trailing whitespace per line
-                search_stripped = "\n".join(
-                    l.rstrip() for l in search_block.splitlines()
-                )
-                current_stripped = "\n".join(
-                    l.rstrip() for l in current_content.splitlines()
-                )
-                if search_stripped in current_stripped:
-                    new_content = current_stripped.replace(
-                        search_stripped, replace_block, 1
-                    )
-                else:
-                    # Tier 3: ignore blank line differences
-                    search_no_blank = "\n".join(
-                        l for l in search_stripped.splitlines() if l.strip()
-                    )
-                    current_no_blank = "\n".join(
-                        l for l in current_stripped.splitlines() if l.strip()
-                    )
-                    if search_no_blank and search_no_blank in current_no_blank:
-                        search_lines = [l for l in search_stripped.splitlines() if l.strip()]
-                        current_lines = current_stripped.splitlines()
-                        match_start = None
-                        for i in range(len(current_lines)):
-                            if current_lines[i].strip() and current_lines[i].rstrip() == search_lines[0]:
-                                si, ci, matched = 1, i + 1, True
-                                while si < len(search_lines) and ci < len(current_lines):
-                                    if not current_lines[ci].strip():
-                                        ci += 1
-                                        continue
-                                    if current_lines[ci].rstrip() != search_lines[si]:
-                                        matched = False
-                                        break
-                                    si += 1
-                                    ci += 1
-                                if matched and si == len(search_lines):
-                                    match_start = i
-                                    match_end = ci
-                                    break
-                        if match_start is not None:
-                            matched_block = "\n".join(current_lines[match_start:match_end])
-                            new_content = current_stripped.replace(matched_block, replace_block, 1)
-                        else:
-                            new_content = current_content
-                    else:
-                        logger.warning(
-                            f"Repair search_block not found in {file_path}, "
-                            f"first 80 chars: {search_block[:80]!r}"
-                        )
-                        new_content = current_content  # no change
+            new_content = self._apply_search_replace_repair(
+                search_block, replace_block, current_content, file_path,
+            )
         else:
             logger.warning(f"Repair returned empty search_block for {file_path}")
             new_content = current_content
@@ -367,3 +317,106 @@ class SWEBenchGenerator:
             raw=pred,
             changed=(new_content != current_content),
         )
+
+    @staticmethod
+    def _apply_search_replace_repair(
+        search_block: str,
+        replace_block: str,
+        current: str,
+        file_path: str = "",
+    ) -> str:
+        """Apply search/replace with 4-tier fuzzy matching (repair variant).
+
+        Same algorithm as ``LocalSWEBenchHarness._apply_search_replace``.
+        """
+        # Tier 1: exact match
+        if search_block in current:
+            return current.replace(search_block, replace_block, 1)
+
+        # Tier 2: strip trailing whitespace per line
+        search_stripped = "\n".join(l.rstrip() for l in search_block.splitlines())
+        current_stripped = "\n".join(l.rstrip() for l in current.splitlines())
+        if search_stripped in current_stripped:
+            return current_stripped.replace(search_stripped, replace_block, 1)
+
+        # Tier 3: ignore blank line differences
+        search_no_blank = "\n".join(
+            l for l in search_stripped.splitlines() if l.strip()
+        )
+        current_no_blank = "\n".join(
+            l for l in current_stripped.splitlines() if l.strip()
+        )
+        if search_no_blank and search_no_blank in current_no_blank:
+            search_lines = [l for l in search_stripped.splitlines() if l.strip()]
+            current_lines = current_stripped.splitlines()
+            match_start = None
+            for i in range(len(current_lines)):
+                if current_lines[i].strip() and current_lines[i].rstrip() == search_lines[0]:
+                    si, ci, matched = 1, i + 1, True
+                    while si < len(search_lines) and ci < len(current_lines):
+                        if not current_lines[ci].strip():
+                            ci += 1
+                            continue
+                        if current_lines[ci].rstrip() != search_lines[si]:
+                            matched = False
+                            break
+                        si += 1
+                        ci += 1
+                    if matched and si == len(search_lines):
+                        match_start = i
+                        match_end = ci
+                        break
+            if match_start is not None:
+                matched_block = "\n".join(current_lines[match_start:match_end])
+                return current_stripped.replace(matched_block, replace_block, 1)
+
+        # Tier 4: difflib fuzzy matching
+        search_lines_t4 = search_block.splitlines()
+        current_lines_t4 = current.splitlines()
+        if search_lines_t4 and current_lines_t4:
+            window = len(search_lines_t4)
+            first_search_line = search_lines_t4[0].strip()
+
+            candidates = []
+            for i, cl in enumerate(current_lines_t4):
+                if not cl.strip():
+                    continue
+                ratio = difflib.SequenceMatcher(
+                    None, first_search_line, cl.strip()
+                ).ratio()
+                if ratio > 0.5:
+                    candidates.append((i, ratio))
+
+            candidates.sort(key=lambda x: -x[1])
+            candidates = candidates[:15]
+
+            best_ratio = 0.0
+            best_start = -1
+            best_end = -1
+            for start_idx, _ in candidates:
+                for size_delta in range(-3, 4):
+                    end = start_idx + window + size_delta
+                    if end <= start_idx or end > len(current_lines_t4):
+                        continue
+                    candidate_block = "\n".join(current_lines_t4[start_idx:end])
+                    ratio = difflib.SequenceMatcher(
+                        None, search_block, candidate_block
+                    ).ratio()
+                    if ratio > best_ratio:
+                        best_ratio = ratio
+                        best_start = start_idx
+                        best_end = end
+
+            if best_ratio >= 0.7 and best_start >= 0:
+                matched_block = "\n".join(current_lines_t4[best_start:best_end])
+                logger.info(
+                    f"Tier 4 fuzzy match for {file_path}: "
+                    f"ratio={best_ratio:.2f}, lines {best_start+1}-{best_end}"
+                )
+                return current.replace(matched_block, replace_block, 1)
+
+        logger.warning(
+            f"Repair search_block not found in {file_path} (all 4 tiers), "
+            f"first 80 chars: {search_block[:80]!r}"
+        )
+        return current
