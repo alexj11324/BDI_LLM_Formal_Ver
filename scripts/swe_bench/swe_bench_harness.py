@@ -1047,18 +1047,55 @@ class LocalSWEBenchHarness:
                         if search_block in current:
                             new_content = current.replace(search_block, replace_block, 1)
                         else:
-                            # Fuzzy match: try stripping leading/trailing whitespace per line
+                            # Tier 2: strip trailing whitespace per line
                             search_stripped = "\n".join(l.rstrip() for l in search_block.splitlines())
                             current_stripped = "\n".join(l.rstrip() for l in current.splitlines())
                             if search_stripped in current_stripped:
-                                # Apply on stripped version then reconstruct
                                 new_content = current_stripped.replace(search_stripped, replace_block, 1)
                             else:
-                                logger.warning(
-                                    f"search_block not found in {rel_path}, "
-                                    f"first 80 chars: {search_block[:80]!r}"
+                                # Tier 3: ignore blank line differences
+                                search_no_blank = "\n".join(
+                                    l for l in search_stripped.splitlines() if l.strip()
                                 )
-                                new_content = current  # no change, skip this edit
+                                current_no_blank = "\n".join(
+                                    l for l in current_stripped.splitlines() if l.strip()
+                                )
+                                if search_no_blank and search_no_blank in current_no_blank:
+                                    # Apply on the rstrip version using line-by-line matching
+                                    # Find the matching region in original
+                                    search_lines = [l for l in search_stripped.splitlines() if l.strip()]
+                                    current_lines = current_stripped.splitlines()
+                                    match_start = None
+                                    for i in range(len(current_lines)):
+                                        if current_lines[i].strip() and current_lines[i].rstrip() == search_lines[0]:
+                                            # Check if subsequent non-blank lines match
+                                            si = 1
+                                            ci = i + 1
+                                            matched = True
+                                            while si < len(search_lines) and ci < len(current_lines):
+                                                if not current_lines[ci].strip():
+                                                    ci += 1
+                                                    continue
+                                                if current_lines[ci].rstrip() != search_lines[si]:
+                                                    matched = False
+                                                    break
+                                                si += 1
+                                                ci += 1
+                                            if matched and si == len(search_lines):
+                                                match_start = i
+                                                match_end = ci
+                                                break
+                                    if match_start is not None:
+                                        matched_block = "\n".join(current_lines[match_start:match_end])
+                                        new_content = current_stripped.replace(matched_block, replace_block, 1)
+                                    else:
+                                        new_content = current  # no match
+                                else:
+                                    logger.warning(
+                                        f"search_block not found in {rel_path}, "
+                                        f"first 80 chars: {search_block[:80]!r}"
+                                    )
+                                    new_content = current  # no change, skip this edit
                     else:
                         logger.warning(f"LLM returned empty search_block for {rel_path}")
                         new_content = file_cache[rel_path]  # no change
