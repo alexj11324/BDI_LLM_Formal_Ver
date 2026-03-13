@@ -1,18 +1,4 @@
-"""Coding BDI Planner for software engineering tasks.
 
-Provides a specialized BDI planner for code modification tasks:
-- ``CodingBDIPlanner`` — BDI planner with coding-specific action types
-- ``GeneratePlanCoding`` — DSPy signature for coding plan generation
-- ``ImplementCodeChange`` — DSPy signature for file editing
-
-Coding domain action types:
-- read-file: Read file contents
-- edit-file: Modify file contents
-- run-test: Execute tests
-- create-file: Create new files
-"""
-
-from __future__ import annotations
 
 import dspy
 
@@ -45,7 +31,7 @@ class GeneratePlanCoding(dspy.Signature):
 
     params:
       read-file   : {{"file": <path>}}
-      edit-file   : {{"file": <path>, "test": <test_id>}}
+      edit-file   : {{"file": <path>, "test": <test_id>, "target": <class_or_function_name>}}
       run-test    : {{"test": <test_id>}}
       create-file : {{"file": <path>}}
 
@@ -54,12 +40,13 @@ class GeneratePlanCoding(dspy.Signature):
     2. You MUST `run-test` AFTER `edit-file` to verify the fix.
     3. `edit-file` takes a "test" parameter to indicate WHICH test failure
        this edit is intended to fix.
-    4. If a test is failing, you must edit a file to fix it.
+    4. If a test is failing, you must edit a SOURCE FILE to fix it.
+    5. `target` should be the class or function name you intend to modify.
 
     EXAMPLE PLAN:
     Nodes:
       n1: read-file(src/utils.py)
-      n2: edit-file(src/utils.py, test_id="test_utils.py::test_sort")
+      n2: edit-file(src/utils.py, test_id="test_utils.py::test_sort", target="sort_items")
       n3: run-test(test_utils.py::test_sort)
     Edges:
       n1 -> n2 -> n3
@@ -82,46 +69,64 @@ class GeneratePlanCoding(dspy.Signature):
     """
     beliefs: str = dspy.InputField(desc="Current state: Repo structure, filed issues, test status")
     desire: str = dspy.InputField(desc="The goal: Fix the issue and pass tests")
+    root_cause_analysis: str = dspy.OutputField(
+        desc="What is the exact bug, which file/function, and what change?"
+    )
     plan: BDIPlan = dspy.OutputField(desc="Execution plan as a DAG")
 
 
 class ImplementCodeChange(dspy.Signature):
-    """You are a Senior Software Engineer implementing a specific code change.
+    __doc__ = """
+    You are a Senior Software Engineer implementing a targeted code edit.
 
     You will be given:
     1. The File Path and its Current Content.
     2. The Goal (GitHub Issue).
-    3. The specific Plan Step description (e.g., "Add null check to function X").
+    3. The specific Plan Step description.
 
-    You must return the NEW content of the file with the changes applied.
+    You must return a SEARCH/REPLACE edit. The search_block must match the
+    current file content EXACTLY (including whitespace). The replace_block
+    is what it should be changed to. Only change the minimum necessary code.
 
-    Output Format:
-    - Return complete file content (not a diff/patch)
-    - Preserve existing code style and formatting
-    - Ensure all imports and dependencies are maintained
+    RULES:
+    1. Copy the EXACT code from current_content for search_block — every
+       character, space, and newline must match.
+    2. If current_content shows a line range header like "(lines 42-80)",
+       use those line numbers to locate the right code — but do NOT include
+       line numbers or headers in search_block.
+    3. Include enough context (3-5 surrounding lines) to make the match unique.
+    4. Keep replace_block minimal — only change what is needed for the fix.
+    5. Do NOT rewrite the entire file. Do NOT add unrelated changes.
+    6. Set edit_line_start to the approximate line number where search_block
+       begins in the original file (use 0 if unsure).
     """
-    file_path: str = dspy.InputField(desc="Path to the file being edited")
-    current_content: str = dspy.InputField(desc="Current content of the file")
-    issue_description: str = dspy.InputField(desc="GitHub issue description")
-    step_description: str = dspy.InputField(desc="Specific change to implement")
-    new_content: str = dspy.OutputField(desc="The complete new content of the file")
+    file_path: str = dspy.InputField()
+    current_content: str = dspy.InputField()
+    issue_description: str = dspy.InputField()
+    step_description: str = dspy.InputField()
+    planning_reasoning: str = dspy.InputField(
+        desc="The planner's diagnosis and repair strategy for this issue",
+        default="",
+    )
+    failing_test_code: str = dspy.InputField(
+        desc="Source code of the failing tests — your edit MUST make these pass",
+        default="",
+    )
+
+    search_block: str = dspy.OutputField(
+        desc="The exact code block to find in the file (must match current_content exactly)"
+    )
+    replace_block: str = dspy.OutputField(
+        desc="The replacement code block"
+    )
+    edit_line_start: int = dspy.OutputField(
+        desc="Approximate line number where search_block starts in the file (0 if unknown)",
+        default=0,
+    )
 
 
 class CodingBDIPlanner(BDIPlanner):
-    """BDI Planner specialized for coding/software engineering tasks.
-
-    Uses a coding-specific domain spec with action types:
-    - read-file, edit-file, run-test, create-file
-
-    Provides both BDI (with CoT) and baseline (without CoT) generation methods.
-    """
-
-    def __init__(self, auto_repair: bool = True) -> None:
-        """Initialize the coding planner.
-
-        Args:
-            auto_repair: Whether to enable automatic repair on verification failures.
-        """
+    def __init__(self, auto_repair: bool = True):
         coding_domain_spec = DomainSpec(
             name="coding",
             valid_action_types=frozenset({"read-file", "edit-file", "run-test", "create-file"}),
@@ -140,18 +145,7 @@ class CodingBDIPlanner(BDIPlanner):
         self.implement_change = dspy.ChainOfThought(ImplementCodeChange)
 
     def generate_plan_baseline(self, beliefs: str, desire: str) -> BDIPlan:
-        """Generate plan without CoT reasoning (baseline mode).
-
-        Args:
-            beliefs: Current state (repo structure, filed issues, test status).
-            desire: The goal (fix the issue and pass tests).
-
-        Returns:
-            BDIPlan without structural verification.
-
-        Raises:
-            ValueError: If LLM returns no parseable plan.
-        """
+        """Generate plan without CoT reasoning (baseline mode)."""
         pred = self._baseline_program(beliefs=beliefs, desire=desire)
         plan = pred.plan
         if plan is None:

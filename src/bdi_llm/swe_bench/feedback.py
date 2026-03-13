@@ -13,27 +13,14 @@ from __future__ import annotations
 import re
 from typing import Any
 
-# Feedback extraction constants
-MAX_FEEDBACK_CHARS = 3000  # Maximum characters from raw pytest output
-MAX_FAILED_TESTS = 20  # Maximum number of FAILED test lines to include
-MAX_ERROR_TESTS = 10  # Maximum number of ERROR test lines to include
-MAX_ASSERTION_ERRORS = 10  # Maximum number of AssertionError lines
-MAX_FAILURE_DETAILS = 5  # Maximum number of traceback sections
-TRACEBACK_TAIL_CHARS = 500  # Characters from end of each traceback section
-MAX_VERIFICATION_ERROR_CHARS = 500  # Chars from test errors in verification feedback
-
 
 def build_test_feedback(
     test_output: str,
     test_returncode: int,
     *,
-    max_chars: int = MAX_FEEDBACK_CHARS,
+    max_chars: int = 3000,
 ) -> str:
     """Extract structured failure information from pytest output.
-
-    Note:
-        This function is pytest-specific. If other test frameworks are used,
-        the extraction patterns may need adaptation.
 
     Args:
         test_output: Raw stdout+stderr from pytest execution.
@@ -42,22 +29,13 @@ def build_test_feedback(
 
     Returns:
         Human-readable test failure summary for the repair prompt.
-
-    Examples:
-        >>> build_test_feedback("all tests passed", 0)
-        'All tests passed.'
-
-        >>> output = "FAILED tests/foo.py::test_x - AssertionError"
-        >>> feedback = build_test_feedback(output, 1)
-        >>> "FAILED TESTS:" in feedback
-        True
     """
     if test_returncode == 0:
         return "All tests passed."
 
     parts: list[str] = []
 
-    # Extract FAILED lines (e.g., "FAILED tests/foo.py::test_x - AssertionError")
+    # Extract FAILED lines (pytest style)
     failed_tests = re.findall(
         r"^FAILED\s+(.+)$",
         test_output,
@@ -65,11 +43,25 @@ def build_test_feedback(
     )
     if failed_tests:
         parts.append("FAILED TESTS:")
-        for test in failed_tests[:MAX_FAILED_TESTS]:
+        for test in failed_tests[:20]:
             parts.append(f"  - {test.strip()}")
         parts.append("")
 
-    # Extract ERROR lines (e.g., "ERROR tests/bar.py::test_y - ImportError")
+    # Extract Django-style FAIL/ERROR lines:
+    #   FAIL: test_method (tests.module.TestClass)
+    #   ERROR: test_method (tests.module.TestClass)
+    django_failures = re.findall(
+        r"^(?:FAIL|ERROR):\s+(.+)$",
+        test_output,
+        re.MULTILINE,
+    )
+    if django_failures:
+        parts.append("DJANGO FAILURES:")
+        for test in django_failures[:20]:
+            parts.append(f"  - {test.strip()}")
+        parts.append("")
+
+    # Extract ERROR lines (pytest style)
     error_tests = re.findall(
         r"^ERROR\s+(.+)$",
         test_output,
@@ -77,8 +69,20 @@ def build_test_feedback(
     )
     if error_tests:
         parts.append("ERROR TESTS:")
-        for test in error_tests[:MAX_ERROR_TESTS]:
+        for test in error_tests[:10]:
             parts.append(f"  - {test.strip()}")
+        parts.append("")
+
+    # Detect environment errors (ImportError, ModuleNotFoundError)
+    import_errors = re.findall(
+        r"(?:ImportError|ModuleNotFoundError):\s*(.+?)$",
+        test_output,
+        re.MULTILINE,
+    )
+    if import_errors:
+        parts.append("IMPORT ERRORS (likely environment issue, not code bug):")
+        for err in import_errors[:5]:
+            parts.append(f"  - {err.strip()}")
         parts.append("")
 
     # Extract assertion errors
@@ -89,31 +93,51 @@ def build_test_feedback(
     )
     if assertion_errors:
         parts.append("ASSERTION ERRORS:")
-        for err in assertion_errors[:MAX_ASSERTION_ERRORS]:
+        for err in assertion_errors[:10]:
             parts.append(f"  - {err.strip()}")
         parts.append("")
 
-    # Extract traceback snippets (sections between underscores before FAILED/ERROR)
-    # Pattern: ___ header ___ followed by body text
+    # Extract traceback snippets (last N lines before FAILED/ERROR)
     short_sections = re.findall(
         r"_{3,}\s+(.+?)\s+_{3,}\n([\s\S]*?)(?=\n_{3,}|\nFAILED|\nERROR|\Z)",
         test_output,
     )
     if short_sections:
         parts.append("FAILURE DETAILS:")
-        for header, body in short_sections[:MAX_FAILURE_DETAILS]:
-            trimmed = body.strip()[-TRACEBACK_TAIL_CHARS:]
+        for header, body in short_sections[:5]:
+            trimmed = body.strip()[-500:]
             parts.append(f"  [{header.strip()}]")
             parts.append(f"  {trimmed}")
             parts.append("")
 
-    # Add summary line from pytest (e.g., "=== 2 failed, 3 passed ===")
+    # Django-style traceback sections: "=" dividers with test names
+    django_sections = re.findall(
+        r"={50,}\n(FAIL|ERROR):\s+(.+?)\n-{50,}\n([\s\S]*?)(?=\n={50,}|\Z)",
+        test_output,
+    )
+    if django_sections and not short_sections:
+        parts.append("FAILURE DETAILS:")
+        for kind, header, body in django_sections[:5]:
+            trimmed = body.strip()[-500:]
+            parts.append(f"  [{kind}: {header.strip()}]")
+            parts.append(f"  {trimmed}")
+            parts.append("")
+
+    # Add summary line from pytest
     summary_match = re.search(
         r"=+\s+([\d]+ (?:failed|error|passed).*?)\s+=+",
         test_output,
     )
     if summary_match:
         parts.append(f"SUMMARY: {summary_match.group(1)}")
+
+    # Django-style summary: "Ran X tests... FAILED (failures=N, errors=M)"
+    django_summary = re.search(
+        r"Ran\s+(\d+)\s+tests?.*\n(OK|FAILED\s*\(.*?\))",
+        test_output,
+    )
+    if django_summary and not summary_match:
+        parts.append(f"SUMMARY: {django_summary.group(0).strip()}")
 
     # If nothing was extracted, include raw tail
     if not parts:
@@ -179,15 +203,6 @@ def format_verification_feedback(context: dict[str, Any]) -> str:
     """Format verification context into a human-readable string for repair prompts.
 
     Mirrors ``BDIPlanner._format_verification_feedback``.
-
-    Args:
-        context: Verification context dict with keys:
-            - overall_valid: bool
-            - error_summary: str
-            - layers: dict[str, dict] with nested valid/errors
-
-    Returns:
-        Formatted multi-line string with layer-by-layer status.
     """
     parts: list[str] = [f"Overall: {'PASS' if context.get('overall_valid') else 'FAIL'}"]
     parts.append(context.get("error_summary", ""))
@@ -195,14 +210,14 @@ def format_verification_feedback(context: dict[str, Any]) -> str:
 
     layers = context.get("layers", {})
     for layer_name, layer_data in layers.items():
-        status = "[PASS]" if layer_data.get("valid") else "[FAIL]"
+        status = "✓ PASS" if layer_data.get("valid") else "✗ FAIL"
         parts.append(f"[{layer_name}] {status}")
         errors = layer_data.get("errors", [])
         if isinstance(errors, str) and errors:
             # Truncate long test output
-            parts.append(f"  {errors[:MAX_VERIFICATION_ERROR_CHARS]}")
+            parts.append(f"  {errors[:500]}")
         elif isinstance(errors, list):
-            for err in errors[:MAX_ERROR_TESTS]:
+            for err in errors[:10]:
                 parts.append(f"  - {err}")
         parts.append("")
 

@@ -6,6 +6,8 @@ class with methods for each execution mode.
 
 from __future__ import annotations
 
+import ast
+import difflib
 import hashlib
 import logging
 from dataclasses import dataclass, field
@@ -19,6 +21,7 @@ from ..verifier import PlanVerifier
 from .signatures import (
     GeneratePlanCoding,
     GeneratePlanCodingBaseline,
+    RepairCodeChange,
     RepairPlanCoding,
 )
 
@@ -33,15 +36,26 @@ class SWEBenchGenerationResult:
     raw: Any = None
     structural_valid: bool = False
     structural_errors: list[str] = field(default_factory=list)
+    reasoning: str = ""
 
 
 @dataclass
 class SWEBenchRepairResult:
-    """Result from one repair attempt."""
+    """Result from one plan-level repair attempt."""
 
     plan: BDIPlan
     raw: Any = None
     attempt: int = 0
+
+
+@dataclass
+class PatchRepairResult:
+    """Result from one patch-level repair attempt."""
+
+    file_path: str
+    new_content: str
+    raw: Any = None
+    changed: bool = False
 
 
 class SWEBenchGenerator:
@@ -60,6 +74,7 @@ class SWEBenchGenerator:
         self._baseline = dspy.Predict(GeneratePlanCodingBaseline)
         self._bdi = dspy.ChainOfThought(GeneratePlanCoding)
         self._repair = dspy.ChainOfThought(RepairPlanCoding)
+        self._repair_patch = dspy.ChainOfThought(RepairCodeChange)
 
     # -----------------------------------------------------------------
     # Generation
@@ -90,7 +105,14 @@ class SWEBenchGenerator:
         plan = pred.plan
         if plan is None:
             raise ValueError("LLM returned no parseable plan (baseline)")
-        return SWEBenchGenerationResult(plan=plan, raw=pred)
+        root_cause = getattr(pred, "root_cause_analysis", "")
+        reasoning = getattr(pred, "reasoning", "")
+        combined = ""
+        if root_cause:
+            combined += f"Root cause: {root_cause}"
+        if reasoning:
+            combined += f"\nStrategy: {reasoning}" if combined else f"Strategy: {reasoning}"
+        return SWEBenchGenerationResult(plan=plan, raw=pred, reasoning=combined)
 
     def generate_bdi(
         self,
@@ -113,7 +135,24 @@ class SWEBenchGenerator:
             raw=pred,
             structural_valid=is_valid,
             structural_errors=list(errors) if errors else [],
+            reasoning=self._build_planning_context(pred),
         )
+
+    # -----------------------------------------------------------------
+    # Helpers
+    # -----------------------------------------------------------------
+
+    @staticmethod
+    def _build_planning_context(pred: Any) -> str:
+        """Merge root_cause_analysis and reasoning into a combined context."""
+        root_cause = getattr(pred, "root_cause_analysis", "")
+        reasoning = getattr(pred, "reasoning", "")
+        parts: list[str] = []
+        if root_cause:
+            parts.append(f"Root cause: {root_cause}")
+        if reasoning:
+            parts.append(f"Strategy: {reasoning}")
+        return "\n".join(parts)
 
     # -----------------------------------------------------------------
     # Repair
@@ -211,3 +250,196 @@ class SWEBenchGenerator:
             )
 
         return SWEBenchRepairResult(plan=plan, raw=pred, attempt=attempt)
+
+    # -----------------------------------------------------------------
+    # Patch-level repair
+    # -----------------------------------------------------------------
+
+    def repair_patch(
+        self,
+        file_path: str,
+        original_content: str,
+        current_content: str,
+        issue_description: str,
+        test_feedback: str,
+        repair_history: str = "",
+        diff_text: str = "",
+    ) -> PatchRepairResult:
+        """Repair a single file's patch using test failure feedback.
+
+        Instead of regenerating the *plan*, this fixes the *code change*
+        directly — analogous to TravelPlanner's ``repair_patch()``.
+
+        Args:
+            file_path: Relative path of the file to repair.
+            original_content: File content at base commit (before edits).
+            current_content: File content after the failed edit.
+            issue_description: The original bug report / issue text.
+            test_feedback: Structured test failure output.
+            repair_history: Summary of prior repair attempts.
+            diff_text: Pre-computed unified diff of original→current.
+
+        Returns:
+            ``PatchRepairResult`` with the improved file content.
+        """
+        logger.info(f"Patch-level repair for {file_path}")
+
+        # Compute unified diff if not provided by caller
+        if not diff_text:
+            diff_lines = difflib.unified_diff(
+                original_content.splitlines(keepends=True),
+                current_content.splitlines(keepends=True),
+                fromfile=f"a/{file_path}",
+                tofile=f"b/{file_path}",
+                n=3,
+            )
+            diff_text = "".join(diff_lines)
+
+        pred = self._repair_patch(
+            file_path=file_path,
+            original_snippet=original_content[:4000],
+            previous_diff=diff_text[:4000],
+            issue_description=issue_description[:4000],
+            test_feedback=test_feedback[:3000],
+            repair_history=repair_history[:2000],
+        )
+
+        search_block = getattr(pred, "search_block", "")
+        replace_block = getattr(pred, "replace_block", "")
+
+        if search_block and isinstance(search_block, str):
+            new_content = self._apply_search_replace_repair(
+                search_block, replace_block, current_content, file_path,
+            )
+        else:
+            logger.warning(f"Repair returned empty search_block for {file_path}")
+            new_content = current_content
+
+        # AST syntax guardrail: reject repairs that introduce SyntaxError
+        if file_path.endswith(".py") and new_content != current_content:
+            try:
+                ast.parse(new_content)
+            except SyntaxError as e:
+                logger.warning(
+                    f"Repair produced SyntaxError in {file_path}: {e}"
+                )
+                new_content = current_content  # reject repair
+
+        return PatchRepairResult(
+            file_path=file_path,
+            new_content=new_content,
+            raw=pred,
+            changed=(new_content != current_content),
+        )
+
+    @staticmethod
+    def _apply_search_replace_repair(
+        search_block: str,
+        replace_block: str,
+        current: str,
+        file_path: str = "",
+    ) -> str:
+        """Apply search/replace with 4-tier fuzzy matching (repair variant).
+
+        Same algorithm as ``LocalSWEBenchHarness._apply_search_replace``.
+        """
+        # Tier 1: exact match
+        if search_block in current:
+            return current.replace(search_block, replace_block, 1)
+
+        # Tier 2: strip trailing whitespace per line, but apply to original
+        search_stripped = "\n".join(l.rstrip() for l in search_block.splitlines())
+        current_stripped = "\n".join(l.rstrip() for l in current.splitlines())
+        if search_stripped in current_stripped:
+            idx = current_stripped.index(search_stripped)
+            # Map position back to original content by counting lines
+            pre_lines = current_stripped[:idx].count("\n")
+            orig_lines = current.splitlines(keepends=True)
+            match_len = len(search_stripped.splitlines())
+            before = "".join(orig_lines[:pre_lines])
+            after = "".join(orig_lines[pre_lines + match_len:])
+            return before + replace_block + after
+
+        # Tier 3: ignore blank line differences
+        search_no_blank = "\n".join(
+            l for l in search_stripped.splitlines() if l.strip()
+        )
+        current_no_blank = "\n".join(
+            l for l in current_stripped.splitlines() if l.strip()
+        )
+        if search_no_blank and search_no_blank in current_no_blank:
+            search_lines = [l for l in search_stripped.splitlines() if l.strip()]
+            current_lines = current_stripped.splitlines()
+            match_start = None
+            for i in range(len(current_lines)):
+                if current_lines[i].strip() and current_lines[i].rstrip() == search_lines[0]:
+                    si, ci, matched = 1, i + 1, True
+                    while si < len(search_lines) and ci < len(current_lines):
+                        if not current_lines[ci].strip():
+                            ci += 1
+                            continue
+                        if current_lines[ci].rstrip() != search_lines[si]:
+                            matched = False
+                            break
+                        si += 1
+                        ci += 1
+                    if matched and si == len(search_lines):
+                        match_start = i
+                        match_end = ci
+                        break
+            if match_start is not None:
+                orig_lines = current.splitlines(keepends=True)
+                before = "".join(orig_lines[:match_start])
+                after = "".join(orig_lines[match_end:])
+                return before + replace_block + after
+
+        # Tier 4: difflib fuzzy matching
+        search_lines_t4 = search_block.splitlines()
+        current_lines_t4 = current.splitlines()
+        if search_lines_t4 and current_lines_t4:
+            window = len(search_lines_t4)
+            first_search_line = search_lines_t4[0].strip()
+
+            candidates = []
+            for i, cl in enumerate(current_lines_t4):
+                if not cl.strip():
+                    continue
+                ratio = difflib.SequenceMatcher(
+                    None, first_search_line, cl.strip()
+                ).ratio()
+                if ratio > 0.5:
+                    candidates.append((i, ratio))
+
+            candidates.sort(key=lambda x: -x[1])
+            candidates = candidates[:15]
+
+            best_ratio = 0.0
+            best_start = -1
+            best_end = -1
+            for start_idx, _ in candidates:
+                for size_delta in range(-3, 4):
+                    end = start_idx + window + size_delta
+                    if end <= start_idx or end > len(current_lines_t4):
+                        continue
+                    candidate_block = "\n".join(current_lines_t4[start_idx:end])
+                    ratio = difflib.SequenceMatcher(
+                        None, search_block, candidate_block
+                    ).ratio()
+                    if ratio > best_ratio:
+                        best_ratio = ratio
+                        best_start = start_idx
+                        best_end = end
+
+            if best_ratio >= 0.7 and best_start >= 0:
+                matched_block = "\n".join(current_lines_t4[best_start:best_end])
+                logger.info(
+                    f"Tier 4 fuzzy match for {file_path}: "
+                    f"ratio={best_ratio:.2f}, lines {best_start+1}-{best_end}"
+                )
+                return current.replace(matched_block, replace_block, 1)
+
+        logger.warning(
+            f"Repair search_block not found in {file_path} (all 4 tiers), "
+            f"first 80 chars: {search_block[:80]!r}"
+        )
+        return current

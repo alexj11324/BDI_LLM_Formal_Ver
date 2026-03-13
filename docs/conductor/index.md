@@ -8,12 +8,15 @@ Navigation hub for project context.
 - [Product Guidelines](product-guidelines.md)
 - [Tech Stack](tech-stack.md)
 - [Workflow](workflow.md)
-- [Tracks Registry](tracks.md)
+- [Tracks](tracks.md)
 
-## Active Tracks
+## Project Summary
 
-<!-- Auto-populated by /conductor:new-track -->
+PNSV is a neuro-symbolic planning framework combining LLMs with formal verification (BDI + 3-layer verification + auto-repair). Core benchmarks: PlanBench (5 PDDL domains, 100% w/ repair), TravelPlanner (70.6% validation, 64.7% test leaderboard).
 
-## Getting Started
+## Documentation Hub
 
-Run `/conductor:new-track` to create your first feature track.
+- [C4 Architecture](../c4/c4-context.md)
+- [Technical Reference](../TECHNICAL_REFERENCE.md)
+- [Wiki Catalogue](../wiki-catalogue.md)
+- [Functional Flow](../FUNCTIONAL_FLOW.md)

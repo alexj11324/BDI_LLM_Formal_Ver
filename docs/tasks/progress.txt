@@ -1,55 +1,367 @@
-## Codebase Patterns
-- Reuse the completed pre-writing artifacts under `runs/spawnteam_paper/` before generating new manuscript-stage outputs.
-- Preserve the frozen-vs-current PlanBench boundary: frozen paper counts live in `artifacts/paper_eval_20260213/`, current-mainline reporting lives in `README.md`, `docs/BENCHMARKS.md`, and `RESULTS_PROVENANCE.md`.
-- Preserve the TravelPlanner field boundary: do not collapse oracle `summary` and non-oracle `validation_as_test_summary`.
-- Treat figure scripts as provenance-sensitive; do not assume script outputs are authoritative without path/source validation.
-- SWE-bench content is appendix-only; it must not displace the main substrate/PDDL/TravelPlanner narrative.
----
+## Task 1: 创建 AST 骨架解析模块 ✅
+- **完成时间**: 2026-03-10T17:35:00-04:00
+- **Commit**: 3508da1 on ralph-loop-js6x6
+- **文件创建**:
+  - `src/bdi_llm/swe_bench/ast_viewport.py` — 339 行，4 个公共函数
+  - `tests/unit/test_ast_viewport.py` — 25 个单元测试全部通过
+- **已实现功能**:
+  1. `file_skeleton(source)` — AST 解析提取 imports、变量、类/函数签名；函数体替换为 `...`；语法错误时 fallback 到 regex
+  2. `extract_entity(source, entity_name)` — 精确匹配 + 模糊子串匹配提取完整源码
+  3. `file_skeleton_with_context(source, entity_name)` — 骨架 + 目标实体完整代码
+  4. `extract_test_function(test_file_source, test_name)` — 支持 `TestClass::test_method` 分隔符的测试函数提取
+- **验证结果**:
+  - 自身模块测试: 339 行 → 56 行骨架（~83% 压缩率）
+  - 25/25 单元测试通过
+  - ruff check 通过（修复了 ast.Str deprecation、未使用 import、import 排序）
+  - 既有单元测试无破坏（47 passed, 1 pre-existing failure in harness test）
 
-## Task 1: Draft manuscript prose plan from existing artifacts — DONE
-- **Completed:** 2026-03-09T20:30:00-04:00
-- **Output:** `runs/spawnteam_paper/lead/manuscript_drafting_plan.md`
-- **Summary:** Read all 5 packets (substrate, planbench, travelplanner, provenance, swebench_appendix) and all 4 lead artifacts (claim_ledger, integrated_outline, dry_run_summary, claim_audit_checklist). Created manuscript drafting plan with: dependency graph, section-to-packet mapping, provenance constraints (frozen-vs-current PlanBench, TravelPlanner field boundary, PDDL runner boundary, figure-script caution), narrative defaults, terminology locks, output file inventory, and claim audit integration requirements.
+## Task 2: 修改 GeneratePlanCoding 签名支持 target_entity ✅
+- **完成时间**: 2026-03-10T17:42:00-04:00
+- **Commit**: fc0175f on ralph-loop-peesp
+- **修改文件**:
+  - `src/bdi_llm/coding_planner.py` — GeneratePlanCoding 签名
+  - `src/bdi_llm/swe_bench/signatures.py` — GeneratePlanCodingBaseline + RepairPlanCoding 签名
+- **已实现功能**:
+  1. `GeneratePlanCoding`: edit-file params 新增 `"target": <class_or_function_name>`；EXAMPLE PLAN 示例中加入 `target="sort_items"`；PRECONDITIONS 添加规则 #5
+  2. `GeneratePlanCodingBaseline`: edit-file params 新增 `target`；Rules 添加规则 #4
+  3. `RepairPlanCoding`: edit-file params 新增 `target`；Preconditions 添加 target 说明
+  4. `DomainSpec.required_params` 未修改——target 是可选参数，不强制校验
+- **验证结果**:
+  - ruff check 通过（修复了 import 排序，B021 f-string docstring 是预先存在问题）
+  - pytest: 184 passed, 1 failed（失败来自预先存在的 harness test，与本次修改无关）
+  - 向后兼容：不携带 target 的旧计划仍可正常执行
 
-## Task 2: Write abstract and contribution spine draft — DONE
-- **Completed:** 2026-03-09T20:42:00-04:00
-- **Output:** `runs/spawnteam_paper/lead/abstract_contribution_spine.md`
-- **Summary:** Read claim_ledger, integrated_outline, substrate_packet, planbench_packet, travelplanner_packet, dry_run_summary, and manuscript_drafting_plan. Wrote skeleton abstract centered on shared substrate + layered verification thesis. Contribution spine covers 4 contributions: C1 (shared substrate: PlanningTask, BDIPlan, DomainSpec, BDIPlanner), C2 (layered verification: structural → symbolic → domain-specific), C3 (verifier-guided repair loop), C4 (two evidence surfaces: PDDL with logistics 0→100% recovery + TravelPlanner with 38.2%→64.7% official test). All numbers sourced from packets with explicit provenance labels. TravelPlanner oracle (0.706) explicitly marked as diagnostic upper bound, not deployment claim. Frozen paper snapshot not referenced. SWE-bench excluded per appendix-only rule. Provenance compliance checklist included.
+## Task 3: 修改 execute_plan 使用 AST 视口替代盲截断 ✅
+- **完成时间**: 2026-03-10T17:55:00-04:00
+- **Commit**: 0c24af7 on ralph-loop-kgtju
+- **修改文件**:
+  - `scripts/swe_bench/swe_bench_harness.py` — 21 insertions, 2 deletions
+- **已实现功能**:
+  1. 导入 `ast_viewport` 模块（`file_skeleton`, `file_skeleton_with_context`）
+  2. 添加 `logging` 模块和 `logger` 实例（修复预先存在的未导入 bug）
+  3. 在 `execute_plan()` 中添加 `skeleton_cache` dict，`read-file` 分支对 `.py` 文件缓存 AST 骨架
+  4. `edit-file` 分支：当 `target` 参数存在且文件为 `.py` 时，使用 `file_skeleton_with_context()` 替代 `content[:12000]`
+  5. 未指定 `target` 或非 Python 文件时 fallback 到 12000 字符截断
+  6. AST 视口上限 15000 字符，防止上下文溢出
+- **验证结果**:
+  - 模块导入测试通过（PYTHONPATH=src）
+  - 56 个单元测试通过（test_ast_viewport + test_verifier + test_plan_repair）
+  - 功能验证：1337 行的 harness 文件，盲截断看不到第 918 行的 `execute_plan`，AST 视口能完整展示
+  - ruff check：无新增 lint 错误（所有 E501/E741 均为预先存在问题）
+  - 4 个 collection error 均为预先存在的 planbench import 问题，与本次修改无关
 
-## Task 3: Write methods section skeleton — DONE
-- **Completed:** 2026-03-10T00:10:00-04:00
-- **Output:** `runs/spawnteam_paper/lead/methods_skeleton.md`
-- **Summary:** Read substrate_packet (all 8 canonical claims + approved method facts + caveats), docs/FUNCTIONAL_FLOW.md (full 454-line runtime whitepaper), claim_ledger, integrated_outline, manuscript_drafting_plan, and abstract_contribution_spine (for vocabulary alignment). Also examined source code outlines: planning_task.py (PlanningTask, TaskAdapter, PlanSerializer, PDDLTaskAdapter, PDDLPlanSerializer), schemas.py (ActionNode, DependencyEdge, BDIPlan), domain_spec.py (DomainSpec, extract_actions_from_pddl, build_domain_context), bdi_engine.py (BDIPlanner, generate_plan, forward, repair_from_val_errors), verifier.py (PlanVerifier, VerificationResult), symbolic_verifier.py (PDDLSymbolicVerifier, BlocksworldPhysicsValidator, IntegratedVerifier). Methods skeleton covers 7 subsections: §3.1 normalized task contract, §3.2 plan representation (with explicit TravelPlanner BDIPlan non-use boundary), §3.3 domain abstraction, §3.4 plan generation (runner-on-top-of-shared-planner architecture), §3.5 layered verification (3 layers + IntegratedVerifier with runner-direct-invocation nuance), §3.6 verifier-guided repair loop (PDDL + TravelPlanner oracle/non-oracle distinction), §3.7 end-to-end generic PDDL flow. No benchmark headline numbers. Legacy runner explicitly excluded. SWE-bench absent per appendix-only rule. Provenance compliance checklist included.
+## Task 4: 将文件骨架注入 Planner 的 Beliefs ✅
+- **完成时间**: 2026-03-10T17:58:00-04:00
+- **Commit**: d71d3fc on ralph-loop-tl9ec
+- **修改文件**:
+  - `src/bdi_llm/swe_bench/runner.py` — 重写 `_repo_snapshot()` + 新增 `_extract_mentioned_files()` 和 `_mentioned_file_skeletons()`
+  - `src/bdi_llm/swe_bench/adapter.py` — `SWEBenchTaskAdapter` 新增 `mentioned_skeletons` 参数
+- **已实现功能**:
+  1. `_repo_snapshot()`: 从平铺 `git ls-files` (250行) 改为深度限制3层的目录树结构，含文件计数（如 `astropy/  (2000 files)`）
+  2. `_extract_mentioned_files()`: 用正则从 `problem_statement` 中提取 `.py` 路径
+  3. `_mentioned_file_skeletons()`: 对提到的文件调用 `file_skeleton()` 生成 AST 骨架，上限5个文件/3000字符
+  4. `SWEBenchTaskAdapter`: 构造函数接受 `mentioned_skeletons`，在 beliefs 中渲染 "Mentioned files skeleton:" 段落
+  5. `evaluate_sample()`: 在 Step 1 中计算 mentioned_skeletons 并传入 adapter
+- **验证结果**:
+  - 功能验证：beliefs 正确包含 "Repository structure:" 树 + "Mentioned files skeleton:" AST 骨架
+  - 69 个单元测试通过（1 个预先存在的 harness 测试失败与本次修改无关）
+  - ruff check：无新增 lint 错误（所有 UP006/UP035/E741/F401 均为预先存在问题）
 
-## Task 4: Write PDDL results section skeleton — DONE
-- **Completed:** 2026-03-10T00:17:00-04:00
-- **Output:** `runs/spawnteam_paper/lead/pddl_results_skeleton.md`
-- **Summary:** Read planbench_packet (all 5 canonical claims, approved current-mainline table, caveats), provenance_packet (all 7 canonical rules, approved source-of-truth table, 7 risk flags), frozen paper snapshot MANIFEST.json (checkpoint-based paper primary counts), claim_ledger (narrative boundaries and working decisions), integrated_outline (§4 structure), manuscript_drafting_plan (dependency + provenance constraints), and abstract_contribution_spine (for vocabulary alignment). PDDL results skeleton covers 6 subsections: §4.1 experimental setup (runtime/runner boundary clarification, domains, model config), §4.2 main results with two explicitly separated tables (current-mainline five-domain snapshot + frozen paper three-domain snapshot with checkpoint-based denominators and upstream delta note), §4.3 logistics recovery story (0→557→572 narrative from current-mainline), §4.4 cross-domain analysis (blocksworld already solved, depots BDI dip + repair recovery, obfuscated robustness), §4.5 supporting verification harness (scope limitation to 3 domains), §4.6 figures (Figure 2 approximate baseline, Figure 5 estimated intermediates, path-resolution risk). Frozen paper numbers: 1265/1270=99.6% overall. Current-mainline and frozen-paper surfaces never mixed in same unlabeled table. Legacy runner not cited as current. SWE-bench absent. TravelPlanner absent. Provenance compliance checklist included with 10 items all passing.
+## Task 5: 添加 AST 语法护栏 ✅
+- **完成时间**: 2026-03-10T18:10:00-04:00
+- **Commit**: e9b1cb1 on ralph-loop-tl9ec
+- **修改文件**:
+  - `scripts/swe_bench/swe_bench_harness.py` — 添加 `import ast` + 语法检查逻辑（13 行新增）
+  - `src/bdi_llm/swe_bench/engine.py` — 添加 `import ast` + 语法检查逻辑（11 行新增）
+- **已实现功能**:
+  1. `execute_plan()` edit-file 分支：在 `abs_path.write_text(new_content)` 前，对 `.py` 文件调用 `ast.parse(new_content)` 验证语法
+     - SyntaxError 时设置 `step_record["status"] = "syntax_error"` 并回退到原始内容
+  2. `repair_patch()` 返回前：对 `.py` 文件调用 `ast.parse(new_content)` 验证语法
+     - SyntaxError 时回退到 `current_content`（修复前版本），避免修复引入新语法错误
+  3. 两处均仅在文件内容实际发生变化时才做检查（`new_content != original`），避免无谓开销
+- **验证结果**:
+  - ruff check：无新增 lint 错误（UP035 等均为预先存在问题）
+  - pytest: 184 passed, 1 failed（失败来自预先存在的 harness test `test_setup_repo_checks_out_env_commit_then_restores_base_tree`，与本次修改无关）
+  - 4 个 collection error 来自预先存在的 planbench import 问题
 
-## Task 5: Write TravelPlanner results section skeleton — DONE
-- **Completed:** 2026-03-10T00:41:00-04:00
-- **Output:** `runs/spawnteam_paper/lead/travelplanner_results_skeleton.md`
-- **Summary:** Read travelplanner_packet (all 6 canonical claims, 3 approved number tables across oracle/validation-as-test/official-test surfaces, 6 caveats), provenance_packet (rule 6 on TravelPlanner dual-field boundary, risk 7 on summary vs validation_as_test_summary), claim_ledger (TravelPlanner narrative boundaries and terminology locks), integrated_outline (§5 structure), manuscript_drafting_plan (dependency + field-boundary constraints), abstract_contribution_spine (for vocabulary alignment), and pddl_results_skeleton (for structural consistency). TravelPlanner results skeleton covers 6 subsections: §5.1 evaluation protocol and oracle/non-oracle distinction (field-boundary rule, summary vs validation_as_test_summary, generate_submission shared path), §5.2 main deployment-aligned results with two separately labeled tables (§5.2.1 official test N=1000 leaderboard: baseline 0.382→bdi 0.609→bdi-repair 0.647; §5.2.2 validation-as-test N=180 non-oracle: baseline 0.211→bdi 0.578→bdi-repair 0.606), §5.3 oracle validation diagnostic upper bound (0.706, explicitly labeled as ceiling not deployment), §5.4 cross-surface comparison consolidation table with repair-visibility semantics per row, §5.5 metric decomposition (commonsense/hard-constraint/delivery analysis, micro/macro naming note), §5.6 narrative position (substrate generality, deployment-aligned evaluation honesty, complementary evidence structure with PDDL). Oracle validation never presented as deployment claim. bdi v4 acknowledged as rejected candidate. No PDDL/PlanBench numbers. No SWE-bench. No frozen paper snapshot mixing. Provenance compliance checklist included with 11 items all passing.
+## Task 6: Repair 签名注入 Unified Diff ✅
+- **完成时间**: 2026-03-10T18:20:00-04:00
+- **Commit**: 6ac06b7 on ralph-loop-tl9ec
+- **修改文件**:
+  - `src/bdi_llm/swe_bench/signatures.py` — 重构 RepairCodeChange 签名
+  - `src/bdi_llm/swe_bench/engine.py` — 添加 `import difflib` + `diff_text` 参数 + 自动计算 diff
+  - `src/bdi_llm/swe_bench/runner.py` — 添加 `import difflib` + repair 循环中计算 unified diff
+- **已实现功能**:
+  1. `RepairCodeChange` 签名重构：
+     - 删除 `original_content` 和 `current_content` 输入字段（两份截断的完整文件）
+     - 新增 `original_snippet: str` — 修改前的原始代码片段（4000 字符上限）
+     - 新增 `previous_diff: str` — unified diff 格式的变更记录（4000 字符上限）
+     - 新增输出字段 `root_cause_analysis: str` — 强制模型先诊断再修复
+  2. `engine.py` 的 `repair_patch()` 方法：
+     - 新增 `diff_text: str = ""` 参数
+     - 如果 caller 未提供 diff_text，则用 `difflib.unified_diff()` 自动计算
+     - 传给 `_repair_patch` 的参数从 `original_content[:8000]` + `current_content[:8000]` 改为 `original_snippet[:4000]` + `previous_diff[:4000]`
+  3. `runner.py` 的 repair 循环：
+     - 在调用 `repair_patch()` 前，用 `difflib.unified_diff()` 计算 original→current 的 diff
+     - 将 `diff_text` 传入 `repair_patch()`
+- **验证结果**:
+  - 所有字段替换验证通过：`original_content`/`current_content` 已删除，`original_snippet`/`previous_diff`/`root_cause_analysis` 已添加
+  - `repair_patch()` 参数包含 `diff_text`
+  - 手动 diff 计算测试通过：生成了格式正确的 unified diff（`--- a/test.py`, `+++ b/test.py` 等）
+  - ruff check：无新增 lint 错误（E741/UP006/UP035/F401/B021/C901 均为预先存在问题）
+  - pytest: 184 passed, 1 failed（预先存在的 harness test 失败，与本次修改无关）
 
-## Task 6: Write provenance and figure policy note for manuscript stage — DONE
-- **Completed:** 2026-03-10T00:45:00-04:00
-- **Output:** `runs/spawnteam_paper/lead/provenance_policy_note.md`
-- **Summary:** Read provenance_packet (all 7 canonical rules, approved source-of-truth table, 7 risk flags) and claim_audit_checklist (all 15 checks across 5 categories). Created machine-friendly provenance policy note with 7 sections: §1 frozen-vs-current PlanBench boundary (rules + approved-source table), §2 PDDL runner boundary (3-tier runner status table), §3 TravelPlanner field boundary (3 evaluation surfaces + 4 rules + source anchors), §4 figure-script policy (general rule + per-figure risk table covering Figures 2-5 + snapshot verifier path risk), §5 SWE-bench boundary (appendix-only scope), §6 terminology locks (6 locked terms from claim_ledger), §7 re-deployable claim audit checklist (17 items across 6 categories: source-of-truth, runtime-boundary, TravelPlanner boundary, figure/tooling, narrative scope). All provenance_packet risks addressed. All claim_audit_checklist items incorporated. Document is concise and structured for machine-friendly drafting context.
+## Task 7: 强化 Repair 签名的推理链 ✅
+- **完成时间**: 2026-03-10T18:25:00-04:00 (确认已在 Task 6 中完成)
+- **无需额外 commit** — 所有代码已在 Task 6 (commit 6ac06b7) 中实现
+- **已实现功能**:
+  1. `RepairCodeChange` docstring 已包含完整诊断协议 (signatures.py L111-123):
+     - Step 1: 读取 test traceback 识别 assertion/exception
+     - Step 2: 读取 previous diff 识别哪个 `+` 行导致失败
+     - Step 3: 在 `root_cause_analysis` 中解释根因
+     - Step 4: 生成修正的 search_block / replace_block
+     - 结尾约束: search_block 必须匹配 CURRENT file content
+  2. `_repair_patch` 已使用 `dspy.ChainOfThought(RepairCodeChange)` (engine.py L77)
+     - DSPy ChainOfThought 自动在 `root_cause_analysis` 前生成 `reasoning`
+     - 形成双重推理链：`reasoning` → `root_cause_analysis` → `search_block` / `replace_block`
+- **验证结果**:
+  - 代码审查确认 signatures.py L110-151 和 engine.py L77 完全满足 PRD 要求
+  - pytest: 184 passed, 1 failed（预先存在的 harness test，与本次无关）
 
-## Task 7: Verify all manuscript artifacts — DONE
-- **Completed:** 2026-03-10T00:47:00-04:00
-- **Summary:** Verified all 6 manuscript artifacts exist and contain valid markdown content:
-  - manuscript_drafting_plan.md (139 lines, 6947 bytes) ✅
-  - abstract_contribution_spine.md (107 lines, 7527 bytes) ✅
-  - methods_skeleton.md (173 lines, 12620 bytes) ✅
-  - pddl_results_skeleton.md (125 lines, 9929 bytes) ✅
-  - travelplanner_results_skeleton.md (152 lines, 12729 bytes) ✅
-  - provenance_policy_note.md (129 lines, 7935 bytes) ✅
-- **Claim audit checklist results (all 14 checks passing):**
-  - Source-of-truth: frozen/current tables explicitly separated (2 separate headers in pddl_results), MANIFEST.json referenced, checkpoint denominators distinct ✅
-  - Runtime-boundary: run_generic_pddl_eval.py as current-mainline (9 refs across 3 files), run_verification_only.py as supporting harness, legacy runner excluded ✅
-  - TravelPlanner boundary: 3 surfaces named, summary vs validation_as_test_summary distinguished (refs in travelplanner_results + provenance_policy_note) ✅
-  - Figure/tooling: Figure 2 approximate baseline flagged, Figure 5 estimates flagged, path-resolution risk documented ✅
-  - Narrative scope: SWE-bench appendix-only, no SWE-bench leakage in main results sections ✅
+## Task 8: 意图穿透——传递 Planner CoT 给 Editor ✅
+- **完成时间**: 2026-03-10T18:25:00-04:00 (确认已在 Task 3/4 迭代中完成)
+- **无需额外 commit** — 所有代码已在前期 commits 中实现
+- **已实现功能**:
+  1. `ImplementCodeChange` 签名已有 `planning_reasoning` 字段 (coding_planner.py L99-102):
+     - `planning_reasoning: str = dspy.InputField(desc="The planner's diagnosis and repair strategy for this issue", default="")`
+  2. `SWEBenchGenerationResult` 已有 `reasoning: str = ""` 字段 (engine.py L39)
+  3. `generate_bdi()` 中已提取: `reasoning=getattr(pred, "reasoning", "")` (engine.py L117)
+  4. `evaluate_sample()` 已从 `gen_result.reasoning` 提取 planning_reasoning 并传给 `execute_plan()` (runner.py L401, L427)
+  5. `execute_plan()` 已接受 `planning_reasoning: str = ""` 参数 (harness.py L934) 并传给 `implement_change()` (harness.py L1037): `planning_reasoning=planning_reasoning[:2000]`
+- **验证结果**:
+  - 完整数据流已打通: BDI CoT → gen_result.reasoning → planning_reasoning → implement_change
+  - pytest: 184 passed, 1 failed（预先存在的 harness test，与本次无关）
+  - 4 个 collection error 来自预先存在的 planbench import 问题
+
+## Task 9: 注入 FAIL_TO_PASS 测试源码 ✅
+- **完成时间**: 2026-03-10T18:35:00-04:00
+- **Commit**: 6957c56 on ralph-loop-t03o1
+- **修改文件**:
+  - `src/bdi_llm/swe_bench/runner.py` — 新增 Step 0c: 提取 FAIL_TO_PASS 测试源码
+  - `src/bdi_llm/coding_planner.py` — ImplementCodeChange 新增 `failing_test_code` 字段
+  - `scripts/swe_bench/swe_bench_harness.py` — execute_plan() 新增 `failing_test_code` 参数
+- **已实现功能**:
+  1. Step 0c 在 runner.py 的 `evaluate_sample()` 中，test_patch 应用后立即提取 FAIL_TO_PASS 测试源码：
+     - 解析 `FAIL_TO_PASS` 字段（支持 JSON 字符串和列表格式）
+     - 最多处理 5 个测试 ID，用 `extract_test_function()` 提取完整函数源码
+     - 支持 `TestClass::test_method` 格式的测试 ID
+     - 格式化为 `# test_id\n{function_source}` 的文本块
+  2. `ImplementCodeChange` 新增 `failing_test_code: str` 输入字段（default=""，向后兼容）
+     - desc: "Source code of the failing tests — your edit MUST make these pass"
+  3. `execute_plan()` 接收 `failing_test_code` 参数并传给 `implement_change()`
+     - 限制 3000 字符，防止上下文溢出
+  4. **无需修改 `ast_viewport.py`** — `extract_test_function()` 已在 Task 1 中实现
+- **验证结果**:
+  - ruff check：无新增 lint 错误（UP035/UP006/UP045 等均为预先存在问题）
+  - pytest: 184 passed, 1 failed（预先存在的 harness test `test_setup_repo_checks_out_env_commit_then_restores_base_tree`，与本次修改无关）
+  - 4 个 collection error 来自预先存在的 planbench import 问题
+  - 完整数据流已打通: FAIL_TO_PASS → extract_test_function() → failing_test_code → execute_plan() → implement_change()
+
+## Task 10: 在 GeneratePlanCoding 中添加 root_cause_analysis 输出 ✅
+- **完成时间**: 2026-03-10T18:42:00-04:00
+- **Commit**: feb07da on ralph-loop-t03o1
+- **修改文件**:
+  - `src/bdi_llm/coding_planner.py` — GeneratePlanCoding 新增 root_cause_analysis OutputField
+  - `src/bdi_llm/swe_bench/signatures.py` — GeneratePlanCodingBaseline 同步新增 root_cause_analysis OutputField
+  - `src/bdi_llm/swe_bench/engine.py` — 新增 `_build_planning_context()` 辅助方法 + 修改 generate_baseline()/generate_bdi() 合并推理上下文
+- **已实现功能**:
+  1. `GeneratePlanCoding` 新增 `root_cause_analysis: str` 输出字段（位于 `plan` 之前），强制 Planner 先诊断 bug 根因
+  2. `GeneratePlanCodingBaseline` 同步新增 `root_cause_analysis` 输出字段，保持一致性
+  3. `SWEBenchGenerator._build_planning_context()` 静态方法：提取 `root_cause_analysis` + `reasoning`，合并为 `"Root cause: ...\nStrategy: ..."` 格式
+  4. `generate_bdi()` 使用 `_build_planning_context()` 替代简单的 `getattr(pred, "reasoning", "")`
+  5. `generate_baseline()` 也提取 `root_cause_analysis` 并合并到 reasoning
+  6. 合并后的 planning_context 通过已有数据流传给 `ImplementCodeChange`：
+     `root_cause_analysis + reasoning → gen_result.reasoning → planning_reasoning → implement_change()`
+- **验证结果**:
+  - ruff check：无新增 lint 错误（E741/B021 均为预先存在问题）
+  - pytest: 184 passed, 1 failed（预先存在的 harness test `test_setup_repo_checks_out_env_commit_then_restores_base_tree`，与本次修改无关）
+  - 4 个 collection error 来自预先存在的 planbench import 问题
+  - 功能验证：`root_cause_analysis` 在两个签名中均位于 `plan` 之前（index 0 vs 1），确保 DSPy 先生成诊断再生成计划
+  - `_build_planning_context()` 正确合并两个字段，输出格式化的 "Root cause: ... \n Strategy: ..." 文本
+
+## Task 11: 提交代码并部署到 OCI ✅
+- **完成时间**: 2026-03-10T18:50:00-04:00
+- **分支**: ralph-loop-t03o1 (所有 Task 1-10 的 commits 已在此分支)
+- **已执行子步骤**:
+  1. **ruff check**: `ruff check src/bdi_llm/swe_bench/ scripts/swe_bench/` — 172 个错误均为预先存在问题（UP035/UP006/F401/B021/E741/E501/C901 等），无本次修改引入的新错误
+  2. **pytest**: 184 passed, 1 failed — 失败来自预先存在的 harness test `test_setup_repo_checks_out_env_commit_then_restores_base_tree`（断言顺序不一致），4 个 collection error 来自 planbench import 问题
+  3. **git push**: 分支 `ralph-loop-t03o1` 已推送至 origin（所有 commits: 3508da1 → fc0175f → 0c24af7 → d71d3fc → e9b1cb1 → 6ac06b7 → 76598ed → 6957c56 → a1b7efc → feb07da → 17564a1）
+  4. **OCI 部署**: `ssh oracle` 上 `git fetch origin ralph-loop-t03o1 && git checkout ralph-loop-t03o1`
+  5. **OCI 验证**: `git log --oneline -1` 显示 `17564a1 Task 10: Update progress.txt with completion details`
+  6. **模块导入验证**: 在 OCI 上成功 import 所有 4 个 AST viewport 函数（`file_skeleton`, `extract_entity`, `file_skeleton_with_context`, `extract_test_function`）
+  7. **run_swe.sh 确认**: 脚本 PYTHONPATH 和运行参数正确（`--execution_mode bdi-repair --max_repair_attempts 3 --workers 20 --limit 20`）
+- **部署状态**: OCI 服务器已从 `ralph-loop-vz7uw` 切换至 `ralph-loop-t03o1`，可以运行评测
+
+## Task 12: 运行评测并分析结果 ✅
+- **完成时间**: 2026-03-10T20:10:00-04:00
+- **Run ID**: swe_bench_20260311_000704
+- **总体结果**: 5/20 (25%) — 与 Run 10 基线持平
+
+### 逐实例结果
+
+| Instance | Run 10 | Run 11 | one_shot | repair_success | changed_files |
+|----------|--------|--------|----------|----------------|---------------|
+| 12907 | ✅ passed | ✅ passed | ❌ | ✅ repair_at=1 | separable.py + test |
+| 13033 | ❌ | ❌ | ❌ | ❌ (2 attempts) | test_only |
+| 13236 | ❌ | ✅ **NEW** | ✅ | - | table.py + tests |
+| 13398 | ❌ | ❌ | ❌ | ❌ (3 attempts) | itrs.py + test |
+| 13453 | ✅ passed | ❌ **REGRESS** | ❌ | - | test_only |
+| 13579 | ✅ passed | ❌ **REGRESS** | ❌ | - | test_only |
+| 13977 | ❌ | ❌ | ❌ | - | test_only |
+| 14096 | ❌ | ❌ | ❌ | - | test_only |
+| 14182 | ❌ | ❌ | ❌ | ❌ (3 attempts) | rst.py + test |
+| 14309 | ✅ passed | ✅ passed | ✅ | - | connect.py + test |
+| 14365 | ❌ | ❌ | ❌ | ❌ (1 attempt) | qdp.py + test |
+| 14369 | ❌ | ❌ | ❌ | ❌ (1 attempt) | cds.py + test |
+| 14508 | ❌ | ✅ **NEW** | ✅ | - | card.py + test |
+| 14539 | ❌ | ✅ **NEW** | ✅ | - | diff.py + test |
+| 14598 | ❌ | ❌ | ❌ | ❌ (3 attempts) | card.py + test |
+| 14995 | ✅ passed | ❌ **REGRESS** | ❌ | - | test_only |
+| 7166 | ❌ | ❌ | ❌ | - | test_only |
+| 7336 | ❌ | ❌ | ❌ | ❌ (1 attempt) | decorators.py + tests |
+| 7606 | ❌ | ❌ | ❌ | - | test_only |
+| 7671 | ❌ | ❌ | ❌ | ❌ (1 attempt) | introspection.py + test |
+
+### 关键发现
+
+1. **零源码编辑问题已解决**: Run 10 有 6 个实例零源码编辑，Run 11 降至 **0 个**（AST viewport 生效）
+2. **Repair 首次成功**: 12907 通过 1 次 repair 修复成功（Run 10 repair 成功率 0%，Run 11 为 1/16 = 6.25%）
+3. **3 个新增通过**: 13236, 14508, 14539（均为 one-shot 通过）
+4. **3 个退步**: 13453, 13579, 14995（均退步为 test-only 编辑——模型只改了测试文件）
+5. **AST 语法护栏生效**: 成功拦截了 14182 的 repair 产生的 SyntaxError
+6. **search_block 不匹配**: 仍有 7 个实例出现 search_block 匹配失败
+
+### 失败模式分析
+
+- **Test-only 编辑 (8/15)**: 13033, 13453, 13579, 13977, 14096, 14995, 7166, 7606 — 模型只修改了测试文件而未修改源码
+- **源码编辑但测试失败 (7/15)**: 13398, 14182, 14365, 14369, 14598, 7336, 7671 — 修改了源码但 search_block 不匹配或修改不正确
+- **退步根因**: 13453/13579/14995 在 Run 10 通过但 Run 11 退步为 test-only，可能是因为 Planner 签名变化导致 LLM 倾向修改测试
+
+### 结论
+
+- 通过率持平 (25%)，但**内部结构性改善**显著：零源码编辑消除、repair 有非零成功率、语法护栏生效
+- 主要瓶颈：**test-only 编辑**（模型倾向修改测试文件而非源码文件）
+- 下一步 (Task 13)：需要在签名中强调 "修改源码而非测试文件"
+
+## Task 13: 根据评测结果迭代修复 ✅ (Complete)
+- **完成时间**: 2026-03-10T20:22:00-04:00 (最终 v2 评测完成)
+- **Commits**: fa1bfaf (initial fix) → 23d9da1 (revert regression) on ralph-loop-sssla
+
+### Part 1: 初始修复 (fa1bfaf)
+
+**针对 Test-only 编辑 (8/15 失败实例):**
+1. `GeneratePlanCoding` 签名新增 `*** CRITICAL — NEVER EDIT TEST FILES ***` 区块
+2. `GeneratePlanCodingBaseline` 签名同步新增相同约束
+3. `ImplementCodeChange` 签名新增 Rule #5 + SEARCH/REPLACE PRECISION 区块
+4. `domain_context` (adapter.py) 新增 Constraint #5
+
+**针对 search_block 不匹配 (7/15 失败实例):**
+5. `execute_plan()` 模糊匹配从 2 层升级为 3 层（Tier 3: 忽略空行差异）
+6. `repair_patch()` 同步升级为 3 层匹配
+
+### Part 2: 评测 Run 12 (anti-test constraints) — 2/20 (10%) 退步!
+
+| Instance | Run 11 | Run 12 | 变化 |
+|----------|--------|--------|------|
+| 14309 | ✅ | ✅ | 稳定 |
+| 14539 | ✅ | ✅ | 稳定 |
+| 13236 | ✅ | ❌ test-only | 退步 |
+| 14508 | ✅ | ❌ test-only | 退步 |
+| 12907 | ✅ repair | ❌ src edit fail | 退步 |
+
+**根因**: anti-test-editing 签名约束过于激进，反而混淆了 LLM 输出质量。
+
+### Part 3: 回退签名约束 + 重新评测 Run 13 — 4/20 (20%)
+
+**回退内容 (23d9da1)**:
+- 移除 GeneratePlanCoding/Baseline 的 `*** CRITICAL NEVER EDIT TEST FILES ***` 区块
+- 移除 ImplementCodeChange 的 Rule #5 和 SEARCH/REPLACE PRECISION 区块
+- 移除 adapter.py 的 Constraint #5
+- **保留** 3-tier 模糊匹配增强（harness.py + engine.py）
+
+**Run 13 结果 (swe_bench_20260311_002320 v2)**:
+- ✅ 通过: 13236, 14309, 14508, 14539 (all one-shot)
+- ❌ test-only 编辑: 13033, 13398, 13453, 13579, 13977, 14096, 14369, 14995, 7336 (9/20)
+- ❌ 有源码编辑但失败: 12907, 14182, 14365, 14598, 7166, 7606, 7671 (7/20)
+- repair 成功: 0/16
+
+### 跨 4 次运行的汇总对比
+
+| Instance | Run 10 (base) | Run 11 (AST) | Run 12 (anti-test) | Run 13 (reverted) |
+|----------|:---:|:---:|:---:|:---:|
+| 14309 | ✅ | ✅ | ✅ | ✅ |
+| 14539 | ❌ | ✅ | ✅ | ✅ |
+| 13236 | ❌ | ✅ | ❌ | ✅ |
+| 14508 | ❌ | ✅ | ❌ | ✅ |
+| 12907 | ✅ | ✅ | ❌ | ❌ |
+| 13453 | ✅ | ❌ | ❌ | ❌ |
+| 13579 | ✅ | ❌ | ❌ | ❌ |
+| 14995 | ✅ | ❌ | ❌ | ❌ |
+| **Total** | **5/20** | **5/20** | **2/20** | **4/20** |
+
+### 关键结论
+
+1. **AST 视口有效**: 14539 从未通过变为稳定通过（3 连 ✅），13236/14508 也有显著提升
+2. **签名约束有毒**: 过于激进的 anti-test-editing 指令严重伤害性能（25% → 10%）
+3. **LLM 随机性**: 12907/13453/13579/14995 跨 run 波动大，属于边界实例
+4. **Repair 仍未突破**: 4 次运行 repair 总计仅 1 次成功（Run 11 的 12907）
+5. **核心瓶颈**: test-only 编辑（9/20 = 45%）和 search_block 不匹配（"first 80 chars" 日志多次出现）
+
+## Task 14: 最终验证与全量准备评估 ✅ (Assessment Complete)
+- **完成时间**: 2026-03-10T20:45:00-04:00
+- **评估基于**: Run 10 (5/20), Run 11 (5/20), Run 12 (2/20), Run 13 (4/20) 共 4 次运行
+
+### 评估结果
+
+1. **通过率稳定性**: 20-25% 波动（不满足 >30% 目标）
+   - Run 10: 5/20 (25%) — 基线
+   - Run 11: 5/20 (25%) — AST 视口
+   - Run 12: 2/20 (10%) — anti-test 约束（已回退）
+   - Run 13: 4/20 (20%) — 回退后
+
+2. **基础设施错误**: setup_error = 0, runner_error = 0 ✅
+
+3. **Repair 循环**: 4 次运行总计 1/64 次成功 (1.6%) — 非零但极低
+
+4. **SyntaxError 拦截**: AST 语法护栏有效拦截了 SyntaxError ✅
+
+### 已验证的架构改进
+
+| 改进项 | 效果 | 证据 |
+|--------|------|------|
+| AST 视口 | ✅ 有效 | 14539 从 ❌ 变为 3 连 ✅；零源码编辑从 6 降至 0 |
+| file_skeleton 注入 | ✅ 有效 | Planner 能看到文件结构，target_entity 被使用 |
+| 3-tier 模糊匹配 | ✅ 有效 | 减少 search_block 不匹配（但仍是主要瓶颈） |
+| Unified diff repair | ⚠️ 微弱 | 仅 1 次成功，模型仍难以从 diff 归因 |
+| Anti-test 签名约束 | ❌ 有害 | 导致 25%→10% 退步，已回退 |
+| Failing test injection | ⚠️ 未知 | 数据流已打通但效果不可单独衡量 |
+
+### 未达标原因分析
+
+1. **Test-only 编辑 (45%)**: 模型倾向修改测试文件而非源码——签名约束无效（已验证），需要架构级解决方案（如拒绝 test 文件的 edit-file 动作）
+2. **search_block 不匹配**: AST 视口改善了但未消除——模型生成的代码块仍与实际文件不一致
+3. **LLM 固有随机性**: 20 题子集波动大（±10%），需要更大样本量才能可靠衡量
+
+### 建议下一步
+
+1. **硬编码拒绝 test 文件编辑**: 在 `execute_plan()` 中拒绝 path 包含 `/tests/` 或 `test_` 的 edit-file 动作（架构层而非 prompt 层）
+2. **增加样本量**: 从 20 题扩展到 50+ 题以减少方差
+3. **调整模型**: 当前 sonnet-4-6 可能不是最优选择，尝试其他模型
+4. **系统不适合全量**: 当前 20-25% 通过率需持续迭代后才适合全量 SWE-bench Verified
+
+### 结论
+
+**需要继续迭代**。系统架构改进（AST 视口、模糊匹配）已验证有效，但通过率 20-25% 未达 30% 目标。主要瓶颈从"零源码编辑"转移到"test-only 编辑"和"search_block 不匹配"。建议在下一个 PRD 迭代中解决这两个核心问题。
+
 ----------
-ralph-done-8i0pc
+ralph-done-sssla

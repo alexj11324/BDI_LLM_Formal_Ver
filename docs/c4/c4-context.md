@@ -2,43 +2,29 @@
 
 ## System Overview
 
-### Short Description
-A neuro-symbolic planning framework that combines LLM generation with formal verification to produce provably correct plans.
+**Short Description**: A neuro-symbolic planning framework that combines Large Language Models with formal verification to produce provably correct action plans.
 
-### Long Description
-PNSV (Pluggable Neuro-Symbolic Verification) addresses the hallucination and logical inconsistency problems in LLM-generated plans. It receives natural language goals, generates structured BDI plans (Beliefs-Desires-Intentions) as Directed Acyclic Graphs (DAGs) using DSPy-orchestrated LLMs, then runs every generated plan through a 3-layer verification pipeline (Structural → Symbolic → Physics). Plans failing verification are automatically repaired and re-verified. Successful verification loops are serialized into R1-compatible thinking trajectories for student model fine-tuning.
+**Long Description**: PNSV (Pluggable Neuro-Symbolic Verification) implements a complete BDI (Belief-Desire-Intention) plan-verify-repair closed loop. Given a natural-language goal and optional PDDL domain specification, the framework generates structured intention DAGs via DSPy Chain-of-Thought prompting, verifies them through three composable layers (structural, symbolic, domain physics), and auto-repairs failed plans using verifier error feedback. The system exposes its verification loop as a Model Context Protocol (MCP) server, enabling Claude Code, Cursor, and other AI agents to integrate formal planning guarantees into their workflows.
 
 ---
 
 ## Personas
 
-### 1. AI/ML Researcher (Human User)
-- **Type**: Human User
-- **Description**: Academic researcher studying neuro-symbolic reasoning, automated planning, or LLM reliability
-- **Goals**: Run reproducible experiments on PlanBench domains; generate publishable results (AAAI 2026); analyze verification + repair effectiveness across domains; compare NAIVE / BDI_ONLY / FULL_VERIFIED / FULL_VERIFIED+REPAIR modes
-- **Key Features**: PlanBench evaluation, ablation modes (incl. REPAIR), auto-repair loop, result visualization, paper figure generation
+### Human Users
 
-### 2. AI Agent (Programmatic User)
-- **Type**: Programmatic User
-- **Description**: AI coding agent (Claude Code, Cursor, etc.) that needs verified plans for task execution
-- **Goals**: Request verified plans via MCP protocol; receive provably correct action sequences
-- **Key Features**: MCP Server integration, `generate_verified_plan` tool
+| Persona | Description | Goals | Key Features |
+|---------|-------------|-------|--------------|
+| **ML Researcher** | AI/ML researcher studying plan generation and verification | Benchmark PNSV against baselines, publish results | PlanBench evaluation, TravelPlanner evaluation, ablation modes |
+| **AI Agent Developer** | Developer building AI agents (Claude Code, Cursor) | Integrate formal verification into agent planning | MCP server, `generate_plan`, `verify_plan`, `execute_verified_plan` |
+| **Framework Contributor** | Developer extending PNSV with new domains | Add new domain specs, verification layers | DomainSpec API, pluggable verifier architecture |
 
-### 3. Student Model Trainer (Human User)
-- **Type**: Human User
-- **Description**: ML engineer fine-tuning smaller models using Golden Trajectories
-- **Goals**: Generate verified `<think>` tag training data from successful BDI reasoning loops; distill into DeepSeek-R1 or similar student models
-- **Key Features**: R1 Distillation formatter, teacher configuration
+### Programmatic Users
 
-### 4. External LLM Provider (External System)
-- **Type**: External System
-- **Description**: GLM-5, GPT-5, Gemini, Qwen — teacher LLMs providing plan generation and repair capabilities
-- **Integration**: DSPy ChainOfThought via OpenAI-compatible API
-
-### 5. VAL Validator (External System)
-- **Type**: External System
-- **Description**: PDDL plan validator binary for symbolic verification
-- **Integration**: Subprocess execution with structured output parsing
+| System | Type | Description | Integration |
+|--------|------|-------------|-------------|
+| **Claude Code / Cursor** | AI Agent | Consumes MCP server for verified planning | MCP protocol (stdio) |
+| **Batch Evaluation Pipeline** | Internal System | Runs large-scale benchmark evaluations | Python scripts + API budget management |
+| **CI/CD Pipeline** | GitHub Actions | Runs unit/integration tests on push | `pytest` test suite |
 
 ---
 
@@ -46,54 +32,46 @@ PNSV (Pluggable Neuro-Symbolic Verification) addresses the hallucination and log
 
 | Feature | Description | Users |
 |---------|-------------|-------|
-| Verified Plan Generation | Generate BDI plans and verify through 3 layers | AI Agent, Researcher |
-| PlanBench Evaluation | Full-dataset evaluation across Blocksworld, Logistics, Depots | Researcher |
-| Ablation Testing | NAIVE / BDI_ONLY / FULL_VERIFIED comparison modes | Researcher |
-| Auto-Repair | Iterative plan repair using verifier feedback | AI Agent, Researcher |
-| R1 Distillation | Serialize successful loops into `<think>` training data | Student Model Trainer |
-| MCP Server | Expose verified planning as agent tool | AI Agent |
-| SWE-bench Domain | Software engineering task planning and verification | Researcher |
+| BDI Plan Generation | Generate structured IntentionDAGs from natural language via DSPy | Researcher, Agent Developer |
+| 3-Layer Verification | Structural + Symbolic (VAL) + Domain Physics verification | All |
+| Auto-Repair Engine | Iterative error-feedback repair of invalid plans | Researcher, Agent Developer |
+| MCP Server | Expose planning loop as Model Context Protocol endpoint | Agent Developer |
+| Multi-Domain Evaluation | PlanBench (5 PDDL domains) + TravelPlanner benchmarks | Researcher |
+| R1 Distillation Output | Log successful verification trajectories for fine-tuning | Researcher |
 
 ---
 
 ## User Journeys
 
-### Journey 1: Researcher → PlanBench Evaluation
-1. Configure `.env` with LLM provider credentials
-2. Run `python scripts/evaluation/run_planbench_full.py --domain blocksworld --all_domains`
-3. System loads PDDL instances from `planbench_data/`
-4. For each instance: generate plan → verify → record result
-5. Results saved to `runs/` with checkpoint support
-6. Run figure generation scripts to produce paper-ready visualizations
-7. Analyze with `scripts/analyze_verification_results.py`
+### BDI Plan Generation — ML Researcher Journey
 
-### Journey 2: AI Agent → MCP Verified Plan
-1. Agent connects to `src/interfaces/mcp_server.py`
-2. Calls `generate_verified_plan(goal, domain, context, pddl_domain_file, pddl_problem_file)`
-3. Server generates plan via DSPy planner
-4. Plan passes through 3-layer verification
-5. If invalid: returns verification error
-6. Returns verified plan or error
+1. **Configure domain**: Select PDDL domain (blocksworld/logistics/depots) via `DomainSpec`
+2. **Set evaluation parameters**: Choose execution mode (baseline/bdi/bdi-repair), worker count
+3. **Run evaluation**: Execute `run_generic_pddl_eval.py` or `run_travelplanner_eval.py`
+4. **Monitor progress**: Observe batch progress via API budget manager + checkpoint files
+5. **Analyze results**: Parse verification results, compute pass rates, compare ablation modes
+6. **Report**: Generate LaTeX tables for paper submission
 
-### Journey 3: Trainer → R1 Distillation
-1. Configure teacher LLM (GLM-5) via `teacher_config.py`
-2. Run BDI reasoning loop on target domain
-3. Successful verify-repair loops intercepted by `r1_formatter.py`
-4. Converted to strict `<think>...</think><answer>...</answer>` format
-5. Saved as Golden Trajectories for student model fine-tuning
+### MCP Integration — AI Agent Developer Journey
+
+1. **Deploy MCP server**: `docker run -i --rm -e OPENAI_API_KEY=$KEY bdi-verifier`
+2. **Configure client**: Add MCP server entry in `claude_desktop_config.json`
+3. **Generate plan**: Agent calls `generate_plan` with natural language goal
+4. **Verify plan**: Agent calls `verify_plan` with generated plan + PDDL domain
+5. **Execute**: On verification pass, agent calls `execute_verified_plan`
+6. **Handle failure**: On verification fail, agent receives structured error feedback for retry
 
 ---
 
 ## External Systems & Dependencies
 
-| System | Type | Purpose | Integration |
-|--------|------|---------|-------------|
-| OpenAI-compatible LLM API | Service | Plan generation | HTTP/REST via DSPy |
-| VAL Binary | Tool | PDDL symbolic verification | Subprocess (macOS arm64) |
-| PlanBench Dataset | Data | PDDL problem instances | File system (planbench_data/) |
-| SWE-bench Dataset | Data | Software engineering tasks | File system (swe_bench_data/) |
-| MLflow | Service | Experiment tracking | SQLite (mlflow.db) |
-| Docker | Platform | Containerized deployment | Dockerfile |
+| System | Type | Description | Integration | Purpose |
+|--------|------|-------------|-------------|---------|
+| OpenAI / DashScope API | LLM Provider | GPT-5, qwq-plus inference | REST API via DSPy | Plan generation and repair |
+| VAL Binary | PDDL Validator | Classical planning validator (C++) | Subprocess call | Layer 2 symbolic verification |
+| TravelPlanner Official Evaluator | Benchmark | OSU NLP travel itinerary evaluator | Python import | TravelPlanner scoring |
+| HuggingFace Hub | Data Platform | TravelPlanner dataset + leaderboard | `datasets` library | Benchmark data loading |
+| Docker Engine | Container Runtime | Builds and runs MCP server container | Docker CLI | Production deployment |
 
 ---
 
@@ -103,20 +81,24 @@ PNSV (Pluggable Neuro-Symbolic Verification) addresses the hallucination and log
 C4Context
     title System Context — PNSV Framework
 
-    Person(researcher, "AI/ML Researcher", "Runs experiments, generates paper results")
-    Person(trainer, "Student Model Trainer", "Fine-tunes smaller models with Golden Trajectories")
+    Person(researcher, "ML Researcher", "Runs benchmarks, publishes results")
+    Person(agentdev, "Agent Developer", "Integrates MCP planning into agents")
 
-    System_Ext(agent, "AI Agent", "Claude Code, Cursor — requests verified plans via MCP")
-    System_Ext(llm, "LLM Provider", "GLM-5, GPT-5, Gemini — plan generation & repair")
-    System_Ext(val, "VAL Validator", "PDDL plan validation binary")
+    System(pnsv, "PNSV Framework", "Neuro-symbolic plan generation, verification, and auto-repair")
 
-    System(pnsv, "PNSV Framework", "Neuro-symbolic planning with 3-layer formal verification")
+    System_Ext(llm, "LLM Provider", "OpenAI / DashScope API")
+    System_Ext(val, "VAL Binary", "PDDL plan validator")
+    System_Ext(tpeval, "TravelPlanner Evaluator", "Official benchmark scorer")
+    System_Ext(hf, "HuggingFace Hub", "Dataset hosting + leaderboard")
+    System_Ext(docker, "Docker Engine", "Container runtime")
 
     Rel(researcher, pnsv, "Runs evaluations, analyzes results")
-    Rel(trainer, pnsv, "Generates R1 distillation data")
-    Rel(agent, pnsv, "MCP: generate_verified_plan()")
-    Rel(pnsv, llm, "DSPy ChainOfThought API calls")
-    Rel(pnsv, val, "Subprocess: PDDL validation")
+    Rel(agentdev, pnsv, "Calls MCP tools: generate, verify, execute")
+    Rel(pnsv, llm, "Generates plans via DSPy")
+    Rel(pnsv, val, "Validates PDDL plans")
+    Rel(pnsv, tpeval, "Scores TravelPlanner itineraries")
+    Rel(pnsv, hf, "Loads benchmark datasets")
+    Rel(pnsv, docker, "Deploys MCP server")
 ```
 
 ---
@@ -124,4 +106,8 @@ C4Context
 ## Related Documentation
 
 - [Container Documentation](c4-container.md)
-- [Component Index](c4-component.md)
+- [Component Documentation](c4-component.md)
+- [Component Details](c4-components-detail.md)
+- [Wiki Catalogue](../wiki-catalogue.md)
+- [Technical Reference](../TECHNICAL_REFERENCE.md)
+- [Functional Flow](../FUNCTIONAL_FLOW.md)

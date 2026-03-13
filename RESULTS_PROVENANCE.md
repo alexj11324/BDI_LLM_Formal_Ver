@@ -85,7 +85,7 @@ Each domain has `baseline/`, `bdi/`, `repair/` subdirectories containing checkpo
 | Metric | `baseline` | `bdi (v3)` | `bdi-repair (v4 reviewer)` |
 | --- | --- | --- | --- |
 | Delivery Rate | 1.000 | 1.000 | 1.000 |
-| Commonsense Pass Rate | 0.378 | 0.811 | 0.917 |
+| Commonsense Pass Rate | 0.378 | 0.811 | 0.839 |
 | Hard Constraint Pass Rate | 0.594 | 0.683 | 0.794 |
 | Final Pass Rate | 0.211 (38/180) | 0.578 (104/180) | 0.706 (127/180) |
 
