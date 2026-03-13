@@ -48,6 +48,7 @@ Thumbs.db
 htmlcov/
 
 # AI/Agent tools
+.agent/
 .claude/
 .ralph/
 AGENT_RULES.md
@@ -150,6 +151,7 @@ bdi_llm_formal_ver.egg-info/
 swe_bench_workspace/
 progress.txt
 tasks/
+docs/archive/
 docs/sessions/
 docs/tasks/
 paper_icml2026/
