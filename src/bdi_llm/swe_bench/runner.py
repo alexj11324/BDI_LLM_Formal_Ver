@@ -16,7 +16,6 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from ..verifier import PlanVerifier
 from .adapter import SWEBenchTaskAdapter
 from .engine import SWEBenchGenerator
 from .feedback import build_test_feedback
@@ -75,9 +74,9 @@ def _apply_test_patch(instance_dir: Path, test_patch: str) -> bool:
 
 
 def _reset_to_base_commit(instance_dir: Path, base_commit: str) -> None:
-    """Hard-reset the repo back to base commit for re-execution during repair."""
+    """Reset the working tree to a clean state at base_commit."""
     subprocess.run(
-        ["git", "checkout", "--", "."],
+        ["git", "reset", "--hard", base_commit],
         cwd=instance_dir,
         capture_output=True,
         check=True,
@@ -360,7 +359,11 @@ def evaluate_sample(
     # ------------------------------------------------------------------
     test_patch = instance.get("test_patch", "")
     if test_patch:
-        _apply_test_patch(repo_dir, test_patch)
+        if not _apply_test_patch(repo_dir, test_patch):
+            result["status"] = "setup_error"
+            result["error"] = "Failed to apply test_patch"
+            logger.error(f"[{instance_id}] test_patch apply failed")
+            return result
 
     # ------------------------------------------------------------------
     # Step 0c: Extract FAIL_TO_PASS test source code for TDD-style editing
