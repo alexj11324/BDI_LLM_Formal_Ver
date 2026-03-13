@@ -24,6 +24,7 @@ MANIFEST
 
 # Virtual environments
 .env
+.env.test
 .venv
 env/
 venv/
@@ -49,6 +50,7 @@ htmlcov/
 
 # AI/Agent tools
 .agent/
+CLAUDE.md
 .claude/
 .ralph/
 AGENT_RULES.md
