@@ -232,8 +232,9 @@ SWE-bench code lives under `src/bdi_llm/swe_bench/` and `scripts/swe_bench/`. A 
 
 - `workspaces/planbench_data/` — current PDDL benchmark assets and VAL binary
 - `workspaces/TravelPlanner_official/` — external official TravelPlanner checkout used for evaluation
-- `runs/` — mutable checkpoints and scratch outputs
+- `runs/` — mutable checkpoints, scratch outputs, and MLflow data (`runs/mlflow/`)
 - `artifacts/paper_eval_20260213/` — frozen paper evidence snapshot; do not edit or treat mutable reruns as replacements for paper numbers
+- `RESULTS_PROVENANCE.md` — exact source files for every benchmark number in README; update when regenerating results
 
 ## Project automation and docs (non-runtime)
 
