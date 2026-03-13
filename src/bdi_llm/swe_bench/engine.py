@@ -86,7 +86,21 @@ class SWEBenchGenerator:
         desire: str,
         domain_context: str = "",
     ) -> SWEBenchGenerationResult:
-        """Generate plan without CoT reasoning (baseline mode)."""
+        """Generate plan without CoT reasoning (baseline mode).
+
+        Args:
+            beliefs: Current state (repo structure, issue description).
+            desire: Goal (fix the issue and pass tests).
+            domain_context: Action type constraints (currently unused in baseline).
+
+        Returns:
+            SWEBenchGenerationResult with plan and no structural verification.
+
+        Note:
+            The baseline mode does not use CoT and does not perform structural
+            verification. domain_context is accepted for interface consistency
+            but ignored in this implementation.
+        """
         pred = self._baseline(beliefs=beliefs, desire=desire)
         plan = pred.plan
         if plan is None:
