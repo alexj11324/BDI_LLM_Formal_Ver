@@ -3,7 +3,10 @@
 
 from __future__ import annotations
 
+import ast
+import difflib
 import json
+import logging
 import os
 import re
 import shlex
@@ -18,7 +21,10 @@ from typing import Any, Dict, List, Optional, Tuple
 from datasets import load_dataset
 
 from bdi_llm.coding_planner import CodingBDIPlanner
+from bdi_llm.swe_bench.ast_viewport import file_skeleton, file_skeleton_with_context
 from bdi_llm.verifier import PlanVerifier
+
+logger = logging.getLogger(__name__)
 
 class LocalSWEBenchHarness:
     """Runner for SWE-bench instances with local repository execution."""
@@ -89,9 +95,12 @@ class LocalSWEBenchHarness:
         candidates = [
             os.environ.get("CONDA_EXE"),
             shutil.which("conda"),
+            str(Path.home() / "miniconda3" / "bin" / "conda"),
             str(Path.home() / "opt" / "anaconda3" / "bin" / "conda"),
             str(Path.home() / "anaconda3" / "bin" / "conda"),
+            str(Path.home() / "opt" / "miniconda3" / "bin" / "conda"),
             "/opt/miniconda3/bin/conda",
+            "/opt/conda/bin/conda",
         ]
         for candidate in candidates:
             if not candidate:
@@ -109,6 +118,10 @@ class LocalSWEBenchHarness:
         env: Optional[Dict[str, str]] = None,
     ) -> Tuple[bool, str, int]:
         try:
+            # Clean env to avoid PYTHONPATH pollution from parent process
+            if env is None:
+                env = os.environ.copy()
+                env.pop("PYTHONPATH", None)
             result = subprocess.run(
                 command,
                 cwd=cwd,
@@ -132,12 +145,17 @@ class LocalSWEBenchHarness:
         prepend_path: Optional[str] = None,
     ) -> Tuple[bool, str, int]:
         env = os.environ.copy()
+        env.pop("PYTHONPATH", None)
         if prepend_path:
             env["PATH"] = prepend_path + os.pathsep + env.get("PATH", "")
 
+        # Prepend unset PYTHONPATH to prevent conda env corruption
+        # from parent process or profile sourcing
+        safe_script = f"unset PYTHONPATH; {script}"
+
         try:
             result = subprocess.run(
-                ["bash", "-lc", script],
+                ["bash", "-c", safe_script],
                 cwd=cwd,
                 shell=False,
                 capture_output=True,
@@ -431,6 +449,18 @@ class LocalSWEBenchHarness:
                     "metadata-generation-failed",
                     "no module named 'extension_helpers'",
                     "no module named \"extension_helpers\"",
+                    "error: command 'gcc'",
+                    "error: command 'g++'",
+                    "could not find a version that satisfies",
+                    "no matching distribution found",
+                    "externally-managed-environment",
+                    "ld: library not found",
+                    "cmake",
+                    "meson",
+                    "fortran",
+                    "ffibuilder",
+                    "cython",
+                    "distutils",
                 ]
             )
             if degraded_allowed:
@@ -453,6 +483,20 @@ class LocalSWEBenchHarness:
         self._append_step_log(logs, "ensure_pytest", ok, returncode, output)
         if not ok:
             return False, logs
+
+        # Pin hypothesis for Python 3.8 envs (newer versions are incompatible)
+        ver_ok, ver_out, _ = self._run_command(
+            [str(env_python), "-c", "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"],
+            cwd=instance_dir,
+            timeout=15,
+        )
+        py_ver = (ver_out or "").strip()
+        if py_ver == "3.8":
+            self._run_command(
+                [str(env_python), "-m", "pip", "install", "-q", "hypothesis<6.80"],
+                cwd=instance_dir,
+                timeout=timeout,
+            )
 
         return True, logs
 
@@ -481,6 +525,37 @@ class LocalSWEBenchHarness:
             }
 
         env_prefix = instance_dir / ".swebench_env"
+        env_python = env_prefix / ("python.exe" if os.name == "nt" else "bin/python")
+
+        # Reuse existing conda env if valid (saves ~740s)
+        # Check both --version AND stdlib import to catch corrupted envs
+        # (e.g. git clean -fd removing .py source files while keeping binaries)
+        if env_python.exists():
+            try:
+                ok, output, _ = self._run_command(
+                    [str(env_python), "-c", "import encodings; print('ok')"],
+                    cwd=instance_dir, timeout=30,
+                )
+                if ok and "ok" in (output or ""):
+                    ver_ok, ver_out, _ = self._run_command(
+                        [str(env_python), "--version"], cwd=instance_dir, timeout=30,
+                    )
+                    return {
+                        "ok": True,
+                        "used_conda": True,
+                        "conda_executable": self.conda_executable,
+                        "env_prefix": str(env_prefix),
+                        "python_executable": str(env_python),
+                        "python_version": (ver_out or "").strip().split()[-1] if ver_out else "unknown",
+                        "spec_found": bool(spec),
+                        "spec_python": preferred_python or None,
+                        "setup_steps": [{"step": "reuse_existing_env", "ok": True}],
+                        "constants_load_error": self._constants_load_error,
+                    }
+            except Exception:
+                pass
+            shutil.rmtree(env_prefix, ignore_errors=True)
+
         if env_prefix.exists():
             shutil.rmtree(env_prefix, ignore_errors=True)
 
@@ -492,6 +567,8 @@ class LocalSWEBenchHarness:
                     "create",
                     "--prefix",
                     str(env_prefix),
+                    "-c", "conda-forge",
+                    "-c", "defaults",
                     f"python={version}",
                     "-y",
                 ],
@@ -590,18 +667,122 @@ class LocalSWEBenchHarness:
             return [line.strip() for line in value.splitlines() if line.strip()]
         return []
 
+    @staticmethod
+    def _django_test_selectors(tests: List[str]) -> List[str]:
+        """Convert Django-style test selectors to runtests.py module arguments.
+
+        SWE-bench stores Django tests as:
+          ``test_method (module.path.ClassName)``
+        but ``runtests.py`` expects dotted module paths:
+          ``module.path``
+
+        Returns deduplicated module paths preserving order.
+        """
+        import re
+        modules: list[str] = []
+        seen: set[str] = set()
+        for t in tests:
+            # Pattern: "test_foo (some.module.ClassName)"
+            m = re.match(r"^[\w]+\s+\((.+)\)$", t.strip())
+            if m:
+                dotted = m.group(1).strip()
+                # Strip the class name — keep up to the last dotted segment
+                parts = dotted.rsplit(".", 1)
+                mod = parts[0] if len(parts) > 1 else dotted
+                if mod not in seen:
+                    seen.add(mod)
+                    modules.append(mod)
+            else:
+                # Already a module path or pytest-style selector
+                if t.strip() and t.strip() not in seen:
+                    seen.add(t.strip())
+                    modules.append(t.strip())
+        return modules
+
+    def _build_repo_aware_test_command(
+        self,
+        instance: Dict[str, Any],
+        tests: List[str],
+        python_executable: str,
+    ) -> List[str] | str:
+        """Core logic for building a repo-spec-aware test command."""
+        repo = str(instance.get("repo", ""))
+        # Convert Django-style selectors to module paths for runtests.py
+        if repo == "django/django":
+            tests = self._django_test_selectors(tests)
+
+        spec, _, _ = self._lookup_repo_spec(instance)
+        test_cmd = str(spec.get("test_cmd", "")).strip() if isinstance(spec, dict) else ""
+        eval_commands = spec.get("eval_commands", []) if isinstance(spec, dict) else []
+
+        if test_cmd:
+            shell_parts: List[str] = []
+            if isinstance(eval_commands, list):
+                for cmd in eval_commands:
+                    cmd_str = str(cmd).strip()
+                    if not cmd_str:
+                        continue
+                    # Skip system-level commands that require root and fail
+                    # on unprivileged environments (e.g. sed /etc/locale.gen)
+                    if any(
+                        marker in cmd_str
+                        for marker in ["/etc/", "locale-gen", "apt-get", "apt ", "dpkg"]
+                    ):
+                        continue
+                    shell_parts.append(cmd_str)
+
+            if test_cmd == "python":
+                pytest_command = [python_executable, "-m", "pytest", "-q", *tests]
+                return pytest_command if not shell_parts else " && ".join([*shell_parts, shlex.join(pytest_command)])
+
+            # Replace bare pytest/pytest-style commands with python -m pytest
+            # to ensure the conda env's pytest is used
+            if test_cmd.startswith("pytest"):
+                extra_flags = test_cmd[len("pytest"):].strip()
+                pytest_parts = [python_executable, "-m", "pytest"]
+                if extra_flags:
+                    pytest_parts.extend(extra_flags.split())
+                if tests:
+                    pytest_parts.extend(tests)
+                return pytest_parts if not shell_parts else " && ".join([*shell_parts, shlex.join(pytest_parts)])
+
+            # Ensure .py test scripts use the conda env's python
+            if test_cmd.lstrip("./").endswith(".py") or "/runtests.py" in test_cmd:
+                test_cmd = f"{python_executable} {test_cmd}"
+
+            if tests:
+                test_cmd = f"{test_cmd} {' '.join(shlex.quote(t) for t in tests)}"
+
+            return " && ".join([*shell_parts, test_cmd]) if shell_parts else test_cmd
+
+        # Hardcoded fallback for repos with non-pytest test runners
+        repo = str(instance.get("repo", ""))
+        if repo == "django/django":
+            cmd_parts = [
+                python_executable, "./tests/runtests.py",
+                "--verbosity", "2",
+                "--settings=test_sqlite",
+                "--parallel", "1",
+            ]
+            if tests:
+                cmd_parts.extend(tests)
+            return cmd_parts
+
+        if tests:
+            return [python_executable, "-m", "pytest", "-q", *tests]
+        return [python_executable, "-m", "pytest", "-q"]
+
     def build_test_command(
         self,
         instance: Dict[str, Any],
         python_executable: str = "python",
         max_tests: int = 25,
-    ) -> List[str]:
-        """Construct a focused pytest command for the target instance."""
+    ) -> List[str] | str:
+        """Construct a repo-aware test command for the target instance."""
         fail_to_pass = self.parse_test_field(instance.get("FAIL_TO_PASS"))
-        tests = fail_to_pass[:max_tests]
-        if tests:
-            return [python_executable, "-m", "pytest", "-q", *tests]
-        return [python_executable, "-m", "pytest", "-q"]
+        pass_to_pass = self.parse_test_field(instance.get("PASS_TO_PASS"))
+        tests = (fail_to_pass + pass_to_pass)[:max_tests]
+        return self._build_repo_aware_test_command(instance, tests, python_executable)
 
     def setup_repo(
         self,
@@ -609,19 +790,45 @@ class LocalSWEBenchHarness:
         cleanup_existing: bool = True,
         clone_timeout: int = 900,
     ) -> Path:
-        """Clone and checkout repository for a SWE-bench instance."""
+        """Clone and checkout repository for a SWE-bench instance.
+
+        If the instance directory already exists with a valid git repo,
+        resets to base_commit instead of re-cloning (saves ~200s).
+        """
         repo_name = instance["repo"]
         base_commit = instance["base_commit"]
+        env_setup_commit = str(instance.get("environment_setup_commit") or "").strip()
         instance_id = instance["instance_id"]
         instance_dir = self.workspace_dir / instance_id
+
+        # Reuse existing repo if valid
+        if instance_dir.exists() and (instance_dir / ".git").is_dir():
+            try:
+                subprocess.run(
+                    ["git", "checkout", "--", "."],
+                    cwd=instance_dir, capture_output=True, check=True, timeout=60,
+                )
+                subprocess.run(
+                    ["git", "clean", "-fd", "-e", ".swebench_env"],
+                    cwd=instance_dir, capture_output=True, check=True, timeout=60,
+                )
+                subprocess.run(
+                    ["git", "reset", "--hard", base_commit],
+                    cwd=instance_dir, capture_output=True, check=True, timeout=60,
+                )
+                return instance_dir
+            except Exception:
+                # Corrupted repo — fall through to re-clone
+                shutil.rmtree(instance_dir, ignore_errors=True)
 
         if cleanup_existing and instance_dir.exists():
             shutil.rmtree(instance_dir)
         instance_dir.mkdir(parents=True, exist_ok=True)
 
         repo_url = f"https://github.com/{repo_name}.git"
+        clone_target = env_setup_commit or base_commit
         subprocess.run(
-            ["git", "clone", repo_url, "."],
+            ["git", "clone", "--no-checkout", repo_url, "."],
             cwd=instance_dir,
             check=True,
             capture_output=True,
@@ -629,19 +836,39 @@ class LocalSWEBenchHarness:
             timeout=clone_timeout,
         )
         subprocess.run(
-            ["git", "checkout", base_commit],
+            ["git", "checkout", clone_target],
             cwd=instance_dir,
             check=True,
             capture_output=True,
             text=True,
             timeout=120,
         )
+        if env_setup_commit and env_setup_commit != base_commit:
+            subprocess.run(
+                ["git", "reset", "--hard", base_commit],
+                cwd=instance_dir,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
         return instance_dir
 
     @staticmethod
-    def run_tests(instance_dir: Path, command: List[str], timeout: int = 600) -> Tuple[bool, str, int]:
+    def run_tests(instance_dir: Path, command: List[str] | str, timeout: int = 600) -> Tuple[bool, str, int]:
         """Run tests and return success, output text, and return code."""
+        if isinstance(command, str):
+            return LocalSWEBenchHarness._run_shell_command(script=command, cwd=instance_dir, timeout=timeout)
         return LocalSWEBenchHarness._run_command(command=command, cwd=instance_dir, timeout=timeout)
+
+    def build_step_test_command(
+        self,
+        instance: Dict[str, Any],
+        test_selector: str,
+        python_executable: str,
+    ) -> List[str] | str:
+        """Construct a targeted test command for a single planned run-test step."""
+        return self._build_repo_aware_test_command(instance, [test_selector], python_executable)
 
     @staticmethod
     def extract_missing_modules(output: str) -> List[str]:
@@ -681,7 +908,7 @@ class LocalSWEBenchHarness:
     def run_tests_with_dependency_fix(
         self,
         instance_dir: Path,
-        command: List[str],
+        command: List[str] | str,
         auto_installed_packages: List[str],
         python_executable: str = sys.executable,
         timeout: int = 600,
@@ -735,6 +962,131 @@ class LocalSWEBenchHarness:
         return ok, merged_output, returncode, installed_now
 
     @staticmethod
+    def _apply_search_replace(
+        search_block: str,
+        replace_block: str,
+        current: str,
+        rel_path: str = "",
+        edit_line_start: int = 0,
+    ) -> str:
+        """Apply search/replace with 4-tier fuzzy matching.
+
+        Tier 1: exact substring match
+        Tier 2: strip trailing whitespace per line
+        Tier 3: ignore blank line differences (line-by-line)
+        Tier 4: difflib SequenceMatcher fuzzy match (>=0.7 similarity)
+
+        ``edit_line_start`` (1-indexed) narrows Tier 4 search to ±50 lines.
+        """
+        # Tier 1: exact match
+        if search_block in current:
+            return current.replace(search_block, replace_block, 1)
+
+        # Tier 2: strip trailing whitespace per line, but apply to original
+        search_stripped = "\n".join(l.rstrip() for l in search_block.splitlines())
+        current_stripped = "\n".join(l.rstrip() for l in current.splitlines())
+        if search_stripped in current_stripped:
+            idx = current_stripped.index(search_stripped)
+            pre_lines = current_stripped[:idx].count("\n")
+            orig_lines = current.splitlines(keepends=True)
+            match_len = len(search_stripped.splitlines())
+            before = "".join(orig_lines[:pre_lines])
+            after = "".join(orig_lines[pre_lines + match_len:])
+            return before + replace_block + after
+
+        # Tier 3: ignore blank line differences
+        search_no_blank = "\n".join(
+            l for l in search_stripped.splitlines() if l.strip()
+        )
+        current_no_blank = "\n".join(
+            l for l in current_stripped.splitlines() if l.strip()
+        )
+        if search_no_blank and search_no_blank in current_no_blank:
+            search_lines = [l for l in search_stripped.splitlines() if l.strip()]
+            current_lines = current_stripped.splitlines()
+            match_start = None
+            for i in range(len(current_lines)):
+                if current_lines[i].strip() and current_lines[i].rstrip() == search_lines[0]:
+                    si, ci, matched = 1, i + 1, True
+                    while si < len(search_lines) and ci < len(current_lines):
+                        if not current_lines[ci].strip():
+                            ci += 1
+                            continue
+                        if current_lines[ci].rstrip() != search_lines[si]:
+                            matched = False
+                            break
+                        si += 1
+                        ci += 1
+                    if matched and si == len(search_lines):
+                        match_start = i
+                        match_end = ci
+                        break
+            if match_start is not None:
+                orig_lines = current.splitlines(keepends=True)
+                before = "".join(orig_lines[:match_start])
+                after = "".join(orig_lines[match_end:])
+                return before + replace_block + after
+
+        # Tier 4: difflib fuzzy matching
+        search_lines_t4 = search_block.splitlines()
+        current_lines_t4 = current.splitlines()
+        if search_lines_t4 and current_lines_t4:
+            window = len(search_lines_t4)
+            first_search_line = search_lines_t4[0].strip()
+
+            # Narrow search area using edit_line_start if available
+            if edit_line_start > 0:
+                scan_start = max(0, edit_line_start - 1 - 50)
+                scan_end = min(len(current_lines_t4), edit_line_start - 1 + window + 50)
+            else:
+                scan_start = 0
+                scan_end = len(current_lines_t4)
+
+            # Find candidate start positions by matching first line
+            candidates = []
+            for i in range(scan_start, scan_end):
+                cl = current_lines_t4[i].strip()
+                if not cl:
+                    continue
+                ratio = difflib.SequenceMatcher(None, first_search_line, cl).ratio()
+                if ratio > 0.5:
+                    candidates.append((i, ratio))
+
+            candidates.sort(key=lambda x: -x[1])
+            candidates = candidates[:15]
+
+            best_ratio = 0.0
+            best_start = -1
+            best_end = -1
+            for start_idx, _ in candidates:
+                for size_delta in range(-3, 4):
+                    end = start_idx + window + size_delta
+                    if end <= start_idx or end > len(current_lines_t4):
+                        continue
+                    candidate_block = "\n".join(current_lines_t4[start_idx:end])
+                    ratio = difflib.SequenceMatcher(
+                        None, search_block, candidate_block
+                    ).ratio()
+                    if ratio > best_ratio:
+                        best_ratio = ratio
+                        best_start = start_idx
+                        best_end = end
+
+            if best_ratio >= 0.7 and best_start >= 0:
+                matched_block = "\n".join(current_lines_t4[best_start:best_end])
+                logger.info(
+                    f"Tier 4 fuzzy match for {rel_path}: "
+                    f"ratio={best_ratio:.2f}, lines {best_start+1}-{best_end}"
+                )
+                return current.replace(matched_block, replace_block, 1)
+
+        logger.warning(
+            f"search_block not found in {rel_path} (all 4 tiers failed), "
+            f"first 80 chars: {search_block[:80]!r}"
+        )
+        return current  # no change
+
+    @staticmethod
     def _safe_repo_path(instance_dir: Path, relative_path: str) -> Path:
         """Resolve and validate path stays within repository root."""
         rel = relative_path.strip().lstrip("./")
@@ -779,13 +1131,16 @@ class LocalSWEBenchHarness:
     def execute_plan(
         self,
         plan,
+        instance: Dict[str, Any],
         instance_dir: Path,
         issue_desc: str,
-        default_test_command: List[str],
+        default_test_command: List[str] | str,
         python_executable: str,
         test_timeout: int = 600,
         max_steps: int = 40,
         auto_installed_packages: Optional[List[str]] = None,
+        planning_reasoning: str = "",
+        failing_test_code: str = "",
     ) -> Dict[str, Any]:
         """Execute BDI coding plan in dependency order."""
         if auto_installed_packages is None:
@@ -804,6 +1159,7 @@ class LocalSWEBenchHarness:
             ordered_nodes = ordered_nodes[:max_steps]
 
         file_cache: Dict[str, str] = {}
+        skeleton_cache: Dict[str, str] = {}  # AST skeletons for .py files
         test_runs: List[Dict[str, Any]] = []
         step_logs: List[Dict[str, Any]] = []
         execution_error: Optional[str] = None
@@ -830,11 +1186,36 @@ class LocalSWEBenchHarness:
                     content = abs_path.read_text(encoding="utf-8", errors="ignore")
                     file_cache[rel_path] = content
                     step_record["bytes"] = len(content)
+                    # Cache AST skeleton for Python files
+                    if rel_path.endswith(".py"):
+                        skeleton_cache[rel_path] = file_skeleton(content)
 
                 elif action == "edit-file":
                     rel_path = str(params.get("file", "")).strip()
                     if not rel_path:
                         raise ValueError("edit-file missing required param: file")
+
+                    # Block edits to config/build files that should never be modified
+                    _EDIT_BLOCKLIST = {
+                        "pyproject.toml", "setup.py", "setup.cfg",
+                        "tox.ini", "pytest.ini", ".pre-commit-config.yaml",
+                        "Makefile", "Dockerfile", ".gitignore",
+                    }
+                    basename = Path(rel_path).name
+                    if basename in _EDIT_BLOCKLIST:
+                        step_record["status"] = "skipped"
+                        step_record["reason"] = f"edit blocked for config file: {basename}"
+                        step_logs.append(step_record)
+                        continue
+
+                    # Block edits to test files — SWE-bench test_patch handles
+                    # test changes; LLM should only edit source code
+                    if "/tests/" in rel_path or basename.startswith("test_") or basename.startswith("tests_"):
+                        step_record["status"] = "skipped"
+                        step_record["reason"] = f"edit blocked for test file: {rel_path}"
+                        step_logs.append(step_record)
+                        continue
+
                     abs_path = self._safe_repo_path(instance_dir, rel_path)
                     if rel_path not in file_cache:
                         if abs_path.exists():
@@ -843,15 +1224,77 @@ class LocalSWEBenchHarness:
                             file_cache[rel_path] = ""
                             abs_path.parent.mkdir(parents=True, exist_ok=True)
 
+                    # AST-aware viewport: show skeleton + target entity instead of
+                    # blind truncation, so the model sees relevant code structure
+                    target_entity = str(params.get("target", "")).strip()
+                    full_content = file_cache[rel_path]
+                    if target_entity and rel_path.endswith(".py"):
+                        content_for_llm = file_skeleton_with_context(
+                            full_content, target_entity
+                        )
+                        # Smart truncation: preserve target entity, truncate skeleton
+                        if len(content_for_llm) > 15000:
+                            target_marker = f"=== TARGET: {target_entity}"
+                            marker_pos = content_for_llm.find(target_marker)
+                            if marker_pos > 0:
+                                entity_section = content_for_llm[marker_pos:]
+                                skeleton_budget = 15000 - len(entity_section) - 100
+                                if skeleton_budget > 200:
+                                    content_for_llm = (
+                                        content_for_llm[:skeleton_budget]
+                                        + "\n...\n"
+                                        + entity_section
+                                    )
+                                else:
+                                    content_for_llm = entity_section[:15000]
+                            else:
+                                content_for_llm = content_for_llm[:15000]
+                    else:
+                        # Fallback for non-Python files or no target specified
+                        content_for_llm = full_content[:12000]
+
                     prediction = self.planner.implement_change(
                         file_path=rel_path,
-                        current_content=file_cache[rel_path],
-                        issue_description=issue_desc,
+                        current_content=content_for_llm,
+                        issue_description=issue_desc[:4000],
                         step_description=node.description,
+                        planning_reasoning=planning_reasoning[:2000],
+                        failing_test_code=failing_test_code[:3000],
                     )
-                    new_content = getattr(prediction, "new_content", "")
+
+                    # Apply search/replace edit instead of full file replacement
+                    search_block = getattr(prediction, "search_block", "")
+                    replace_block = getattr(prediction, "replace_block", "")
+                    edit_line_start = 0
+                    try:
+                        edit_line_start = int(getattr(prediction, "edit_line_start", 0) or 0)
+                    except (ValueError, TypeError):
+                        pass
+                    if search_block and isinstance(search_block, str):
+                        current = file_cache[rel_path]
+                        new_content = self._apply_search_replace(
+                            search_block, replace_block, current,
+                            rel_path, edit_line_start,
+                        )
+                    else:
+                        logger.warning(f"LLM returned empty search_block for {rel_path}")
+                        new_content = file_cache[rel_path]  # no change
+
                     if not isinstance(new_content, str):
                         raise ValueError("LLM returned non-string file content")
+
+                    # AST syntax guardrail: reject edits that introduce SyntaxError
+                    if rel_path.endswith(".py") and new_content != file_cache[rel_path]:
+                        try:
+                            ast.parse(new_content)
+                        except SyntaxError as e:
+                            logger.warning(
+                                f"Edit produced SyntaxError in {rel_path}: {e}"
+                            )
+                            step_record["status"] = "syntax_error"
+                            step_record["error"] = str(e)
+                            new_content = file_cache[rel_path]  # reject edit
+
                     abs_path.write_text(new_content, encoding="utf-8")
                     file_cache[rel_path] = new_content
                     step_record["bytes"] = len(new_content)
@@ -869,9 +1312,13 @@ class LocalSWEBenchHarness:
                 elif action == "run-test":
                     test_selector = str(params.get("test", "")).strip()
                     if test_selector:
-                        command = [python_executable, "-m", "pytest", "-q", test_selector]
+                        command = self.build_step_test_command(
+                            instance=instance,
+                            test_selector=test_selector,
+                            python_executable=python_executable,
+                        )
                     else:
-                        command = list(default_test_command)
+                        command = default_test_command[:] if isinstance(default_test_command, list) else default_test_command
                     ok, output, returncode, installed_now = self.run_tests_with_dependency_fix(
                         instance_dir=instance_dir,
                         command=command,
@@ -951,6 +1398,8 @@ class LocalSWEBenchHarness:
             "instance_id": instance_id,
             "repo": instance.get("repo"),
             "base_commit": instance.get("base_commit"),
+            "environment_setup_commit": instance.get("environment_setup_commit"),
+            "version": instance.get("version"),
             "status": "error",
             "tests_passed": False,
             "changed_files": [],
@@ -1004,15 +1453,20 @@ class LocalSWEBenchHarness:
         python_executable = str(env_info.get("python_executable") or sys.executable)
 
         fail_to_pass = self.parse_test_field(instance.get("FAIL_TO_PASS"))
+        pass_to_pass = self.parse_test_field(instance.get("PASS_TO_PASS"))
         beliefs = (
             f"Repository: {instance.get('repo')}\n"
             f"Base commit: {instance.get('base_commit')}\n"
-            f"Known failing tests: {fail_to_pass[:25]}\n\n"
+            f"Environment setup commit: {instance.get('environment_setup_commit')}\n"
+            f"Version: {instance.get('version')}\n"
+            f"Known failing tests: {fail_to_pass[:25]}\n"
+            f"Regression tests to preserve: {pass_to_pass[:25]}\n\n"
             f"Repository file snapshot:\n{self._repo_snapshot(repo_dir)}"
         )
         desire = (
-            "Fix the issue and make failing tests pass.\n\n"
+            "Fix the issue and make failing tests pass without breaking regression tests.\n\n"
             f"Issue:\n{instance.get('problem_statement', '')}"
+            + (f"\n\nHints:\n{instance.get('hints_text', '')}" if instance.get("hints_text") else "")
         )
 
         try:
@@ -1029,11 +1483,14 @@ class LocalSWEBenchHarness:
             return result
 
         default_test_command = self.build_test_command(instance, python_executable=python_executable)
+        result["final_test_command"] = default_test_command
         auto_installed_packages: List[str] = []
         execution = self.execute_plan(
             plan=plan,
+            instance=instance,
             instance_dir=repo_dir,
-            issue_desc=instance.get("problem_statement", ""),
+            issue_desc=(instance.get("problem_statement", "") or "")
+            + (f"\n\nHints:\n{instance.get('hints_text', '')}" if instance.get("hints_text") else ""),
             default_test_command=default_test_command,
             python_executable=python_executable,
             test_timeout=test_timeout,
@@ -1053,7 +1510,6 @@ class LocalSWEBenchHarness:
                 result["error_category"] = "execution_error"
 
         final_test_command = default_test_command
-        result["final_test_command"] = final_test_command
         tests_passed, final_test_output, returncode, final_installed_now = self.run_tests_with_dependency_fix(
             instance_dir=repo_dir,
             command=final_test_command,

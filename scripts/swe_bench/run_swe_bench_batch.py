@@ -9,6 +9,7 @@ import os
 import sys
 import time
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
@@ -177,6 +178,12 @@ def parse_args() -> argparse.Namespace:
         help="Keep per-instance repository workspaces after execution.",
     )
     parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Number of parallel workers (default: 1 = sequential).",
+    )
+    parser.add_argument(
         "--dry_run",
         action="store_true",
         help="Resolve instance set and emit planned outputs without execution.",
@@ -225,61 +232,95 @@ def main() -> int:
     pending_ids = [instance_id for instance_id in all_ids if instance_id not in completed_ids]
     print(f"Running SWE-bench batch: total={len(all_ids)}, pending={len(pending_ids)}")
 
-    for idx, instance_id in enumerate(pending_ids, start=1):
-        print(f"[{idx}/{len(pending_ids)}] {instance_id}")
-        record: Dict[str, Any]
+    # Pre-load dataset so workers don't each download it
+    _ = harness.dataset
 
+    def _run_one(instance_id: str) -> Dict[str, Any]:
+        """Execute a single instance (called from main thread or worker)."""
         if args.dry_run:
-            record = {
+            return {
                 "instance_id": instance_id,
                 "status": "planned",
                 "tests_passed": False,
                 "error_category": None,
                 "durations_sec": {"total": 0.0},
             }
-        else:
-            try:
-                from bdi_llm.swe_bench.runner import evaluate_sample
-                instance_data = harness.get_instance(instance_id)
-                record = evaluate_sample(
-                    instance_data,
-                    mode=args.execution_mode,
-                    harness=harness,
-                    max_repair_attempts=args.max_repair_attempts,
-                    test_timeout=args.test_timeout,
-                    max_plan_steps=args.max_plan_steps,
-                    setup_timeout=args.setup_timeout,
-                    keep_workspace=args.keep_workspace,
-                )
-            except Exception as exc:
-                record = {
-                    "instance_id": instance_id,
-                    "status": "runner_error",
-                    "tests_passed": False,
-                    "error": str(exc),
-                    "error_category": "runner_error",
-                    "durations_sec": {"total": 0.0},
-                }
+        try:
+            from bdi_llm.swe_bench.runner import evaluate_sample
 
+            instance_data = harness.get_instance(instance_id)
+            return evaluate_sample(
+                instance_data,
+                mode=args.execution_mode,
+                harness=harness,
+                max_repair_attempts=args.max_repair_attempts,
+                test_timeout=args.test_timeout,
+                max_plan_steps=args.max_plan_steps,
+                setup_timeout=args.setup_timeout,
+                keep_workspace=args.keep_workspace,
+            )
+        except Exception as exc:
+            return {
+                "instance_id": instance_id,
+                "status": "runner_error",
+                "tests_passed": False,
+                "error": str(exc),
+                "error_category": "runner_error",
+                "durations_sec": {"total": 0.0},
+            }
+
+    def _save_record(record: Dict[str, Any]) -> None:
+        """Persist one result record + artifacts."""
         record["recorded_at"] = now_utc()
         state["results"].append(record)
 
-        instance_artifact = instances_dir / instance_id
+        iid = str(record.get("instance_id", "unknown"))
+        instance_artifact = instances_dir / iid
         instance_artifact.mkdir(parents=True, exist_ok=True)
         diff_text = str(record.pop("git_diff", "")) if "git_diff" in record else ""
         (instance_artifact / "metadata.json").write_text(
-            json.dumps(record, indent=2, ensure_ascii=True),
-            encoding="utf-8",
+            json.dumps(record, indent=2, ensure_ascii=True), encoding="utf-8",
         )
         (instance_artifact / "test_output_tail.log").write_text(
-            str(record.get("final_test_output_tail", "")),
-            encoding="utf-8",
+            str(record.get("final_test_output_tail", "")), encoding="utf-8",
         )
         (instance_artifact / "git.diff").write_text(diff_text, encoding="utf-8")
 
         if len(state["results"]) % args.checkpoint_every == 0:
             state["updated_at"] = now_utc()
             write_json_atomic(checkpoint_path, state)
+
+    workers = max(1, args.workers)
+
+    if workers <= 1:
+        # Sequential mode (original behaviour)
+        for idx, instance_id in enumerate(pending_ids, start=1):
+            print(f"[{idx}/{len(pending_ids)}] {instance_id}")
+            record = _run_one(instance_id)
+            _save_record(record)
+    else:
+        # Parallel mode
+        print(f"Running with {workers} parallel workers")
+        completed = 0
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {pool.submit(_run_one, iid): iid for iid in pending_ids}
+            for future in as_completed(futures):
+                instance_id = futures[future]
+                completed += 1
+                try:
+                    record = future.result()
+                except Exception as exc:
+                    record = {
+                        "instance_id": instance_id,
+                        "status": "runner_error",
+                        "tests_passed": False,
+                        "error": str(exc),
+                        "error_category": "runner_error",
+                        "durations_sec": {"total": 0.0},
+                    }
+                status = record.get("status", "?")
+                print(f"[{completed}/{len(pending_ids)}] {instance_id} -> {status}")
+                _save_record(record)
 
     state["updated_at"] = now_utc()
     write_json_atomic(checkpoint_path, state)

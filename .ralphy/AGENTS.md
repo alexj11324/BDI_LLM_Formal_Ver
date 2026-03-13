@@ -25,6 +25,16 @@ This file defines the specialized AI personas and roles for this project. Use th
 - **Proactiveness**: Suggest improvements, but follow the plan.
 - **Transparency**: Log all major decisions and file modifications.
 
+## 📦 Ralph Execution Bootstrap
+
+Before executing or evaluating stories for this project, always read these files in order:
+1. `.ralphy/prd.json` — canonical execution decomposition
+2. `.ralphy/handoff-note.md` — reuse vs rerun guidance
+3. `.ralphy/context-summary.json` — machine-readable current status
+
+If these files disagree with the older markdown PRD, prefer the `.ralphy/` execution files for current automation state.
+For markdown-only or packet-only stories, treat the criterion `Typecheck passes` as a non-blocking guard meaning: do not introduce code changes that break the repository; if no code is touched, unchanged repository state satisfies this criterion.
+
 ## 🛡️ Modification Guidelines
 
 - **Root Access**: Never modify system or sensitive files unless explicitly tasked.

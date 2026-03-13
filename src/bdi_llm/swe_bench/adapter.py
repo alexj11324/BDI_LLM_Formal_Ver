@@ -62,8 +62,13 @@ class SWEBenchTaskAdapter(TaskAdapter):
 
     MAX_SNAPSHOT_FILES = 250
 
-    def __init__(self, repo_snapshot: str | None = None) -> None:
+    def __init__(
+        self,
+        repo_snapshot: str | None = None,
+        mentioned_skeletons: str | None = None,
+    ) -> None:
         self._repo_snapshot = repo_snapshot or ""
+        self._mentioned_skeletons = mentioned_skeletons or ""
 
     def to_planning_task(self, raw_input: Any) -> PlanningTask:
         if not isinstance(raw_input, dict):
@@ -98,7 +103,11 @@ class SWEBenchTaskAdapter(TaskAdapter):
             f"Regression tests to preserve: {pass_to_pass_display}\n"
         )
         if self._repo_snapshot:
-            beliefs += f"\nRepository file snapshot:\n{self._repo_snapshot}"
+            beliefs += f"\nRepository structure:\n{self._repo_snapshot}"
+        if self._mentioned_skeletons:
+            beliefs += (
+                f"\n\nMentioned files skeleton:\n{self._mentioned_skeletons}"
+            )
 
         desire = (
             "Fix the issue and make failing tests pass without breaking "

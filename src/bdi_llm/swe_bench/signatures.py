@@ -10,12 +10,13 @@ from __future__ import annotations
 
 import dspy
 
-from ..schemas import BDIPlan
+# Re-export the BDI version from coding_planner
 from ..coding_planner import GeneratePlanCoding  # noqa: F401
 from ..planner.prompts import (
     _GRAPH_STRUCTURE_COMMON,
     _REMINDER,
 )
+from ..schemas import BDIPlan
 
 
 class GeneratePlanCodingBaseline(dspy.Signature):
@@ -26,7 +27,7 @@ class GeneratePlanCodingBaseline(dspy.Signature):
 
     CODING DOMAIN ACTIONS:
       read-file   : {"file": <path>}
-      edit-file   : {"file": <path>, "test": <test_id>}
+      edit-file   : {"file": <path>, "test": <test_id>, "target": <class_or_function_name>}
       run-test    : {"test": <test_id>}
       create-file : {"file": <path>}
 
@@ -34,6 +35,7 @@ class GeneratePlanCodingBaseline(dspy.Signature):
     1. read-file BEFORE edit-file.
     2. run-test AFTER edit-file.
     3. Minimise edits; do not break passing tests.
+    4. `target` should be the class or function name you intend to modify.
     """
 
     beliefs: str = dspy.InputField(
@@ -42,13 +44,16 @@ class GeneratePlanCodingBaseline(dspy.Signature):
     desire: str = dspy.InputField(
         desc="Goal: Fix the issue and make failing tests pass"
     )
+    root_cause_analysis: str = dspy.OutputField(
+        desc="What is the exact bug, which file/function, and what change?"
+    )
     plan: BDIPlan = dspy.OutputField(
         desc="Execution plan as a DAG of coding actions"
     )
 
 
 class RepairPlanCoding(dspy.Signature):
-    """You previously generated a coding plan that FAILED test verification.
+    f"""You previously generated a coding plan that FAILED test verification.
     The test runner found specific failures in your plan execution.
 
     Fix the plan by addressing EACH error reported by the test runner.
@@ -60,19 +65,20 @@ class RepairPlanCoding(dspy.Signature):
     4. Preserve all passing tests (regression safety).
     5. You may add new read-file/edit-file steps as needed.
 
-{graph_structure}
+{_GRAPH_STRUCTURE_COMMON}
 
     CODING DOMAIN ACTIONS:
       read-file   : {{"file": <path>}}
-      edit-file   : {{"file": <path>, "test": <test_id>}}
+      edit-file   : {{"file": <path>, "test": <test_id>, "target": <class_or_function_name>}}
       run-test    : {{"test": <test_id>}}
       create-file : {{"file": <path>}}
 
     Preconditions:
     - read-file BEFORE edit-file (you need the content)
     - run-test AFTER edit-file (verify the fix)
+    - `target` should be the class or function name you intend to modify
 
-{reminder}
+{_REMINDER}
     """
 
     beliefs: str = dspy.InputField(
@@ -103,10 +109,46 @@ class RepairPlanCoding(dspy.Signature):
         desc="Corrected plan fixing all test failures, as a SINGLE CONNECTED DAG"
     )
 
-    def __init__(self, *args, **kwargs):
-        # Format docstring with prompts at instantiation
-        self.__doc__ = self.__doc__.format(
-            graph_structure=_GRAPH_STRUCTURE_COMMON,
-            reminder=_REMINDER
-        )
-        super().__init__(*args, **kwargs)
+
+class RepairCodeChange(dspy.Signature):
+    """Your previous code edit caused test failures. You are given:
+    1. The original code snippet (before your edit).
+    2. A unified diff showing exactly what you changed.
+    3. The test failure output.
+
+    DIAGNOSIS PROTOCOL:
+    1. Read the test traceback — identify the exact assertion or exception.
+    2. Read your previous diff — identify which green (+) line caused it.
+    3. Explain the root cause in root_cause_analysis.
+    4. Only then generate the corrective search_block and replace_block.
+
+    The search_block must match the CURRENT file content (after your edit).
+    """
+
+    file_path: str = dspy.InputField(desc="Path of the file being repaired")
+    original_snippet: str = dspy.InputField(
+        desc="Original code of the target function/region before any edits"
+    )
+    previous_diff: str = dspy.InputField(
+        desc="Unified diff showing the exact changes you made that caused test failures"
+    )
+    issue_description: str = dspy.InputField(
+        desc="The GitHub issue / bug report"
+    )
+    test_feedback: str = dspy.InputField(
+        desc="Structured test failure output showing what went wrong"
+    )
+    repair_history: str = dspy.InputField(
+        desc="Summary of previous repair attempts and their outcomes",
+        default="",
+    )
+
+    root_cause_analysis: str = dspy.OutputField(
+        desc="Which specific line in your previous diff caused the test failure, and why?"
+    )
+    search_block: str = dspy.OutputField(
+        desc="The exact code block to find in current_content (must match exactly)"
+    )
+    replace_block: str = dspy.OutputField(
+        desc="The replacement code block that fixes the test failures"
+    )

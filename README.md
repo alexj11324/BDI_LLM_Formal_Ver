@@ -208,7 +208,7 @@ TravelPlanner is the first official non-PDDL benchmark on the new planner mainli
 | Metric | `baseline` | `bdi (v3)` | `bdi-repair (v4 reviewer)` |
 | --- | --- | --- | --- |
 | Delivery Rate | 100.0% | 100.0% | 100.0% |
-| Commonsense Pass Rate | 37.8% | 81.1% | **91.7%** |
+| Commonsense Pass Rate | 37.8% | 81.1% | **83.9%** |
 | Hard Constraint Pass Rate | 59.4% | 68.3% | **79.4%** |
 | **Final Pass Rate** | 21.1% (38/180) | 57.8% (104/180) | **70.6% (127/180)** |
 
