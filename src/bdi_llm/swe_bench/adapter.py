@@ -12,7 +12,27 @@ from ..planning_task import PlanningTask, TaskAdapter
 
 
 def _parse_test_field(raw: Any) -> list[str]:
-    """Parse FAIL_TO_PASS / PASS_TO_PASS into a flat list of test selectors."""
+    """Parse FAIL_TO_PASS / PASS_TO_PASS into a flat list of test selectors.
+
+    Args:
+        raw: Test field value (None, list, JSON string, or multiline string).
+
+    Returns:
+        List of test selector strings (e.g., ["tests/foo.py::test_bar"]).
+
+    Examples:
+        >>> _parse_test_field(None)
+        []
+
+        >>> _parse_test_field('["tests/a.py::test_x", "tests/b.py::test_y"]')
+        ['tests/a.py::test_x', 'tests/b.py::test_y']
+
+        >>> _parse_test_field(["tests/c.py::test_z"])
+        ['tests/c.py::test_z']
+
+        >>> _parse_test_field("tests/d.py::test_1\\ntests/e.py::test_2")
+        ['tests/d.py::test_1', 'tests/e.py::test_2']
+    """
     if raw is None:
         return []
     if isinstance(raw, list):
@@ -66,12 +86,21 @@ class SWEBenchTaskAdapter(TaskAdapter):
         fail_to_pass = _parse_test_field(raw_input.get("FAIL_TO_PASS"))
         pass_to_pass = _parse_test_field(raw_input.get("PASS_TO_PASS"))
 
+        # Truncate long test lists and add ellipsis indicator
+        fail_to_pass_display = fail_to_pass[:25]
+        if len(fail_to_pass) > 25:
+            fail_to_pass_display.append(f"... ({len(fail_to_pass) - 25} more tests)")
+
+        pass_to_pass_display = pass_to_pass[:25]
+        if len(pass_to_pass) > 25:
+            pass_to_pass_display.append(f"... ({len(pass_to_pass) - 25} more tests)")
+
         beliefs = (
             f"Repository: {repo}\n"
             f"Base commit: {base_commit}\n"
             f"Version: {version}\n"
-            f"Known failing tests: {fail_to_pass[:25]}\n"
-            f"Regression tests to preserve: {pass_to_pass[:25]}\n"
+            f"Known failing tests: {fail_to_pass_display}\n"
+            f"Regression tests to preserve: {pass_to_pass_display}\n"
         )
         if self._repo_snapshot:
             beliefs += f"\nRepository structure:\n{self._repo_snapshot}"
