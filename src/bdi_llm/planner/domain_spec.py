@@ -248,35 +248,39 @@ def _resolve_planbench_prompt_file(domain_name: str) -> Path | None:
 
 def _decode_planbench_symbol(token: str, config: dict[str, Any] | None) -> str:
     """Decode compact PlanBench object aliases like ``o8`` to ``object_8``."""
-    if not config:
-        return token
+    if config:
+        encoded = config.get("encoded_objects") or {}
+        for prefix, template in encoded.items():
+            if not isinstance(prefix, str) or not isinstance(template, str):
+                continue
+            match = re.fullmatch(rf"{re.escape(prefix)}(\d+)", token)
+            if match:
+                return template.format(match.group(1))
 
-    encoded = config.get("encoded_objects") or {}
-    for prefix, template in encoded.items():
-        if not isinstance(prefix, str) or not isinstance(template, str):
-            continue
-        match = re.fullmatch(rf"{re.escape(prefix)}(\d+)", token)
-        if match:
-            return template.format(match.group(1))
+    fallback_match = re.fullmatch(r"o(\d+)", token)
+    if fallback_match:
+        return f"object_{fallback_match.group(1)}"
     return token
 
 
 def _encode_planbench_symbol(token: str, config: dict[str, Any] | None) -> str:
     """Encode prompt-friendly symbols like ``object_8`` back to ``o8``."""
-    if not config:
-        return token
+    if config:
+        encoded = config.get("encoded_objects") or {}
+        for prefix, template in encoded.items():
+            if not isinstance(prefix, str) or not isinstance(template, str):
+                continue
+            if "{}" in template:
+                pattern = re.escape(template).replace(re.escape("{}"), r"(\d+)")
+                match = re.fullmatch(pattern, token)
+                if match:
+                    return f"{prefix}{match.group(1)}"
+            elif token == template:
+                return prefix
 
-    encoded = config.get("encoded_objects") or {}
-    for prefix, template in encoded.items():
-        if not isinstance(prefix, str) or not isinstance(template, str):
-            continue
-        if "{}" in template:
-            pattern = re.escape(template).replace(re.escape("{}"), r"(\d+)")
-            match = re.fullmatch(pattern, token)
-            if match:
-                return f"{prefix}{match.group(1)}"
-        elif token == template:
-            return prefix
+    fallback_match = re.fullmatch(r"object_(\d+)", token)
+    if fallback_match:
+        return f"o{fallback_match.group(1)}"
     return token
 
 
