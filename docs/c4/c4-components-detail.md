@@ -1,103 +1,91 @@
-# C4 Component: BDI Engine
+# C4 Code-Level Details — BDI-LLM Formal Verification (PNSV)
 
-## Overview
-| Property | Value |
-|----------|-------|
-| **Name** | BDI Engine |
-| **Type** | Core Library |
-| **Technology** | Python, Pydantic V2 |
-| **Location** | [workspaces/pnsv_workspace/src/core/bdi_engine.py](../workspaces/pnsv_workspace/src/core/bdi_engine.py) |
+## src/bdi_llm/planner/ — Core Planning Engine
 
-## Purpose
-Core orchestrator implementing the BDI (Belief-Desire-Intention) reasoning loop. Receives a natural language goal, generates an IntentionDAG via DSPy, verifies it through the Verification Bus, and iteratively repairs invalid plans. Manages BeliefState lifecycle with immutable verification (deep copies).
+### bdi_engine.py (~800 lines)
 
-## Key Functions
-- `generate_plan(goal, domain, context)` → IntentionDAG
-- `verify_plan(dag, domain)` → VerificationResult
-- `repair_plan(dag, errors, domain)` → IntentionDAG
-- `run_bdi_loop(goal, domain, max_repairs=3)` → VerifiedPlan | Error
-- Epistemic Deadlock detection and handling
+| Function/Class | Signature | Purpose |
+|----------------|-----------|---------|
+| `BDIPlanner` | `class BDIPlanner(domain_spec: DomainSpec)` | Main BDI planner — orchestrates goal decomposition and DAG construction |
+| `BDIPlanner.generate` | `(task: PlanningTask) -> BDIPlan` | Generate a complete IntentionDAG from a planning task |
+| `BDIPlanner._decompose_goal` | `(goal: str) -> list[SubGoal]` | Decompose high-level goal into sub-goals via DSPy |
+| `BDIPlanner._generate_actions` | `(subgoal: SubGoal) -> list[ActionNode]` | Generate concrete actions for each sub-goal |
 
-## Dependencies
-- **Internal**: Verification Bus, Schemas, DSPy Signatures
-- **External**: None (zero domain leakage enforced)
+### domain_spec.py (~650 lines)
 
----
+| Function/Class | Signature | Purpose |
+|----------------|-----------|---------|
+| `DomainSpec` | `@dataclass` | Pluggable domain configuration container |
+| `DomainSpec.from_pddl` | `(pddl_text: str) -> DomainSpec` | Construct domain spec from raw PDDL text |
+| `extract_domain_name_from_pddl` | `(pddl_text: str) -> str \| None` | Parse domain name from PDDL header |
+| `_parse_typed_parameters` | `(raw: str) -> list[tuple[str,str]]` | Parse PDDL parameter declarations |
 
-# C4 Component: Verification Bus
+### signatures.py (~1200 lines)
 
-## Overview
-| Property | Value |
-|----------|-------|
-| **Name** | Verification Bus |
-| **Type** | Core Library |
-| **Technology** | Python |
-| **Location** | [workspaces/pnsv_workspace/src/core/verification_bus.py](../workspaces/pnsv_workspace/src/core/verification_bus.py) |
-
-## Purpose
-Routes IntentionDAGs through a 3-layer verification pipeline. Layer 1 (Structural) runs domain-agnostic checks (empty graph, cycles, disconnected components). Layers 2-3 delegate to the registered BaseDomainVerifier (symbolic + physics). Short-circuits on first failure.
-
-## Interfaces
-- `register_verifier(domain: str, verifier: BaseDomainVerifier)`
-- `verify(dag: IntentionDAG, domain: str) → VerificationResult`
-
-## Dependencies
-- **Internal**: Schemas (VerificationResult, VerificationLayer)
-- **External**: None
+All DSPy Signatures for plan generation, decomposition, and repair. Contains `GenerateBDIPlan`, `DecomposeGoal`, `GenerateActions`, `RepairPlan`, and domain-specific variants.
 
 ---
 
-# C4 Component: Domain Plugins
+## src/bdi_llm/ — Verification & Repair
 
-## Overview
-| Property | Value |
-|----------|-------|
-| **Name** | Domain Plugins |
-| **Type** | Plugin Library |
-| **Technology** | Python, PDDL, VAL |
-| **Location** | [workspaces/pnsv_workspace/src/plugins/](../workspaces/pnsv_workspace/src/plugins/) |
+### symbolic_verifier.py (~550 lines)
 
-## Sub-components
+| Function/Class | Signature | Purpose |
+|----------------|-----------|---------|
+| `PDDLSymbolicVerifier` | `class` | Layer 2 symbolic verification via VAL |
+| `PDDLSymbolicVerifier.verify` | `(plan, domain_pddl, problem_pddl) -> VerificationResult` | Validate PDDL plan against domain constraints |
+| `IntegratedVerifier` | `class` | Compose structural + symbolic + domain checks |
 
-### PlanBench Verifier
-- **File**: `planbench_verifier.py`
-- **Domains**: Blocksworld, Logistics, Depots
-- **Layers**: VAL symbolic verification + domain physics simulation
-- **External dep**: VAL binary (subprocess)
+### plan_repair.py (~450 lines)
 
-### SWE-bench Verifier
-- **File**: `swe_verifier.py`
-- **Domains**: Software engineering tasks
-- **Actions**: read-file → edit-file → run-test
-- **Verification**: File dependency checks, action sequencing
+| Function/Class | Signature | Purpose |
+|----------------|-----------|---------|
+| `PlanRepairEngine` | `class` | Auto-repair engine with iterative error feedback |
+| `PlanRepairEngine.repair` | `(plan, errors, max_iter=3) -> BDIPlan` | Repair invalid plan using verification error traces |
 
-### Shared DAG Utilities
-- **File**: `_dag_utils.py`
-- **Functions**: `topological_sort()`, cycle detection, graph validation
+### planning_task.py (~430 lines)
+
+| Function/Class | Signature | Purpose |
+|----------------|-----------|---------|
+| `PlanningTask` | `@dataclass` | Normalized task representation across all domains |
+| `PDDLTaskAdapter` | `class` | Convert PDDL problem/domain to PlanningTask |
+| `TravelPlannerTaskAdapter` | `class` | Convert TravelPlanner query to PlanningTask |
 
 ---
 
-# C4 Component: DSPy Pipeline
+## src/bdi_llm/travelplanner/ — TravelPlanner Domain
 
-## Overview
-| Property | Value |
-|----------|-------|
-| **Name** | DSPy Pipeline |
-| **Type** | LLM Integration Layer |
-| **Technology** | Python, DSPy |
-| **Location** | [workspaces/pnsv_workspace/src/dspy_pipeline/](../workspaces/pnsv_workspace/src/dspy_pipeline/) |
+### engine.py (~300 lines)
+BDI itinerary generation engine with v3/v4 prompt variants.
 
-## Sub-components
+### runner.py (~500 lines)
+Evaluation runner with concurrent workers, checkpointing, and repair integration.
 
-### Signatures (`signatures.py`)
-DSPy ChainOfThought signature definitions for plan generation and repair.
+### review.py (~700 lines)
+Stage 3 reviewer with patch-scope repair — evaluates itinerary quality and generates localized fixes.
 
-### Teacher Configuration (`teacher_config.py`)
-Multi-provider LLM configuration. Manages API keys, model selection (GLM-5, GPT-5, Gemini), and provider routing.
+### official.py (~200 lines)
+Integration bridge to the official TravelPlanner evaluator scripts.
 
-### R1 Distillation Formatter (`r1_formatter.py`)
-Intercepts successful BDI reasoning loops and serializes into strict `<think>...</think><answer>...</answer>` format for student model fine-tuning.
+---
 
-## Dependencies
-- **Internal**: Schemas
-- **External**: LLM Provider APIs (HTTP/REST)
+## src/bdi_llm/dynamic_replanner/ — Dynamic Replanning
+
+### replanner.py (~160 lines)
+Classical BDI replan loop: monitor execution → detect failure → regenerate sub-plan.
+
+### belief_base.py (~130 lines)
+Belief state management — tracks world state and detects state changes.
+
+### executor.py (~90 lines)
+Plan execution with failure detection and rollback capability.
+
+---
+
+## src/interfaces/ — External Interfaces
+
+### mcp_server.py (~180 lines)
+MCP server exposing `generate_plan`, `verify_plan`, `execute_verified_plan` tools via stdio transport.
+
+### cli.py (~60 lines)
+Interactive CLI entry point with argparse-based argument parsing.

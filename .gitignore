@@ -130,3 +130,27 @@ firebase-debug.log
 
 # Evaluation logs
 logs/
+
+# Large external repos
+AI-Scientist-v2/
+
+# Additional agent tool metadata
+.golutra/
+.ralphy/context-summary.json
+.ralphy/handoff-note.md
+.ralphy/prd.json
+
+# Lock files
+uv.lock
+
+# Build artifacts
+bdi_llm_formal_ver.egg-info/
+
+# Scratch / ephemeral
+swe_bench_workspace/
+progress.txt
+tasks/
+docs/sessions/
+docs/tasks/
+paper_icml2026/
+configs/setup_state.json
