@@ -347,11 +347,18 @@ class SWEBenchGenerator:
         if search_block in current:
             return current.replace(search_block, replace_block, 1)
 
-        # Tier 2: strip trailing whitespace per line
+        # Tier 2: strip trailing whitespace per line, but apply to original
         search_stripped = "\n".join(l.rstrip() for l in search_block.splitlines())
         current_stripped = "\n".join(l.rstrip() for l in current.splitlines())
         if search_stripped in current_stripped:
-            return current_stripped.replace(search_stripped, replace_block, 1)
+            idx = current_stripped.index(search_stripped)
+            # Map position back to original content by counting lines
+            pre_lines = current_stripped[:idx].count("\n")
+            orig_lines = current.splitlines(keepends=True)
+            match_len = len(search_stripped.splitlines())
+            before = "".join(orig_lines[:pre_lines])
+            after = "".join(orig_lines[pre_lines + match_len:])
+            return before + replace_block + after
 
         # Tier 3: ignore blank line differences
         search_no_blank = "\n".join(
@@ -381,8 +388,10 @@ class SWEBenchGenerator:
                         match_end = ci
                         break
             if match_start is not None:
-                matched_block = "\n".join(current_lines[match_start:match_end])
-                return current_stripped.replace(matched_block, replace_block, 1)
+                orig_lines = current.splitlines(keepends=True)
+                before = "".join(orig_lines[:match_start])
+                after = "".join(orig_lines[match_end:])
+                return before + replace_block + after
 
         # Tier 4: difflib fuzzy matching
         search_lines_t4 = search_block.splitlines()

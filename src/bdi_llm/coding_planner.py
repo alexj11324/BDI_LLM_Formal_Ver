@@ -81,7 +81,7 @@ class ImplementCodeChange(dspy.Signature):
 
     You will be given:
     1. The File Path and its Current Content.
-    2. The Goal (Github Issue).
+    2. The Goal (GitHub Issue).
     3. The specific Plan Step description.
 
     You must return a SEARCH/REPLACE edit. The search_block must match the

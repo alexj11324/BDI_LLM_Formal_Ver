@@ -121,5 +121,5 @@ C4Container
 
 | Container | Dockerfile | Deployment |
 |-----------|-----------|------------|
-| MCP Server | [`Dockerfile`](file:///Users/alexjiang/Desktop/BDI_LLM_Formal_Ver/Dockerfile) | `docker build -t bdi-verifier . && docker run -i --rm bdi-verifier` |
+| MCP Server | [`Dockerfile`](../../Dockerfile) | `docker build -t bdi-verifier . && docker run -i --rm bdi-verifier` |
 | Evaluation Harness | N/A (runs directly) | `python scripts/evaluation/run_*.py` on OCI servers |
