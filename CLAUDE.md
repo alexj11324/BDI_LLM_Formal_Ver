@@ -4,10 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Runtime scope
 
-The active runtime is the `src/bdi_llm/` package, the entrypoints in `src/interfaces/`, and the current runners in `scripts/evaluation/`, `scripts/replanning/`, and `scripts/swe_bench/`.
+The active runtime is the `src/bdi_llm/` package, the entrypoints in `src/interfaces/`, and the current runners in `scripts/evaluation/` and `scripts/replanning/`.
 
 Do **not** treat these as the mainline runtime unless a task explicitly says so:
 - `scripts/evaluation/_legacy/` — historical runners kept for reference
+- `scripts/swe_bench/` — SWE-bench subsystem (see "Next steps" below; not current focus)
 - `workspaces/pnsv_workspace/` — architecture/reference workspace, not the default import path used by current runners
 
 ## Setup and common commands
@@ -98,12 +99,6 @@ TravelPlanner requires:
 - the official checkout at `workspaces/TravelPlanner_official/` (or `TRAVELPLANNER_HOME` / `--travelplanner_home`)
 - the official database files under that checkout
 - access to the Hugging Face `osunlp/TravelPlanner` dataset
-
-### SWE-bench
-
-```bash
-python scripts/swe_bench/run_swe_bench_batch.py --limit 5 --output_dir runs/swe_bench_results
-```
 
 ## Configuration and runtime assumptions
 
@@ -225,10 +220,13 @@ Repair is split into two layers:
 `TRAVELPLANNER_BDI_PROMPT_VERSION` selects the BDI prompt stack in `travelplanner/engine.py`.
 Current code defaults to `v3`; `v4` remains available as an experimental path.
 
-### 8. Other active subsystems
+### 8. SWE-bench (next step — not current focus)
+
+SWE-bench code lives under `src/bdi_llm/swe_bench/` and `scripts/swe_bench/`. A full 500-instance SWE-bench Verified run scored **34/500 (6.8%)** with GPT-5(low) on 2026-03-11. Results concentrated in small repos (pytest 47%, pylint 50%, astropy 36%) while large repos (django 0/231, sympy 0/75) failed entirely due to search_block matching and environment setup issues. See `runs/swe_bench_full_verified/` on the GCP instance `swe-bench-runner` for detailed results. Further SWE-bench optimization is deferred to future work.
+
+### 9. Other active subsystems
 
 - `scripts/replanning/run_dynamic_replanning.py` + `src/bdi_llm/dynamic_replanner/` — execution-aware replanning after grounded-action failure
-- `scripts/swe_bench/` + `src/bdi_llm/coding_planner.py` — SWE-bench / coding-domain planner path
 
 ## Data and artifact conventions
 
@@ -236,6 +234,13 @@ Current code defaults to `v3`; `v4` remains available as an experimental path.
 - `workspaces/TravelPlanner_official/` — external official TravelPlanner checkout used for evaluation
 - `runs/` — mutable checkpoints and scratch outputs
 - `artifacts/paper_eval_20260213/` — frozen paper evidence snapshot; do not edit or treat mutable reruns as replacements for paper numbers
+
+## Project automation and docs (non-runtime)
+
+- `.ralphy/` + `scripts/ralph/` — Ralph autonomous agent executor (PRD-driven task decomposition with quality gates)
+- `paper_icml2026/` — ICML paper artifacts (figures, sections, compiled paper)
+- `docs/conductor/` — documentation hub (product, workflow, tech stack, tracks)
+- `docs/c4/` — C4 architecture diagrams (context, container, component)
 
 ## Known repo gotcha
 

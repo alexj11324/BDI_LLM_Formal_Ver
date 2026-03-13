@@ -1,32 +1,22 @@
-# PNSV Technical Reference Manual
+# Technical Reference — BDI-LLM Formal Verification (PNSV)
 
-**BDI-LLM Formal Verification Framework**  
-Version 2.0 | March 2026
-
----
-
-## Table of Contents
-
-1. [Executive Summary](#1-executive-summary)
-2. [Architecture Overview](#2-architecture-overview)
-3. [Design Decisions](#3-design-decisions)
-4. [Core Components](#4-core-components)
-5. [Data Models](#5-data-models)
-6. [Integration Points](#6-integration-points)
-7. [Deployment Architecture](#7-deployment-architecture)
-8. [Performance & Benchmarks](#8-performance--benchmarks)
-9. [Security Model](#9-security-model)
-10. [Appendices](#10-appendices)
+> Comprehensive technical manual for the PNSV framework.
+> Version: March 2026 | Audience: Developers, Architects, Researchers
 
 ---
 
 ## 1. Executive Summary
 
-PNSV (Pluggable Neuro-Symbolic Verification) is a neuro-symbolic planning framework that bridges the gap between neural LLM generation and symbolic formal verification. Given a natural language goal, it generates a structured BDI plan as a Directed Acyclic Graph (IntentionDAG), then validates the plan through a 3-layer verification pipeline: Structural → Symbolic (VAL) → Domain Physics. Invalid plans are automatically repaired using verifier feedback in an iterative loop (up to 3 attempts), implementing the classical BDI plan-verify-repair closed loop.
+PNSV (Pluggable Neuro-Symbolic Verification) is a neuro-symbolic planning framework that wraps LLM-based plan generation in a formal verification loop following the BDI (Belief-Desire-Intention) cognitive architecture. Given a natural-language goal and optional domain specification, the system:
 
-**Key metrics**: 99.4-99.8% accuracy on PlanBench (Gemini teacher), 90.8% on FULL_VERIFIED mode (GPT-5). The verification overhead is ~1% compared to naive generation — provable correctness at minimal cost. The auto-repair loop further elevates correctness by recovering failed plans using structured verifier feedback.
+1. **Generates** structured intention DAGs via DSPy Chain-of-Thought prompting
+2. **Verifies** plans through 3 composable layers (structural → symbolic → domain physics)
+3. **Auto-repairs** failed plans by feeding verification errors back into the generator (up to 3 iterations)
+4. **Exposes** the loop as an MCP server for AI agent integration
 
-The system supports multiple planning domains (Blocksworld, Logistics, Depots, SWE-bench) via a polymorphic verification bus, generates R1-compatible training data for student model distillation, and supports dynamic replanning for multi-episode execution scenarios.
+**Key Results**:
+- PlanBench: 100% accuracy across 5 PDDL domains with BDI+Repair
+- TravelPlanner: 70.6% final pass rate (validation), 64.7% (official test leaderboard) — up from 21.1% baseline
 
 ---
 
@@ -34,426 +24,305 @@ The system supports multiple planning domains (Blocksworld, Logistics, Depots, S
 
 ### System Boundaries
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     PNSV Framework                          │
-│                                                             │
-│  ┌──────────┐   ┌──────────────┐   ┌─────────────────────┐ │
-│  │ DSPy     │──▶│ BDI Engine   │──▶│ Verification Bus    │ │
-│  │ Planner  │   │ (Orchestrator)│   │ (3-Layer Pipeline)  │ │
-│  └──────────┘   └──────┬───────┘   └───────┬─────────────┘ │
-│                        │                    │               │
-│                   ┌────▼────┐         ┌─────▼──────┐       │
-│                   │ Repair  │         │ Domain     │       │
-│                   │ Engine  │◀────────│ Plugins    │       │
-│                   └─────────┘         └────────────┘       │
-│                                                             │
-│  ┌──────────┐   ┌──────────────┐   ┌─────────────────────┐ │
-│  │ MCP      │   │ Evaluation   │   │ R1 Distillation     │ │
-│  │ Server   │   │ Pipeline     │   │ Formatter           │ │
-│  └──────────┘   └──────────────┘   └─────────────────────┘ │
-└─────────────────────────────────────────────────────────────┘
-        │                │                      │
-        ▼                ▼                      ▼
-   AI Agents      PlanBench Data         Student Models
-   (MCP)          (PDDL files)         (DeepSeek-R1 etc.)
+PNSV operates as a stateless plan-verify-repair pipeline. It receives a `PlanningTask` (normalized input), generates a `BDIPlan` (intention DAG), verifies it, and either returns the verified plan or invokes the repair engine.
+
+### Core Components
+
+```mermaid
+graph LR
+    A["PlanningTask"] --> B["BDIPlanner"]
+    B --> C["BDIPlan (IntentionDAG)"]
+    C --> D["PlanVerifier (Layer 1)"]
+    D --> E["PDDLSymbolicVerifier (Layer 2)"]
+    E --> F["DomainPhysicsSimulator (Layer 3)"]
+    F -->|pass| G["Verified Plan"]
+    F -->|fail| H["PlanRepairEngine"]
+    H --> B
 ```
 
-### Key Interactions
+### Data Flow
 
-1. **Goal → Plan**: DSPy ChainOfThought generates IntentionDAG from natural language
-2. **Plan → Verify**: Verification Bus routes through Structural → Symbolic → Physics layers
-3. **Verify → Repair**: Failed verification produces error feedback for auto-repair (up to 3 attempts)
-4. **Success → Distill**: Successful verify-repair loops serialized to `<think>` format
+1. **Input normalization**: Domain-specific adapters (`PDDLTaskAdapter`, `TravelPlannerTaskAdapter`) convert raw benchmark data into `PlanningTask`
+2. **Plan generation**: `BDIPlanner` decomposes the goal into sub-goals, generates actions, and constructs an `IntentionDAG`
+3. **Verification cascade**: Plans pass through structural → symbolic → domain-specific checks
+4. **Repair loop**: Failed plans receive structured error feedback and are regenerated (max 3 iterations)
+5. **Output**: Verified `BDIPlan` with full reasoning trace
 
-### Dual Implementation
+### Key Directories
 
-The codebase contains two parallel implementations:
-
-| Layer | Location | Purpose |
-|-------|----------|---------|
-| **PNSV (new)** | `workspaces/pnsv_workspace/src/` | Domain-agnostic, plugin-based, designed for extensibility |
-| **Legacy** | `src/bdi_llm/` | Full-featured, battle-tested, used for production evaluations |
-
-Both share the same 3-layer verification philosophy. The legacy layer contains the complete planner (`planner.py`, 77K+ lines) with multi-provider support, checkpoint/resume, and parallel execution.
+| Directory | Purpose |
+|-----------|---------|
+| `src/bdi_llm/planner/` | Core BDI engine, DSPy signatures, domain specs |
+| `src/bdi_llm/travelplanner/` | TravelPlanner domain adapter and evaluator |
+| `src/bdi_llm/dynamic_replanner/` | Runtime replan-on-failure loop |
+| `src/bdi_llm/swe_bench/` | SWE-bench code repair integration |
+| `src/interfaces/` | MCP server and CLI entry points |
+| `scripts/evaluation/` | Benchmark evaluation scripts |
+| `tests/` | Unit, integration, and smoke tests |
 
 ---
 
 ## 3. Design Decisions
 
-### 3.1 Zero Domain Leakage (ADR-001)
+### Why BDI over Raw LLM Prompting?
 
-**Context**: The BDI engine must support arbitrary planning domains without modification.
+Raw LLM prompting produces flat action sequences that frequently hallucinate invalid steps. The BDI scaffold forces hierarchical decomposition (Beliefs → Desires → Intentions) and provides natural attachment points for formal verification.
 
-**Decision**: `bdi_engine.py` NEVER imports domain-specific libraries (e.g., `pddl`, `ast`, `pytest`). It only knows about generic dicts, Pydantic DAGs, and the `BaseDomainVerifier` interface.
+### Why DSPy over LangChain?
 
-**Consequence**: New domains are added by implementing `BaseDomainVerifier` in `src/plugins/` — zero changes to the core engine.
+DSPy provides **optimizable, version-controlled signatures** rather than string templates. This enables systematic prompt optimization via DSPy `BootstrapFewShot` and `MIPROv2`, and keeps prompts type-safe via Pydantic.
 
-### 3.2 State Immutability (ADR-002)
+### Why VAL over Z3 for PDDL Verification?
 
-**Context**: Verifiers may mutate state during analysis, which could corrupt the canonical BeliefState.
+VAL is the classical planning community's standard validator. Using it ensures compatibility with existing PDDL benchmarks and makes results directly comparable with planning literature. Z3 is available but used primarily for domain-specific physics constraints.
 
-**Decision**: Verifiers always receive `copy.deepcopy(belief_state)`. The canonical state is only mutated when `verification_result.is_valid == True`.
+### Why MCP over REST API?
 
-**Consequence**: Failed verification attempts leave no side effects on the system state.
+Model Context Protocol (MCP) enables direct integration with AI agents (Claude Code, Cursor) without building and maintaining a web server. The stdio transport is lightweight and requires no authentication infrastructure.
 
-### 3.3 Strategy Pattern for Domains (ADR-003)
+### Why Pluggable Domain Specs?
 
-**Context**: Different domains have fundamentally different verification logic.
-
-**Decision**: All domain-specific logic resides in `src/plugins/`. The core engine interacts with plugins exclusively via dependency injection through `BaseDomainVerifier`.
-
-**Consequence**: PlanBench uses VAL + physics simulation; SWE-bench uses file dependency + action sequencing — same engine, different strategies.
-
-### 3.4 Pydantic V2 for All Schemas (ADR-004)
-
-**Context**: Need robust serialization and validation for LLM-generated structures.
-
-**Decision**: All schemas use Pydantic V2 `BaseModel` with strict type validation.
-
-**Consequence**: Malformed LLM outputs are caught during deserialization, providing clear error messages for repair.
-
-### 3.5 Robust JSON Extraction (ADR-005)
-
-**Context**: LLM outputs often contain markdown formatting, extra text, or malformed JSON.
-
-**Decision**: Implement regex-based extraction (from first `{` to last `}`) with `json.loads` fallback.
-
-**Consequence**: Tolerates noisy LLM outputs while maintaining structured data integrity.
+Different domains (blocksworld, logistics, TravelPlanner, SWE-bench) have fundamentally different action schemas, verification criteria, and few-shot examples. `DomainSpec` encapsulates these differences so a single `BDIPlanner` class works across all domains.
 
 ---
 
 ## 4. Core Components
 
-### 4.1 BDI Engine
+### 4.1 BDI Engine (`src/bdi_llm/planner/bdi_engine.py`)
 
-**File**: `workspaces/pnsv_workspace/src/core/bdi_engine.py` (24K)
+The central orchestrator. Takes a `PlanningTask`, decomposes the goal through DSPy signatures, and builds an `IntentionDAG` with `ActionNode`s carrying PDDL-compatible preconditions and effects.
 
-The orchestrator implementing the Belief-Desire-Intention reasoning loop:
+**Key methods**:
+- `BDIPlanner.__init__(domain_spec: DomainSpec)` — configure domain-specific behavior
+- `BDIPlanner.generate(task: PlanningTask) -> BDIPlan` — full generation pipeline
+- `BDIPlanner._decompose_goal()` — hierarchical goal decomposition
+- `BDIPlanner._generate_actions()` — concrete action generation per sub-goal
 
-```python
-# Simplified flow
-def run_bdi_loop(goal: str, domain: str) -> VerifiedPlan:
-    belief_state = BeliefState(goal=goal)
-    for attempt in range(max_repairs + 1):
-        dag = dspy_planner.generate(belief_state)           # Desire → Intention
-        result = verification_bus.verify(dag, domain)       # Verify
-        if result.is_valid:
-            return VerifiedPlan(dag=dag, metadata=result)
-        belief_state = repair(belief_state, result.errors)  # Repair
-    raise EpistemicDeadlock(...)
-```
+### 4.2 Domain Spec (`src/bdi_llm/planner/domain_spec.py`)
 
-Key behaviors:
-- **Epistemic Deadlock**: After 3 failed repairs, raises exception with accumulated error history
-- **Deep Copy**: `verify()` operates on `copy.deepcopy(belief_state)` — canonical state untouched
-- **DAG Initialization**: Uses `None` (not `{}`) to distinguish "no DAG" from "empty DAG"
+Pluggable configuration container that defines:
+- Action types and required parameters per domain
+- DSPy Signature selection and few-shot demos
+- Optional PDDL domain/problem context
+- Domain-specific validation rules
 
-### 4.2 Verification Bus
+**Built-in specs**: blocksworld, logistics, depots, TravelPlanner, SWE-bench. Custom domains via `DomainSpec.from_pddl(pddl_text)`.
 
-**File**: `workspaces/pnsv_workspace/src/core/verification_bus.py` (3.2K)
+### 4.3 DSPy Signatures (`src/bdi_llm/planner/signatures.py`)
 
-3-layer routing pipeline:
+All prompting logic lives in typed DSPy Signatures (40KB, ~1200 lines). Key signatures:
+- `GenerateBDIPlan` — end-to-end plan generation
+- `DecomposeGoal` — hierarchical goal decomposition
+- `GenerateActions` — action generation per sub-goal
+- `RepairPlan` — plan repair from error feedback
 
-| Layer | Type | What It Checks |
-|-------|------|-----------------|
-| 1. Structural | Domain-agnostic | Empty graph, cycles, disconnected components (hard/soft) |
-| 2. Symbolic | Domain-specific | PDDL preconditions/effects via VAL |
-| 3. Physics | Domain-specific | Domain-specific state simulation (e.g., clear/hand constraints) |
+### 4.4 Verification Pipeline
 
-**Short-circuit**: Stops on first hard failure. Soft warnings (e.g., disconnected components) are reported but don't block.
+| Layer | File | Input | Output | Checks |
+|-------|------|-------|--------|--------|
+| 1 | `verifier.py` | `BDIPlan` | `VerificationResult` | DAG invariants: empty, cycles, connectivity |
+| 2 | `symbolic_verifier.py` | `BDIPlan` + PDDL | `VerificationResult` | Precondition/effect validity via VAL |
+| 3 | Domain-specific | `BDIPlan` + state | `VerificationResult` | Physics simulation (e.g., stack height, budget) |
 
-### 4.3 PlanBench Verifier
+### 4.5 Plan Repair Engine (`src/bdi_llm/plan_repair.py`)
 
-**File**: `workspaces/pnsv_workspace/src/plugins/planbench_verifier.py` (10.3K)
+Intercepts `VerificationResult` failures, extracts structured error messages, and feeds them back to the `BDIPlanner` for re-generation. Key features:
+- Up to 3 repair iterations
+- Error-specific repair strategies (cycle breaking, parameter correction, action rewriting)
+- Repair outcome caching (`repair_cache.py`) for deduplication
 
-Implements `BaseDomainVerifier` for PDDL planning domains:
-- **Layer 2 (Symbolic)**: Calls VAL binary via secure `subprocess.run()`, parses structured output
-- **Layer 3 (Physics)**: Domain-specific simulation (e.g., Blocksworld: block-on-block, clear, hand-holding constraints)
+### 4.6 Batch Engine (`src/bdi_llm/batch_engine.py`)
 
-### 4.4 SWE-bench Verifier
-
-**File**: `workspaces/pnsv_workspace/src/plugins/swe_verifier.py` (17.5K)
-
-Implements `BaseDomainVerifier` for software engineering tasks:
-- **Action types**: `read-file`, `edit-file`, `run-test`
-- **Verification**: File dependency checks, action ordering, completeness
-
-### 4.5 DSPy Signatures
-
-**File**: `workspaces/pnsv_workspace/src/dspy_pipeline/signatures.py` (8.1K)
-
-DSPy ChainOfThought signature definitions:
-- Plan generation signature: goal → IntentionDAG
-- Plan repair signature: goal + errors → Fixed IntentionDAG
-
-### 4.6 R1 Distillation Formatter
-
-**File**: `workspaces/pnsv_workspace/src/dspy_pipeline/r1_formatter.py` (11.2K)
-
-Converts successful BDI reasoning loops into training data:
-
-```
-<think>
-[Step 1] Received goal: "Stack blocks A on B on C"
-[Step 2] Generated plan: {intention_dag}
-[Step 3] Verification Layer 1 (Structural): PASS
-[Step 4] Verification Layer 2 (Symbolic/VAL): FAIL - precondition violated
-[Step 5] Repair attempt 1: {modified_dag}
-[Step 6] Re-verification: ALL LAYERS PASS
-</think>
-<answer>
-{final_verified_dag_json}
-</answer>
-```
-
-### 4.7 Legacy Planner
-
-**File**: `src/bdi_llm/planner.py` (77.7K — largest single file)
-
-Full-featured production planner with:
-- Multi-provider support (OpenAI, Anthropic, Google, NVIDIA NIM)
-- Checkpoint/resume for long evaluations
-- Parallel execution with configurable worker count
-- Ablation modes: NAIVE / BDI_ONLY / FULL_VERIFIED
-- PDDL parsing and NL conversion utilities
+Parallel evaluation engine using `ThreadPoolExecutor`. Features:
+- Configurable worker count (up to 500)
+- Checkpoint/resume capability
+- API budget management via `APIBudgetManager`
 
 ---
 
 ## 5. Data Models
 
-### 5.1 Core Schemas (`workspaces/pnsv_workspace/src/core/schemas.py`)
+### Core Pydantic Models (`src/bdi_llm/schemas.py`)
 
 ```python
-class IntentionNode(BaseModel):
-    id: str
-    action: str
-    parameters: dict[str, Any]
-    dependencies: list[str]  # Node IDs this depends on
+class ActionNode(BaseModel):
+    action_id: str
+    action_type: str
+    params: dict[str, Any]
+    preconditions: list[str]
+    effects: list[str]
+    dependencies: list[str]  # action_ids
 
-class IntentionDAG(BaseModel):
+class BDIPlan(BaseModel):
+    plan_id: str
     goal: str
-    nodes: list[IntentionNode]
-    metadata: dict[str, Any] = {}
-
-class BeliefState(BaseModel):
-    goal: str
-    current_state: dict[str, Any] = {}
-    history: list[dict] = []
+    actions: list[ActionNode]
+    metadata: dict[str, Any]
 
 class VerificationResult(BaseModel):
-    is_valid: bool
-    layer: VerificationLayer  # STRUCTURAL | SYMBOLIC | PHYSICS
-    errors: list[str] = []
-    warnings: list[str] = []
+    valid: bool
+    layer: int
+    errors: list[str]
+    warnings: list[str]
 ```
 
-### 5.2 Data Flow
+### PlanningTask (`src/bdi_llm/planning_task.py`)
 
-```
-Natural Language Goal
-    │
-    ▼
-IntentionDAG (nodes: IntentionNode[])
-    │
-    ▼
-VerificationResult (per layer)
-    │
-    ├─ is_valid=True → VerifiedPlan
-    │
-    └─ is_valid=False → errors[] → Repair → new IntentionDAG
-```
+Normalized task representation that adapts across all domains:
+- `goal: str` — natural language goal
+- `domain_pddl: str | None` — optional PDDL domain
+- `problem_pddl: str | None` — optional PDDL problem
+- `init_state: dict` — initial world state
+- `benchmark_metadata: dict` — domain-specific benchmark info
 
 ---
 
 ## 6. Integration Points
 
-### 6.1 LLM Providers (DSPy)
+### MCP Server (`src/interfaces/mcp_server.py`)
 
-| Provider | Model | Use Case |
-|----------|-------|----------|
-| OpenAI/NVIDIA | GPT-5, GPT-OSS-120B, Qwen2.5-7B | Plan generation, evaluation |
-| Anthropic | Claude | Alternative provider |
-| Google | Gemini | Paper canonical numbers |
-| ZhipuAI | GLM-5 | Teacher for PNSV distillation |
+| Tool | Input | Output |
+|------|-------|--------|
+| `generate_plan` | `{goal: str, domain?: str}` | `BDIPlan` |
+| `verify_plan` | `{plan: BDIPlan, domain_pddl: str}` | `VerificationResult` |
+| `execute_verified_plan` | `{plan: BDIPlan}` | Execution result |
 
-**Configuration**: `.env` file with `OPENAI_API_KEY`, `OPENAI_API_BASE`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`
+**Transport**: stdio (one plan per request)
+**Docker**: `docker run -i --rm -e OPENAI_API_KEY=$KEY bdi-verifier`
 
-### 6.2 VAL Binary
+### LLM Provider Integration
 
-- **Location**: `workspaces/planbench_data/plan-bench/utils/`
-- **Invocation**: `subprocess.run()` with explicit argument lists (no `os.popen`)
-- **Platform**: macOS arm64 binary bundled
-- **Input**: PDDL domain + problem + plan files
-- **Output**: Validation result with error details
+All LLM access mediated through DSPy's `dspy.LM()`:
+- OpenAI / DashScope via `OPENAI_API_KEY` + `OPENAI_API_BASE`
+- Anthropic via `ANTHROPIC_API_KEY`
+- Google via `GOOGLE_API_KEY`
 
-### 6.3 MCP Protocol
+### Benchmark Integrations
 
-- **Entry**: `src/interfaces/mcp_server.py`
-- **Tool**: `generate_verified_plan(goal, domain, context, pddl_domain_file, pddl_problem_file)`
-- **Clients**: Claude Code, Cursor, custom agents
+| Benchmark | Adapter | Evaluator | Domains |
+|-----------|---------|-----------|---------|
+| PlanBench | `PDDLTaskAdapter` | VAL binary | blocksworld, logistics, depots, obfuscated variants |
+| TravelPlanner | `TravelPlannerTaskAdapter` | Official OSU evaluator | validation (180), test (1000) |
+| SWE-bench | `SWEBenchAdapter` | Official SWE-bench harness | Full Lite (300) |
 
 ---
 
 ## 7. Deployment Architecture
 
-### 7.1 Local Development
-
+### Local Development
 ```bash
-git clone https://github.com/alexj11324/BDI_LLM_Formal_Ver.git
-cd BDI_LLM_Formal_Ver
-pip install -r requirements.txt
-cp .env.example .env  # Configure API keys
-pytest                 # Validate setup
+pip install -e ".[dev]"
+cp .env.example .env
+# Configure API keys
+pytest tests/
 ```
 
-### 7.2 Docker
-
-```dockerfile
-# Dockerfile present in repo root
-docker build -t pnsv .
-docker run -e OPENAI_API_KEY=... pnsv python scripts/evaluation/run_evaluation.py
-```
-
-### 7.3 Long-Running Evaluations
-
+### Docker (Production MCP)
 ```bash
-nohup python -u scripts/evaluation/run_planbench_full.py \
-  --all_domains --execution_mode FULL_VERIFIED \
-  --workers 30 --output_dir runs/my_run \
-  > logs/eval.log 2>&1 &
+docker build -t bdi-verifier .
+docker run -i --rm -e OPENAI_API_KEY=$KEY bdi-verifier
 ```
 
-- **Checkpointing**: Auto-detected via `--output_dir`
-- **Resume**: Re-run same command → detects checkpoint → continues
+The Dockerfile handles:
+- Python 3.10+ base image
+- VAL binary compilation from C++ source
+- All Python dependencies
+
+### OCI Server (Batch Evaluation)
+Large-scale evaluations run on Oracle Cloud Infrastructure (ARM64):
+- QEMU binfmt for x86_64 Docker images
+- 200+ concurrent workers with API budget management
+- Checkpoint/resume for long-running evaluations
 
 ---
 
-## 8. Performance & Benchmarks
+## 8. Performance Characteristics
 
-### 8.1 PlanBench Results
+### PlanBench Benchmark Results
 
-#### Gemini (Paper Canonical — 2026-02-13)
+| Domain | Baseline | BDI | BDI+Repair |
+|--------|----------|-----|------------|
+| blocksworld | 100.0% | 100.0% | **100.0%** |
+| logistics | 0.0% | 97.4% | **100.0%** |
+| depots | 99.4% | 95.4% | **100.0%** |
+| obfuscated_deceptive_logistics | 95.5% | 95.5% | **100.0%** |
+| obfuscated_randomized_logistics | 95.6% | 93.7% | **100.0%** |
 
-| Domain | Passed | Total | Accuracy |
-|--------|--------|-------|----------|
-| Blocksworld | ~200 | ~200 | **99.8%** |
-| Logistics | 568 | 570 | **99.6%** |
-| Depots | 497 | 500 | **99.4%** |
+### TravelPlanner Results (Validation N=180)
 
-#### GPT-5 (Full Dataset — 2026-02-27)
+| Metric | Baseline | BDI (v3) | BDI+Repair |
+|--------|----------|----------|------------|
+| Final Pass Rate | 21.1% | 57.8% | **70.6%** |
+| Hard Constraint | 59.4% | 68.3% | **79.4%** |
+| Commonsense | 37.8% | 81.1% | **83.9%** |
 
-| Domain | Instances | Success Rate |
-|--------|-----------|-------------|
-| Blocksworld | 1103/1103 | **90.8%** (FULL_VERIFIED) |
-
-#### Ablation Study (GPT-OSS-120B, Blocksworld)
-
-| Mode | Success Rate | Verification |
-|------|-------------|--------------|
-| NAIVE | 91.6% | None |
-| BDI_ONLY | 91.7% | Structural only |
-| FULL_VERIFIED | 90.8% | All 3 layers |
-
-**Key Insight**: ~1% gap between NAIVE and FULL_VERIFIED demonstrates minimal verification overhead while providing formal correctness guarantees.
-
-### 8.2 PNSV Unit Tests
-
-- **Count**: 90+ passing unit tests
-- **Coverage**: Schemas, verifiers (PlanBench + SWE-bench), BDI engine, R1 formatter
-- **Location**: `workspaces/pnsv_workspace/tests/`
+### Bottlenecks
+- LLM inference latency (2-10s per plan generation)
+- VAL binary subprocess overhead (~100ms per validation)
+- TravelPlanner evaluator GIL bottleneck → mitigated by Phase 1/2 pipeline
 
 ---
 
 ## 9. Security Model
 
-### 9.1 Subprocess Security
+### API Key Management
+- All API keys stored in `.env` file (gitignored)
+- Production keys managed via Google Secret Manager (`general-secrets-store`)
+- `APIBudgetManager` enforces per-session rate limits
 
-All external process invocations use secure patterns:
-- `subprocess.run()` with explicit argument lists (no shell injection)
-- `pathlib.Path` for path construction
-- Return code checking
-- Environment variable validation
+### MCP Server Security
+- stdio transport (no network exposure by default)
+- Docker container isolation
+- No authentication required (relies on container access control)
 
-### 9.2 API Key Management
-
-- Credentials stored in `.env` (gitignored)
-- `.env.example` provided with placeholder structure
-- No hardcoded secrets in source
-
-### 9.3 Sandboxed Execution
-
-- `src/sandbox.py` provides execution isolation
-- SWE-bench tasks run in sandboxed Docker containers
-- File system access restricted to workspace directories
+### Data Privacy
+- No PII in plan generation
+- Reasoning traces logged locally (configurable via `SAVE_REASONING_TRACE`)
+- Benchmark datasets are public
 
 ---
 
 ## 10. Appendices
 
-### 10.1 Glossary
+### A. Glossary
 
 | Term | Definition |
 |------|-----------|
-| **BDI** | Belief-Desire-Intention — agent architecture for rational planning |
-| **IntentionDAG** | Directed Acyclic Graph of planned actions (nodes + dependencies) |
-| **BeliefState** | Current world state as understood by the agent |
-| **PNSV** | Pluggable Neuro-Symbolic Verification |
-| **VAL** | PDDL plan validator binary |
-| **PDDL** | Planning Domain Definition Language |
-| **DSPy** | Declarative Self-improving Python — LLM orchestration framework |
-| **ChainOfThought** | DSPy signature for step-by-step reasoning |
-| **Verification Bus** | 3-layer routing pipeline for plan validation |
-| **Structural Verification** | Layer 1: empty graph, cycles, disconnected components |
-| **Symbolic Verification** | Layer 2: PDDL precondition/effect checking via VAL |
-| **Physics Verification** | Layer 3: domain-specific state simulation |
-| **Epistemic Deadlock** | State where repair attempts exhausted without valid plan |
-| **Golden Trajectory** | Verified thinking trace for student model training |
-| **R1 Distillation** | Converting BDI loops to `<think>` format for fine-tuning |
-| **Ablation Mode** | NAIVE / BDI_ONLY / FULL_VERIFIED comparison experiment |
-| **MCP** | Model Context Protocol — agent tool integration standard |
-| **PlanBench** | Planning benchmark with Blocksworld, Logistics, Depots domains |
-| **SWE-bench** | Software engineering benchmark for code generation |
+| BDI | Belief-Desire-Intention — cognitive architecture for rational agents |
+| PNSV | Pluggable Neuro-Symbolic Verification — this framework's methodology |
+| IntentionDAG | Directed Acyclic Graph representing a committed plan with action nodes |
+| VAL | Classical PDDL plan validator binary (C++) |
+| DSPy | Stanford NLP's framework for structured LM programming |
+| PDDL | Planning Domain Definition Language |
+| MCP | Model Context Protocol — Anthropic's agent integration standard |
+| CoT | Chain-of-Thought prompting |
+| DomainSpec | Pluggable domain configuration for action types and verification rules |
 
-### 10.2 Key File Reference
+### B. Environment Variables Reference
 
-| File | Size | Purpose |
-|------|------|---------|
-| `workspaces/pnsv_workspace/src/core/bdi_engine.py` | 24K | Core BDI reasoning engine |
-| `workspaces/pnsv_workspace/src/core/schemas.py` | 4.2K | Pydantic V2 data models |
-| `workspaces/pnsv_workspace/src/core/verification_bus.py` | 3.2K | 3-layer verification router |
-| `workspaces/pnsv_workspace/src/plugins/planbench_verifier.py` | 10.3K | PlanBench domain verifier |
-| `workspaces/pnsv_workspace/src/plugins/swe_verifier.py` | 17.5K | SWE-bench domain verifier |
-| `workspaces/pnsv_workspace/src/plugins/_dag_utils.py` | 2.2K | Shared DAG utilities |
-| `workspaces/pnsv_workspace/src/dspy_pipeline/signatures.py` | 8.1K | DSPy signature definitions |
-| `workspaces/pnsv_workspace/src/dspy_pipeline/teacher_config.py` | 6.9K | Multi-provider LLM config |
-| `workspaces/pnsv_workspace/src/dspy_pipeline/r1_formatter.py` | 11.2K | R1 distillation formatter |
-| `src/bdi_llm/planner.py` | 77.7K | Legacy full-featured planner |
-| `src/bdi_llm/symbolic_verifier.py` | 25.5K | Legacy symbolic verifier |
-| `src/bdi_llm/plan_repair.py` | 15.6K | Plan auto-repair engine |
-| `src/interfaces/mcp_server.py` | 4.0K | MCP server entry point |
-| `scripts/evaluation/run_planbench_full.py` | 88.6K | Full PlanBench evaluation script |
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `OPENAI_API_KEY` | ≥1 provider | — | OpenAI or OpenAI-compatible API key |
+| `ANTHROPIC_API_KEY` | ≥1 provider | — | Anthropic API key |
+| `GOOGLE_API_KEY` | ≥1 provider | — | Google Gemini API key |
+| `LLM_MODEL` | No | `gpt-4o-mini` | DSPy model string |
+| `OPENAI_API_BASE` | No | — | Custom API base URL |
+| `SAVE_REASONING_TRACE` | No | `true` | Log CoT reasoning traces |
+| `REASONING_TRACE_MAX_CHARS` | No | `8000` | Max trace length |
+| `DASHSCOPE_API_KEY` | No | — | Alibaba Cloud DashScope key |
 
-### 10.3 Command Reference
+### C. Test Suite
 
-```bash
-# Unit tests
-pytest
-pytest tests/test_verifier.py -v
+| Category | Location | Count | API Required |
+|----------|----------|-------|--------------|
+| Unit | `tests/unit/` | ~70 | No |
+| Integration | `tests/integration/` | ~15 | Yes |
+| Smoke | `tests/smoke/` | ~5 | Yes |
 
-# Evaluation modes
-python scripts/evaluation/run_evaluation.py --mode unit
-python scripts/evaluation/run_evaluation.py --mode demo
-python scripts/evaluation/run_evaluation.py --mode benchmark
+### D. References
 
-# PlanBench with options
-python scripts/evaluation/run_planbench_full.py --domain blocksworld --max_instances 100
-python scripts/evaluation/run_planbench_full.py --all_domains --execution_mode FULL_VERIFIED --workers 30
-
-# MCP Server
-python src/interfaces/mcp_server.py
-```
-
----
-
-*Generated by docs-architect skill | BDI-LLM Formal Verification Framework v2.0*
+- [C4 Architecture Documentation](c4/c4-context.md)
+- [Functional Flow](FUNCTIONAL_FLOW.md)
+- [Results Provenance](../RESULTS_PROVENANCE.md)
+- [Wiki Catalogue](wiki-catalogue.md)
+- [Conductor Setup](conductor/index.md)

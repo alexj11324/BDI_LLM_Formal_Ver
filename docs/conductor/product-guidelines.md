@@ -1,15 +1,11 @@
 # Product Guidelines
 
 ## Voice and Tone
-
-Professional and technical. Documentation should be precise, use formal language, and include mathematical/logical notation where appropriate. Suitable for an academic research project targeting AAAI 2026.
+Professional and technical. Research-grade precision in terminology. Code comments and documentation should be concise and direct.
 
 ## Design Principles
-
-1. **Zero Domain Leakage** — Core BDI engine must never import domain-specific libraries. All domain logic lives in plugins
-2. **State Immutability** — Verifiers evaluate deep copies of BeliefState; canonical state is only mutated on successful verification
-3. **Strategy Pattern** — Domain-specific logic resides exclusively in `src/plugins/`, accessed via dependency injection
-4. **Correctness Over Performance** — Formal correctness guarantees take priority over execution speed
-5. **Complete BDI Loop** — The verify-repair cycle is a first-class feature, not an afterthought. Both verification and auto-repair live on `main`.
-6. **Reproducibility** — All experiments must be fully reproducible with frozen evidence snapshots in `artifacts/`
-7. **Pydantic V2 Everywhere** — All schemas use Pydantic V2 BaseModel for robust validation and serialization
+1. **Correctness over speed** — Every plan must pass formal verification before execution
+2. **Pluggable domains** — New domains should integrate by adding a `DomainSpec`, not modifying the engine
+3. **Reproducibility** — All benchmark results must be traceable to exact source files and configurations
+4. **Simplicity** — Keep logic strictly verified; avoid unnecessary abstraction layers
+5. **Transparency** — Log full reasoning traces for every verification trajectory
