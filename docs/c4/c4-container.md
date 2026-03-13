@@ -1,28 +1,33 @@
 # C4 Container — BDI-LLM Formal Verification (PNSV)
 
+## Containers Overview
+
+PNSV deploys as a single Python application that can run either as a CLI tool, an MCP server, or a batch evaluation harness. All containers share the same codebase and are differentiated by entry point.
+
+---
+
 ## Containers
 
-### 1. PNSV Core Application
+### 1. BDI Verification Engine (Core Library)
 
 | Property | Value |
 |----------|-------|
-| **Name** | PNSV Core Application |
-| **Type** | CLI Application / Library |
-| **Technology** | Python 3.10+, Pydantic V2, DSPy |
-| **Deployment** | Local execution / Docker container |
+| **Name** | BDI Verification Engine |
+| **Type** | Python Library |
+| **Technology** | Python 3.10+, DSPy, Pydantic V2, NetworkX, Z3 |
+| **Deployment** | pip install / Docker |
 
-**Purpose**: The main application containing the BDI reasoning engine, verification bus, domain plugins, DSPy pipeline, and plan repair logic. Executed via CLI scripts or imported as a library.
+**Purpose**: Core planning, verification, and repair logic. Provides the `BDIPlanner`, `PlanVerifier`, `PDDLSymbolicVerifier`, `IntegratedVerifier`, and `PlanRepairEngine` classes.
 
 **Components**:
-- [BDI Engine](c4-component-bdi-engine.md)
-- [Verification Bus](c4-component-verification-bus.md)
-- [Domain Plugins](c4-component-domain-plugins.md)
-- [DSPy Pipeline](c4-component-dspy-pipeline.md)
-- [Legacy Planner](c4-component-legacy-planner.md)
+- [Planner Engine](c4-component.md#planner-engine) — BDI plan generation
+- [Verification Pipeline](c4-component.md#verification-pipeline) — 3-layer verification
+- [Repair Engine](c4-component.md#repair-engine) — auto-repair loop
+- [Task & Schema Layer](c4-component.md#task-schema-layer) — data models
 
 **Interfaces**:
-- Python API: `bdi_engine.generate_plan()`, `bdi_engine.verify_plan()`
-- CLI: `scripts/evaluation/run_planbench_full.py`, `scripts/evaluation/run_evaluation.py`
+- Python API: `BDIPlanner.generate()`, `PlanVerifier.verify()`, `PlanRepairEngine.repair()`
+- No network interfaces (library-only)
 
 ---
 
@@ -31,60 +36,52 @@
 | Property | Value |
 |----------|-------|
 | **Name** | MCP Server |
-| **Type** | Service (long-running) |
-| **Technology** | Python, MCP Protocol |
-| **Deployment** | Local process |
+| **Type** | stdio-based server |
+| **Technology** | MCP Python SDK, Docker |
+| **Entry Point** | `src/interfaces/mcp_server.py` |
+| **Deployment** | `docker run -i --rm bdi-verifier` |
 
-**Purpose**: Exposes PNSV capabilities as MCP tools for integration with AI agents (Claude Code, Cursor, etc.).
+**Purpose**: Exposes the BDI verification loop as a Model Context Protocol endpoint for AI agent integration.
 
-**Components**:
-- [MCP Server Component](c4-component-mcp-server.md)
+**MCP Tools**:
+| Tool | Description |
+|------|-------------|
+| `generate_plan` | Generate a BDI plan from natural language goal |
+| `verify_plan` | Verify a plan against PDDL domain constraints |
+| `execute_verified_plan` | Execute a plan only after successful verification |
 
-**Interfaces**:
-| Interface | Protocol | Description |
-|-----------|----------|-------------|
-| `generate_verified_plan` | MCP | Accept goal + domain → return verified plan |
+**Dependencies**: BDI Verification Engine, OpenAI/DashScope API, VAL binary
 
 ---
 
-### 3. Evaluation Pipeline
+### 3. CLI Interface
 
 | Property | Value |
 |----------|-------|
-| **Name** | Evaluation Pipeline |
-| **Type** | Batch Processing Scripts |
-| **Technology** | Python, asyncio, multiprocessing |
-| **Deployment** | Local execution (nohup for long runs) |
+| **Name** | CLI Demo |
+| **Type** | Command-line application |
+| **Technology** | Python argparse |
+| **Entry Point** | `src/interfaces/cli.py` |
 
-**Purpose**: Runs full-dataset evaluations across PlanBench domains with parallel workers, checkpointing, and result analysis.
-
-**Components**:
-- [Evaluation Scripts](c4-component-evaluation.md)
-- [Result Visualization](c4-component-visualization.md)
-
-**Interfaces**:
-| Interface | Protocol | Description |
-|-----------|----------|-------------|
-| CLI | Shell | `--domain`, `--workers`, `--execution_mode` flags |
-| File I/O | JSON | Results to `runs/`, checkpoints for resume |
+**Purpose**: Local demo entry point for interactive plan generation and verification.
 
 ---
 
-## Dependencies
+### 4. Batch Evaluation Harness
 
-```
-PNSV Core ──→ LLM Provider (HTTP/REST via DSPy)
-PNSV Core ──→ VAL Binary (subprocess)
-MCP Server ──→ PNSV Core (Python import)
-Evaluation ──→ PNSV Core (Python import)
-Evaluation ──→ PlanBench Data (filesystem)
-```
+| Property | Value |
+|----------|-------|
+| **Name** | Evaluation Harness |
+| **Type** | Batch processing scripts |
+| **Technology** | Python, ThreadPoolExecutor, asyncio |
+| **Entry Points** | `scripts/evaluation/*.py` |
 
-## Infrastructure
+**Purpose**: Runs large-scale benchmark evaluations (PlanBench, TravelPlanner, SWE-bench) with parallel workers, checkpointing, and API budget management.
 
-- **Dockerfile**: Single container with Python 3.10+, all dependencies
-- **Scaling**: Parallel workers via `--workers N` flag (multiprocessing)
-- **Storage**: JSON results in `runs/`, frozen snapshots in `artifacts/`
+**Key Scripts**:
+- `run_generic_pddl_eval.py` — Generic PDDL domain evaluation
+- `run_travelplanner_eval.py` — TravelPlanner evaluation
+- `run_travelplanner_release_matrix.py` — Full release matrix orchestration
 
 ---
 
@@ -94,21 +91,35 @@ Evaluation ──→ PlanBench Data (filesystem)
 C4Container
     title Container Diagram — PNSV Framework
 
-    Person(researcher, "Researcher", "")
-    System_Ext(agent, "AI Agent", "")
-    System_Ext(llm, "LLM API", "GLM-5 / GPT-5")
-    System_Ext(val, "VAL", "PDDL Validator")
+    Person(user, "User", "Researcher or Agent Developer")
 
     Container_Boundary(pnsv, "PNSV Framework") {
-        Container(core, "PNSV Core", "Python 3.10+", "BDI Engine + Verification Bus + Plugins")
-        Container(mcp, "MCP Server", "Python / MCP", "Agent-facing tool server")
-        Container(eval, "Evaluation Pipeline", "Python / asyncio", "Batch PlanBench evaluation")
+        Container(engine, "BDI Verification Engine", "Python Library", "Core planning, verification, repair")
+        Container(mcp, "MCP Server", "MCP Python SDK", "AI agent integration endpoint")
+        Container(cli, "CLI Interface", "Python argparse", "Interactive demo")
+        Container(eval, "Evaluation Harness", "Python scripts", "Batch benchmarking")
     }
 
-    Rel(researcher, eval, "runs scripts")
-    Rel(agent, mcp, "MCP protocol")
-    Rel(mcp, core, "Python import")
-    Rel(eval, core, "Python import")
-    Rel(core, llm, "DSPy API calls")
-    Rel(core, val, "subprocess")
+    System_Ext(llm, "LLM Provider", "OpenAI / DashScope")
+    System_Ext(val, "VAL Binary", "PDDL Validator")
+    System_Ext(docker, "Docker Engine", "Container Runtime")
+
+    Rel(user, mcp, "MCP tools: generate, verify, execute")
+    Rel(user, cli, "Interactive planning")
+    Rel(user, eval, "Run benchmarks")
+    Rel(mcp, engine, "Uses")
+    Rel(cli, engine, "Uses")
+    Rel(eval, engine, "Uses")
+    Rel(engine, llm, "Generates plans via DSPy")
+    Rel(engine, val, "Validates PDDL plans")
+    Rel(mcp, docker, "Deployed in")
 ```
+
+---
+
+## Infrastructure
+
+| Container | Dockerfile | Deployment |
+|-----------|-----------|------------|
+| MCP Server | [`Dockerfile`](file:///Users/alexjiang/Desktop/BDI_LLM_Formal_Ver/Dockerfile) | `docker build -t bdi-verifier . && docker run -i --rm bdi-verifier` |
+| Evaluation Harness | N/A (runs directly) | `python scripts/evaluation/run_*.py` on OCI servers |

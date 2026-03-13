@@ -1,0 +1,97 @@
+{
+  "project": "BDI_LLM_Formal_Ver",
+  "branchName": "ralph/icml-paper-next-stage",
+  "description": "Generate the next-stage manuscript prose and resolve remaining figure/provenance fixups using the completed pre-writing artifacts under runs/spawnteam_paper/.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Draft manuscript prose plan from existing artifacts",
+      "description": "As a paper lead, I want a concise manuscript drafting plan based on the existing packets and lead artifacts so that subsequent prose work follows the locked thesis, source-of-truth rules, and section ordering.",
+      "acceptanceCriteria": [
+        "Read runs/spawnteam_paper/packets/substrate_packet.md, planbench_packet.md, travelplanner_packet.md, provenance_packet.md",
+        "Read runs/spawnteam_paper/lead/claim_ledger.md, integrated_outline.md, dry_run_summary.md, and claim_audit_checklist.md",
+        "Create a new manuscript drafting plan document under runs/spawnteam_paper/lead/ that names the next prose-generation tasks in dependency order",
+        "The plan explicitly preserves frozen-vs-current and TravelPlanner field-boundary rules",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Write abstract and contribution spine draft",
+      "description": "As a paper lead, I want an abstract and contribution-spine draft so that the manuscript has a stable high-level narrative before expanding full sections.",
+      "acceptanceCriteria": [
+        "Create a draft file for abstract and contribution spine under runs/spawnteam_paper/lead/",
+        "The draft centers the shared substrate and layered verification narrative",
+        "The draft does not mix frozen PlanBench counts with current-mainline repository numbers in one unlabeled claim",
+        "The draft does not collapse TravelPlanner oracle validation with deployment-aligned results",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Write methods section skeleton",
+      "description": "As a paper lead, I want a methods-section skeleton grounded in the substrate packet so that the manuscript can expand from stable architecture claims rather than re-deriving system structure.",
+      "acceptanceCriteria": [
+        "Create a methods skeleton draft under runs/spawnteam_paper/lead/",
+        "The draft uses the shared planning and layered verification substrate as the architectural center",
+        "The draft distinguishes PlanningTask, BDIPlan, DomainSpec, BDIPlanner, and layered verification roles",
+        "The draft avoids benchmark headline numbers",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Write PDDL results section skeleton",
+      "description": "As a paper lead, I want a PDDL results skeleton based on the PlanBench packet so that the formal-planning section uses the correct current-mainline runner boundary and approved result framing.",
+      "acceptanceCriteria": [
+        "Create a PDDL results draft under runs/spawnteam_paper/lead/",
+        "The draft treats run_generic_pddl_eval.py as current-mainline and run_verification_only.py as supporting harness",
+        "The draft does not describe _legacy/run_planbench_full.py as current-mainline runtime",
+        "The draft clearly labels whether cited numbers are frozen-paper or current-mainline reporting",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Write TravelPlanner results section skeleton",
+      "description": "As a paper lead, I want a TravelPlanner results skeleton so that oracle validation, validation-as-test, and official test submission remain explicitly separated in the manuscript.",
+      "acceptanceCriteria": [
+        "Create a TravelPlanner results draft under runs/spawnteam_paper/lead/",
+        "The draft separately names oracle validation, validation-as-test, and official test submission",
+        "The draft uses the field-boundary rule between summary and validation_as_test_summary when referencing bdi-repair results",
+        "The draft leads with deployment-aligned claims unless explicitly marked as oracle upper-bound/diagnostic",
+        "Typecheck passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Write provenance and figure policy note for manuscript stage",
+      "description": "As a paper lead, I want a concise manuscript-stage provenance note so that later drafting and figure work preserve the locked rules without rereading all packets.",
+      "acceptanceCriteria": [
+        "Create a concise provenance rule note under runs/spawnteam_paper/lead/",
+        "The note states frozen-vs-current PlanBench rules, TravelPlanner field-boundary rules, and figure-script caveats",
+        "The note explicitly flags Figure 2 approximate baseline and figure-script path-resolution risks",
+        "The note is short enough to serve as machine-friendly drafting context",
+        "Typecheck passes"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

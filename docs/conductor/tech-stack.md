@@ -1,51 +1,43 @@
 # Tech Stack
 
-## Primary Language
+## Languages
+- **Python 3.10+** (Primary) — Python 3.11 recommended
 
-- **Python 3.10+** — Strict type hints enforced on every function/method
+## Core Frameworks
+| Framework | Version | Purpose |
+|-----------|---------|---------|
+| DSPy | latest | Structured LM programming, prompt optimization |
+| Pydantic | V2 | Data validation and schema definition |
+| NetworkX | latest | DAG representation and graph operations |
+| Z3 Solver | latest | Formal constraint solving |
 
-## Frameworks & Libraries
+## External Tools
+| Tool | Purpose |
+|------|---------|
+| VAL Binary | Classical PDDL plan validator (C++) |
+| MCP Python SDK | Model Context Protocol server |
 
-### Core
-- **DSPy** — LLM orchestration with ChainOfThought signatures for plan generation and repair
-- **Pydantic V2** — Schema validation for IntentionDAG, BeliefState, VerificationResult
-- **Z3 Solver** — Constraint solving (listed in requirements)
+## Infrastructure
+| Component | Technology |
+|-----------|-----------|
+| Containerization | Docker |
+| CI/CD | GitHub Actions |
+| Cloud | Oracle Cloud Infrastructure (ARM64) for batch evaluation |
+| Package Management | pip + pyproject.toml (uv compatible) |
+| Testing | Pytest |
+| Linting | Ruff |
 
-### Verification
-- **VAL (Validator)** — External PDDL plan validator binary (macOS arm64, located in `planbench_data/`)
-- **PDDL** — Planning Domain Definition Language for symbolic verification
+## LLM Providers
+| Provider | Use Case |
+|----------|----------|
+| OpenAI / DashScope | Primary inference (gpt-5, qwq-plus) |
+| Anthropic | Alternative inference (Claude) |
+| Google | Alternative inference (Gemini) |
 
-### AI/ML
-- **GLM-5 / GPT-5 / Gemini** — Teacher LLMs for plan generation (via DSPy)
-- **DeepSeek-R1-Distill-Qwen-7B** — Target student model for distillation
-- **NVIDIA NIM API** — Model serving gateway (Qwen2.5-7B-Instruct for evaluation)
-
-### Infrastructure
-- **MCP (Model Context Protocol)** — Server for agent integration
-- **Docker** — Containerized deployment
-- **pytest** — Test framework
-- **MLflow** — Experiment tracking (mlflow.db present)
-
-## Database
-
-None / Stateless — Results stored as JSON files in `runs/` and `artifacts/`
-
-## Deployment
-
-- **Local execution** — Primary development and evaluation mode
-- **Docker** — Containerized deployment available (Dockerfile present)
-- **MCP Server** — `src/interfaces/mcp_server.py` for agent integration
-
-## Key Dependencies (from requirements.txt)
-
-```
-z3-solver
-mcp
-docker
-pytest
-```
-
-## External Services
-
-- OpenAI API (or compatible gateway: NVIDIA NIM, Anthropic, Google)
-- VAL binary (bundled in `planbench_data/`)
+## Key Dependencies
+- `dspy-ai` — structured LM programming
+- `pydantic` — data validation
+- `networkx` — graph operations
+- `z3-solver` — formal verification
+- `mcp` — Model Context Protocol SDK
+- `datasets` — HuggingFace dataset loading
