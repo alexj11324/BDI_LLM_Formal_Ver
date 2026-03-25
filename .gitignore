@@ -120,6 +120,7 @@ workspaces/
 
 # Generated outputs
 artifacts/
+!artifacts/paper_eval_20260213/
 reports/
 exports/
 tmp_ws*/
