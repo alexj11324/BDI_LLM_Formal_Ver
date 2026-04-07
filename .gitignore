@@ -169,6 +169,8 @@ configs/setup_state.json
 # Cache-like / checkpoint extensions
 **/*.cache
 **/*.cache.*
+**/*.npy
+**/*.npz
 **/*.nbc
 **/*.nbi
 
