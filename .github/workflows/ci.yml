@@ -21,14 +21,9 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install pytest pytest-asyncio
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-        
-        # Install explicit dependencies if missing from requirements.txt
-        pip install dspy-ai networkx pydantic python-dotenv
-        
-        # Install VAL (PlanBench tools) dependencies if needed
-        # (Assuming VAL binary is checked in or handled by config)
+        # Use project metadata as source of truth for test dependencies.
+        # requirements.txt is intentionally minimal in this repository.
+        pip install -e ".[dev]"
 
     - name: Run Tests
       env:
