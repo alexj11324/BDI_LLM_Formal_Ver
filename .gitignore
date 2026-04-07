@@ -1,5 +1,6 @@
 # Python
 __pycache__/
+# Root-only; nested bytecode/temps covered under "Caches & compiled" below
 *.py[cod]
 *$py.class
 *.so
@@ -157,3 +158,44 @@ docs/sessions/
 docs/tasks/
 paper_icml2026/
 configs/setup_state.json
+
+# Caches & compiled / temp artifacts (recursive — root-only *.py[cod] etc. do not cover subdirs)
+# Dirs: common cache roots (avoid *cache* in filenames — e.g. repair_cache.py stays tracked)
+.cache/
+**/.cache/
+**/cache/
+**/*_cache/
+
+# Cache-like / checkpoint extensions
+**/*.cache
+**/*.cache.*
+**/*.nbc
+**/*.nbi
+
+# Bytecode / compiled (nested paths)
+**/*.py[cod]
+**/*.class
+**/*.o
+**/*.so
+**/*.dylib
+
+# Temp / partial / swap / backup suffixes
+**/*.tmp
+**/*.temp
+**/*.bak
+**/*.old
+**/*.orig
+**/*.part
+**/*.crdownload
+**/*.swp
+**/*.swo
+**/*~
+
+# Dot-prefixed hidden files/dirs (default: ignore all; un-ignore tracked essentials below)
+.*
+**/.[!.]*
+!.gitignore
+!.github/
+!.github/**
+!.env.example
+!.env.test
