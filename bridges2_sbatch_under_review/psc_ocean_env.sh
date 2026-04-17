@@ -99,12 +99,15 @@ print_storage_snapshot() {
   local label="${1:-storage snapshot}"
   echo "=== ${label} ==="
   df -h "${HOME}" || true
-  du -sh \
+  for path in \
     "${BDI_PIP_CACHE}" \
     "${BDI_HF_HOME}" \
     "${BDI_ENV_ROOT}" \
-    "${BDI_PYTHONUSERBASE}" \
-    2>/dev/null || true
+    "${BDI_PYTHONUSERBASE}"; do
+    if [[ -e "${path}" ]]; then
+      timeout 15s du -sh "${path}" 2>/dev/null || echo "snapshot_timeout ${path}"
+    fi
+  done
 }
 
 log_triton_diagnostics() {
