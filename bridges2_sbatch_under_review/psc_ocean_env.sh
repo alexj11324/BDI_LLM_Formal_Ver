@@ -21,6 +21,8 @@ export BDI_SLURM_LOG_ROOT="${BDI_SLURM_LOG_ROOT:-${BDI_LOG_ROOT}/slurm}"
 export BDI_SERVICE_LOG_ROOT="${BDI_SERVICE_LOG_ROOT:-${BDI_LOG_ROOT}/services}"
 export BDI_RUN_ROOT="${BDI_RUN_ROOT:-${BDI_PROJECT_ROOT}/runs}"
 export BDI_STATUS_ROOT="${BDI_STATUS_ROOT:-${BDI_RUN_ROOT}/status}"
+export BDI_VENDOR_ROOT="${BDI_VENDOR_ROOT:-${BDI_PROJECT_ROOT}/vendor}"
+export BDI_VLLM_SRC_ROOT="${BDI_VLLM_SRC_ROOT:-${BDI_VENDOR_ROOT}/vllm-main}"
 export BDI_MODEL_REPO="${BDI_MODEL_REPO:-zai-org/GLM-4.7-Flash}"
 export BDI_VLLM_STABLE_ENV="${BDI_VLLM_STABLE_ENV:-${BDI_ENV_ROOT}/vllm_serve_clean}"
 export BDI_VLLM_NIGHTLY_ENV="${BDI_VLLM_NIGHTLY_ENV:-${BDI_ENV_ROOT}/vllm_serve_nightly}"
@@ -54,6 +56,7 @@ mkdir -p \
   "${BDI_HF_HOME}" \
   "${BDI_HF_HUB_CACHE}" \
   "${BDI_XDG_CACHE_HOME}" \
+  "${BDI_VENDOR_ROOT}" \
   "${BDI_SLURM_LOG_ROOT}" \
   "${BDI_SERVICE_LOG_ROOT}" \
   "${BDI_RUN_ROOT}" \

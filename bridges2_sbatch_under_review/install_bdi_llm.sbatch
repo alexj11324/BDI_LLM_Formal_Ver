@@ -46,9 +46,24 @@ if [[ "${ENV_KIND}" == "stable" ]]; then
   python -m pip install "vllm==${BDI_VLLM_STABLE_VERSION}" \
     --extra-index-url "${BDI_TORCH_WHEEL_INDEX}"
 else
-  python -m pip install --upgrade --only-binary=:all: vllm --pre \
-    --index-url "${BDI_PYPI_INDEX_URL}" \
-    --extra-index-url "${BDI_VLLM_NIGHTLY_INDEX}"
+  echo "=== Install uv for vLLM main-branch workflow ==="
+  python -m pip install --upgrade uv
+
+  echo
+  echo "=== Sync vLLM main branch ==="
+  if [[ ! -d "${BDI_VLLM_SRC_ROOT}/.git" ]]; then
+    git clone https://github.com/vllm-project/vllm.git "${BDI_VLLM_SRC_ROOT}"
+  else
+    git -C "${BDI_VLLM_SRC_ROOT}" fetch origin
+  fi
+  git -C "${BDI_VLLM_SRC_ROOT}" checkout origin/main
+
+  echo
+  echo "=== Install vLLM main branch with precompiled wheel ==="
+  VLLM_USE_PRECOMPILED=1 \
+  VLLM_PRECOMPILED_WHEEL_COMMIT=nightly \
+  uv pip install --python "${ENV_PREFIX}/bin/python" --editable "${BDI_VLLM_SRC_ROOT}"
+
   echo
   echo "=== Install transformers main branch for GLM-4.7-Flash ==="
   python -m pip install --upgrade "${BDI_TRANSFORMERS_GIT_URL}"
