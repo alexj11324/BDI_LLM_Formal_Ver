@@ -63,6 +63,7 @@ export LLM_MODEL="openai/zai-org/GLM-4.7-Flash"
 export OPENAI_API_BASE="http://${VLLM_HOST}:${VLLM_PORT}/v1"
 export SAVE_REASONING_TRACE="${SAVE_REASONING_TRACE:-1}"
 export REASONING_TRACE_MAX_CHARS="${REASONING_TRACE_MAX_CHARS:-20000}"
+export VLLM_USE_FLASHINFER_MOE_FP16="${VLLM_USE_FLASHINFER_MOE_FP16:-0}"
 
 mkdir -p "${OUT}"
 
@@ -78,6 +79,7 @@ echo
 echo "=== Container preflight ==="
 apptainer_exec_bdi "
 source '${BDI_APPTAINER_VENV}/bin/activate'
+export VLLM_USE_FLASHINFER_MOE_FP16='${VLLM_USE_FLASHINFER_MOE_FP16}'
 python '${PREFLIGHT_PY}'
 "
 
@@ -89,6 +91,7 @@ source '${BDI_APPTAINER_VENV}/bin/activate'
 export OPENAI_API_KEY='${OPENAI_API_KEY}'
 export HF_HOME='${BDI_HF_HOME}'
 export HF_HUB_CACHE='${BDI_HF_HUB_CACHE}'
+export VLLM_USE_FLASHINFER_MOE_FP16='${VLLM_USE_FLASHINFER_MOE_FP16}'
 vllm serve '${BDI_MODEL_REPO}' --host '${VLLM_HOST}' --port '${VLLM_PORT}'
 " > "${SERVICE_LOG}" 2>&1 &
 VLLM_PID=$!
@@ -105,6 +108,7 @@ export OPENAI_API_KEY='${OPENAI_API_KEY}'
 export LLM_MODEL='${LLM_MODEL}'
 export SAVE_REASONING_TRACE='${SAVE_REASONING_TRACE}'
 export REASONING_TRACE_MAX_CHARS='${REASONING_TRACE_MAX_CHARS}'
+export VLLM_USE_FLASHINFER_MOE_FP16='${VLLM_USE_FLASHINFER_MOE_FP16}'
 cd '${BDI_REPO_ROOT}'
 python scripts/evaluation/run_verification_only.py \
   --domain '${DOMAIN}' \
