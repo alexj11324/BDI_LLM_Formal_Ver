@@ -40,8 +40,14 @@ apptainer_exec_bdi() {
   APPTAINERENV_TMPDIR="${BDI_TMP_ROOT}" \
   APPTAINERENV_PYTHONNOUSERSITE="1" \
   APPTAINERENV_OPENAI_API_KEY="${OPENAI_API_KEY}" \
-  apptainer exec --nv --cleanenv \
+  apptainer exec --nv --cleanenv --writable-tmpfs \
     --bind "$(apptainer_host_binds)" \
     "${BDI_APPTAINER_IMG}" \
-    bash -lc "${inner_cmd}"
+    bash -lc "set -euo pipefail
+mkdir -p /usr/local/cuda/compat
+if [[ ! -e /usr/local/cuda/compat/lib && -d /usr/local/cuda-12.8/compat/lib.real ]]; then
+  ln -s /usr/local/cuda-12.8/compat/lib.real /usr/local/cuda/compat/lib
+fi
+export LD_LIBRARY_PATH=/usr/local/cuda/compat/lib:\${LD_LIBRARY_PATH:-}
+${inner_cmd}"
 }
