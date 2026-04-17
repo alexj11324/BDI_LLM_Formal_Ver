@@ -4,8 +4,8 @@
 #SBATCH --partition=RM-shared
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=6
-#SBATCH --mem=24G
+#SBATCH --cpus-per-task=12
+#SBATCH --mem-per-cpu=2000M
 #SBATCH --time=00:45:00
 #SBATCH --output=/ocean/projects/cis260113p/zjiang9/logs/slurm/inst_glm47_appt_%j.out
 #SBATCH --error=/ocean/projects/cis260113p/zjiang9/logs/slurm/inst_glm47_appt_%j.err
