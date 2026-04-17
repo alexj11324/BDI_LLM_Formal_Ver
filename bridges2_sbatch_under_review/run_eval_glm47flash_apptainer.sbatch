@@ -28,6 +28,7 @@ DOMAIN="${DOMAIN:-blocksworld}"
 MAX_INSTANCES="${MAX_INSTANCES:-10}"
 WORKERS="${WORKERS:-1}"
 VLLM_PID=""
+PREFLIGHT_PY="${BDI_TMP_ROOT}/run_eval_glm47flash_apptainer_preflight.py"
 
 cleanup_vllm() {
   cleanup_pid_if_running "${VLLM_PID:-}"
@@ -35,10 +36,28 @@ cleanup_vllm() {
 
 trap cleanup_vllm EXIT
 
-if [[ ! -x "${BDI_APPTAINER_VENV}/bin/python" ]]; then
+if [[ ! -f "${BDI_APPTAINER_VENV}/pyvenv.cfg" ]]; then
   echo "Missing container venv at ${BDI_APPTAINER_VENV}. Run install_glm47flash_apptainer.sbatch first." >&2
   exit 1
 fi
+
+cat > "${PREFLIGHT_PY}" <<'PY'
+import platform
+import torch
+import vllm
+import transformers
+import triton
+
+print("glibc", platform.libc_ver())
+print("torch", torch.__version__)
+print("torch_cuda", torch.version.cuda)
+print("cuda_available", torch.cuda.is_available())
+if torch.cuda.is_available():
+    print("device_name", torch.cuda.get_device_name(0))
+print("vllm", vllm.__version__)
+print("transformers", transformers.__version__)
+print("triton", triton.__version__)
+PY
 
 export LLM_MODEL="openai/zai-org/GLM-4.7-Flash"
 export OPENAI_API_BASE="http://${VLLM_HOST}:${VLLM_PORT}/v1"
@@ -59,22 +78,7 @@ echo
 echo "=== Container preflight ==="
 apptainer_exec_bdi "
 source '${BDI_APPTAINER_VENV}/bin/activate'
-python - <<'\"'\"'PY'\"'\"'
-import platform
-import torch
-import vllm
-import transformers
-import triton
-print('glibc', platform.libc_ver())
-print('torch', torch.__version__)
-print('torch_cuda', torch.version.cuda)
-print('cuda_available', torch.cuda.is_available())
-if torch.cuda.is_available():
-    print('device_name', torch.cuda.get_device_name(0))
-print('vllm', vllm.__version__)
-print('transformers', transformers.__version__)
-print('triton', triton.__version__)
-PY
+python '${PREFLIGHT_PY}'
 "
 
 echo
