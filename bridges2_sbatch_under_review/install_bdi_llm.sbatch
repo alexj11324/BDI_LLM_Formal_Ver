@@ -47,8 +47,11 @@ if [[ "${ENV_KIND}" == "stable" ]]; then
     --extra-index-url "${BDI_TORCH_WHEEL_INDEX}"
 else
   python -m pip install --upgrade vllm --pre \
-    --extra-index-url "${BDI_TORCH_WHEEL_INDEX}" \
+    --index-url "${BDI_PYPI_INDEX_URL}" \
     --extra-index-url "${BDI_VLLM_NIGHTLY_INDEX}"
+  echo
+  echo "=== Install transformers main branch for GLM-4.7-Flash ==="
+  python -m pip install --upgrade "${BDI_TRANSFORMERS_GIT_URL}"
 fi
 
 echo
