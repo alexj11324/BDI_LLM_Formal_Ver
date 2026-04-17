@@ -41,7 +41,7 @@ VLLM_PRECOMPILED_WHEEL_VARIANT='${BDI_VLLM_PRECOMPILED_WHEEL_VARIANT}' \
 uv pip install --python '${BDI_APPTAINER_VENV}/bin/python' --editable '${BDI_VLLM_SRC_ROOT}'
 python -m pip install --upgrade '${BDI_TRANSFORMERS_GIT_URL}'
 python -m pip install -e '${BDI_REPO_ROOT}[dev]'
-python - <<'\"'\"'PY'\"'\"'
+python - <<'PY'
 import importlib
 mods = ['vllm', 'torch', 'transformers', 'triton']
 for name in mods:
