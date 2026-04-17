@@ -46,7 +46,7 @@ if [[ "${ENV_KIND}" == "stable" ]]; then
   python -m pip install "vllm==${BDI_VLLM_STABLE_VERSION}" \
     --extra-index-url "${BDI_TORCH_WHEEL_INDEX}"
 else
-  python -m pip install --upgrade vllm --pre \
+  python -m pip install --upgrade --only-binary=:all: vllm --pre \
     --index-url "${BDI_PYPI_INDEX_URL}" \
     --extra-index-url "${BDI_VLLM_NIGHTLY_INDEX}"
   echo
