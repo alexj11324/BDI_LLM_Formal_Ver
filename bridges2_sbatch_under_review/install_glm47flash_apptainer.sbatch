@@ -27,6 +27,16 @@ else
 fi
 git -C "${BDI_VLLM_SRC_ROOT}" checkout origin/main
 
+VERIFY_PY="${BDI_TMP_ROOT}/install_glm47flash_apptainer_verify.py"
+cat > "${VERIFY_PY}" <<'PY'
+import importlib
+
+mods = ["vllm", "torch", "transformers", "triton"]
+for name in mods:
+    mod = importlib.import_module(name)
+    print(name, getattr(mod, "__version__", "unknown"))
+PY
+
 apptainer_exec_bdi "
 set -euo pipefail
 python -m venv '${BDI_APPTAINER_VENV}'
@@ -41,13 +51,7 @@ VLLM_PRECOMPILED_WHEEL_VARIANT='${BDI_VLLM_PRECOMPILED_WHEEL_VARIANT}' \
 uv pip install --python '${BDI_APPTAINER_VENV}/bin/python' --editable '${BDI_VLLM_SRC_ROOT}'
 python -m pip install --upgrade '${BDI_TRANSFORMERS_GIT_URL}'
 python -m pip install -e '${BDI_REPO_ROOT}[dev]'
-python - <<'PY'
-import importlib
-mods = ['vllm', 'torch', 'transformers', 'triton']
-for name in mods:
-    mod = importlib.import_module(name)
-    print(name, getattr(mod, '__version__', 'unknown'))
-PY
+python '${VERIFY_PY}'
 "
 
 echo
