@@ -246,3 +246,109 @@ SWE-bench code lives under `src/bdi_llm/swe_bench/` and `scripts/swe_bench/`. A 
 ## Known repo gotcha
 
 The current runtime code resolves PlanBench assets under `workspaces/planbench_data/`, while `Dockerfile` still copies a root-level `planbench_data/` tree. Re-check Dockerfile assumptions before relying on container builds for the current mainline runtime.
+
+## Bridges2 / PSC deployment lessons
+
+These are the current known-good constraints and failure modes for running this
+repo on PSC Bridges2.
+
+### 1. Storage placement rules
+
+- Treat `/ocean/projects/cis260113p/zjiang9/` as the only valid home for
+  project environments, caches, logs, and mutable artifacts.
+- Do **not** install project dependencies into `HOME` on Bridges2.
+- Redirect at least these paths to `/ocean`:
+  - `PIP_CACHE_DIR`
+  - `CONDA_PKGS_DIRS`
+  - `HF_HOME`
+  - `HF_HUB_CACHE`
+  - `TMPDIR`
+  - `PYTHONUSERBASE`
+- `HOME` on Bridges2 is quota-constrained; large `pip` / HF caches can fill it
+  quickly and break installs with `Disk quota exceeded`.
+
+### 2. Job partition split
+
+- Environment creation / package installation should run on CPU partitions
+  first, then model serving / eval should run on GPU partitions.
+- For Bridges2 `RM-shared`, respect the partition's memory-per-core cap.
+  Avoid requests whose implied memory-per-core exceeds `2000M/core`.
+- When a workflow has a CPU setup phase and a GPU serve/eval phase, submit them
+  as separate jobs with Slurm dependencies.
+
+### 3. Git sync discipline
+
+- When syncing work from local to the Bridges2 checkout, use Git only.
+- Do **not** manually copy directories or overwrite the remote worktree outside
+  Git.
+- If the Bridges2 repo is already dirty, preserve unrelated changes and update
+  only the intended paths via `git fetch` plus targeted checkout/stash flows.
+
+### 4. GLM-4.7-Flash on Bridges2: host install findings
+
+- `zai-org/GLM-4.7-Flash` does not work with older stable combinations such as
+  `vllm 0.11.2 + transformers 4.57.x`; the model architecture
+  `glm4_moe_lite` is not recognized there.
+- Updating only `transformers` is insufficient; older `vllm` builds fail later
+  on tokenizer/runtime compatibility.
+- The Hugging Face model card recommendation (`vLLM` main/nightly +
+  `transformers` main) is logically correct for model support, but **direct
+  host-side deployment on Bridges2 fails for system reasons**:
+  - host `glibc` is `2.28`
+  - latest precompiled `vllm` components require newer `glibc`
+  - newer stacks may also expect a newer NVIDIA driver than the host exposes
+- In other words: on Bridges2, the blocker is not the model card itself, but
+  the host runtime ABI / driver floor.
+
+### 5. PSC-supported path that is most promising
+
+- Prefer `Apptainer` / `Singularity` on Bridges2 for new LLM serving work.
+- PSC officially supports these container workflows and provides NGC-backed
+  containers under `/ocean/containers/`.
+- For this repo, the most relevant current base image is:
+  - `/ocean/containers/ngc/pytorch/pytorch_25.02-py3.sif`
+- This image has a newer userspace (`glibc 2.39`) and was verified to expose
+  the GPU successfully under `apptainer exec --nv`, including
+  `torch.cuda.is_available() == True` on an H100 node.
+- PSC's prebuilt AI module environments are currently too old for
+  `GLM-4.7-Flash`, and the visible NIM catalog on Bridges2 is not a ready-made
+  general LLM serving path for this model.
+
+### 6. Current Bridges2 helper scripts
+
+- Host-oriented scripts live under `bridges2_sbatch_under_review/`:
+  - `psc_ocean_env.sh`
+  - `install_bdi_llm.sbatch`
+  - `run_eval_glm47flash.sbatch`
+- Container-oriented scripts also live there:
+  - `psc_apptainer_env.sh`
+  - `probe_glm47flash_apptainer.sbatch`
+  - `install_glm47flash_apptainer.sbatch`
+  - `run_eval_glm47flash_apptainer.sbatch`
+
+### 7. Operational gotchas from debugging
+
+- Avoid expensive recursive size checks in job prologs on Bridges2; running
+  `du -sh` on massive cache directories can stall short validation jobs.
+  Bound such checks with `timeout` or skip them when they are not essential.
+- Avoid deeply nested shell here-documents inside `apptainer ... bash -lc "..."`
+  payloads. For inline verification code, prefer a temporary script file or
+  `python -c` to avoid quoting bugs.
+
+### 8. GLM-4.7-Flash 部署(2026-04-17 已验证可用)
+
+- **部署说明书**: `docs/psc_glm47_deploy.md`(TL;DR + 坑 + 访问方式 + 参数解释)
+- **工作脚本**:
+  - `scripts/psc_deploy/deploy_verify.sh` — 一次性验证(启动→测试→自动关)
+  - `scripts/psc_deploy/serve_persistent.sh` — 长驻 server(持续 4h 供推理/eval)
+- **持久资产**(不要重建,直接复用):
+  - SIF: `/ocean/projects/cis260113p/zjiang9/apptainer/vllm_nightly.sif`(8.5 GB)
+  - HF 权重: `/ocean/projects/cis260113p/zjiang9/hf_cache/hub/models--zai-org--GLM-4.7-Flash`(59 GB)
+  - 运行时 cache: `/ocean/projects/cis260113p/zjiang9/vllm_runtime_cache`
+- **7 个 cache env vars 必须全设**(`HF_HOME` / `HF_HUB_CACHE` / `VLLM_CACHE_ROOT` /
+  `TRITON_CACHE_DIR` / `TORCHINDUCTOR_CACHE_DIR` / `XDG_CACHE_HOME` / `TMPDIR`),
+  否则 jet/home 25GB quota 会在 torch.compile 阶段爆(`Errno 122 Disk quota exceeded`)。
+- **镜像必须用 `vllm/vllm-openai:nightly`**,stable `latest` 缺 `glm4_moe_lite` 架构支持。
+- **nightly 镜像漏装 pandas** → 脚本内已加 `pip install pandas pyarrow` + `--writable-tmpfs` 修复。
+- Claude Code 全局 hook `~/.claude/hooks/psc_cache_guard.py` 会拦截 inline
+  `apptainer exec` / `vllm serve` 缺 cache env vars 的命令。

@@ -215,3 +215,6 @@ configs/setup_state.json
 !.github/**
 !.env.example
 !.env.test
+
+# Other files
+eval_model.md
