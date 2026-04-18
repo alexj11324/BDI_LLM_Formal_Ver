@@ -192,6 +192,9 @@ start_server_attempt() {
         --gpu-memory-utilization ${GPU_MEM_UTIL} \
         --port $PORT \
         --host 0.0.0.0 \
+        --reasoning-parser glm45 \
+        --tool-call-parser glm47 \
+        --enable-auto-tool-choice \
         --served-model-name ${MODEL_NAME}
     " > "${active_log}" 2>&1 &
   SERVER_PID=$!
