@@ -19,7 +19,6 @@ It is a runtime whitepaper for engineers inheriting the codebase, not a benchmar
 
 This page does **not** treat these as default mainline runtime truth:
 
-- `scripts/evaluation/_legacy/` — historical runners kept for reference only
 - `workspaces/pnsv_workspace/` — architecture/reference workspace, not the default import path used by current runners
 
 This page also intentionally does **not** duplicate benchmark tables. Use these instead:
@@ -141,7 +140,7 @@ In the current generic PDDL runner, the mainline path uses `PlanVerifier` and `P
 
 ## 3. Current generic PDDL / PlanBench-style runtime
 
-This is the current **mainline PDDL runtime**. The default entrypoint is not the old monolithic `run_planbench_full.py`; it is:
+This is the current **mainline PDDL runtime**. The default entrypoints are:
 
 - `scripts/evaluation/run_generic_pddl_eval.py -> main`
 - `scripts/evaluation/run_generic_pddl_eval.py -> run_evaluation`
@@ -221,14 +220,6 @@ Its key anchors are:
 - `scripts/evaluation/run_verification_only.py -> run_verification_eval`
 
 Unlike the main generic runner, it primarily relies on compatibility utilities under `scripts/evaluation/planbench_utils/` for built-in PlanBench domains. That makes it useful for verification studies, but not the best document anchor for “how the current generic PDDL runtime is architected.”
-
-### 3.4 What is now legacy on the PDDL side
-
-The old monolithic benchmark pipeline now lives under:
-
-- `scripts/evaluation/_legacy/run_planbench_full.py`
-
-It remains useful as historical reference, but it should not be described as the current main benchmark entrypoint.
 
 ## 4. Current TravelPlanner runtime
 
@@ -429,19 +420,11 @@ If you are debugging or extending the current runtime, start here:
 2. `src/interfaces/cli.py`
 3. then the shared substrate in `src/bdi_llm/`
 
-Only after that should you drop into `_legacy/` or `workspaces/pnsv_workspace/`.
+Only after that should you drop into `workspaces/pnsv_workspace/`.
 
-## Appendix. Legacy and reference-only areas
+## Appendix. Reference-only areas
 
-### A. `scripts/evaluation/_legacy/`
-
-Everything under `scripts/evaluation/_legacy/` is historical reference, including:
-
-- `scripts/evaluation/_legacy/run_planbench_full.py`
-
-This directory is still useful for provenance, historical benchmark behavior, and older orchestration ideas, but it is **not** current mainline guidance.
-
-### B. `workspaces/pnsv_workspace/`
+### `workspaces/pnsv_workspace/`
 
 `workspaces/pnsv_workspace/` is retained architecture/reference material, not the current operational runtime. The key anchors are:
 

@@ -55,7 +55,7 @@
       "acceptanceCriteria": [
         "Create a PDDL results draft under runs/spawnteam_paper/lead/",
         "The draft treats run_generic_pddl_eval.py as current-mainline and run_verification_only.py as supporting harness",
-        "The draft does not describe _legacy/run_planbench_full.py as current-mainline runtime",
+        "The draft treats run_generic_pddl_eval.py as the current-mainline PlanBench runtime",
         "The draft clearly labels whether cited numbers are frozen-paper or current-mainline reporting",
         "Typecheck passes"
       ],

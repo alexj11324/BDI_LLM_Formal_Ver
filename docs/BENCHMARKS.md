@@ -19,7 +19,6 @@ The active evaluation surfaces in this repository are:
 1. **Generic PDDL / PlanBench-style evaluation**
    - current runner: `scripts/evaluation/run_generic_pddl_eval.py`
    - verification-only runner: `scripts/evaluation/run_verification_only.py`
-   - historical monolithic PlanBench runners live under `scripts/evaluation/_legacy/`
 
 2. **TravelPlanner**
    - current validation runner: `scripts/evaluation/run_travelplanner_eval.py`
@@ -136,15 +135,3 @@ python scripts/swe_bench/run_swe_bench_batch.py --limit 5 --output_dir runs/swe_
 ```
 
 ---
-
-## Legacy benchmark entrypoints
-
-The following older evaluation scripts are retained for reference only and are **not** the default mainline runtime:
-
-- `scripts/evaluation/_legacy/run_planbench_full.py`
-- `scripts/evaluation/_legacy/run_evaluation.py`
-- `scripts/evaluation/_legacy/run_planbench_eval.py`
-- `scripts/evaluation/_legacy/run_planbench_comparison.py`
-- `scripts/evaluation/_legacy/run_stress_test.py`
-
-If you need historical behavior, call them explicitly and treat them as legacy paths rather than current benchmark guidance.

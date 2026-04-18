@@ -90,7 +90,7 @@ chmod +x workspaces/planbench_data/planner_tools/VAL/validate
 
 ## Architecture Overview
 
-> **For the current mainline runtime, active-vs-legacy boundaries, and the generic PDDL / TravelPlanner flows, see** [Functional Flow](docs/FUNCTIONAL_FLOW.md)
+> **For the current mainline runtime surfaces and the generic PDDL / TravelPlanner flows, see** [Functional Flow](docs/FUNCTIONAL_FLOW.md)
 > **For exact benchmark numbers and provenance, see** [RESULTS_PROVENANCE.md](RESULTS_PROVENANCE.md)
 
 ### Directory Structure
@@ -281,7 +281,7 @@ These were the earlier TravelPlanner validation numbers before the current conve
 | `python src/interfaces/cli.py` | Launch the local CLI demo entrypoint |
 | `python src/interfaces/mcp_server.py` | Launch the server as a Model Context Protocol endpoint |
 
-Historical monolithic evaluation scripts such as `run_planbench_full.py` and `run_evaluation.py` now live under `scripts/evaluation/_legacy/` and should be treated as legacy paths rather than the current mainline runtime.
+The repository now supports only the current mainline entrypoints listed above.
 
 ---
 

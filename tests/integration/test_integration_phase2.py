@@ -21,12 +21,10 @@ os.environ['OPENAI_API_KEY'] = 'test-key-for-imports'
 
 from bdi_llm.schemas import BDIPlan, ActionNode
 from bdi_llm.symbolic_verifier import BlocksworldPhysicsValidator
+from scripts.evaluation.planbench_utils import bdi_to_pddl_actions, parse_pddl_problem
 
 def test_bdi_to_pddl_conversion():
     """Test converting BDI actions to PDDL format"""
-    # Import the function from run_planbench_full
-    from scripts.evaluation.run_planbench_full import bdi_to_pddl_actions
-
     # Create a sample BDI plan
     plan = BDIPlan(
         goal_description="Stack blocks",
@@ -117,8 +115,6 @@ def test_physics_validation_invalid_plan():
 
 def test_metrics_structure():
     """Test that metrics have the correct layered structure"""
-    from scripts.evaluation.run_planbench_full import parse_pddl_problem
-
     # Test with a real PDDL file
     test_file = "workspaces/planbench_data/plan-bench/instances/blocksworld/generated/instance-10.pddl"
 

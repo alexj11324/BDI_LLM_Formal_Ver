@@ -7,16 +7,20 @@ Test the complete multi-layer verification pipeline:
 - Layer 1: Structural verification (DAG)
 - Layer 2a: Physics validation (blocksworld)
 
-Tests both parse_pddl_problem() and generate_bdi_plan() integration.
+Tests current parse + planner + multi-layer verification integration.
 
 Author: BDI-LLM Research
 Date: 2026-02-04
 """
 
-import json
 import os
 import pytest
 from pathlib import Path
+
+from bdi_llm.planner import BDIPlanner
+from bdi_llm.symbolic_verifier import BlocksworldPhysicsValidator
+from bdi_llm.verifier import PlanVerifier
+from scripts.evaluation.planbench_utils import bdi_to_pddl_actions, parse_pddl_problem
 
 def _is_valid_api_key(key):
     if not key:
@@ -34,12 +38,41 @@ if not real_key:
     os.environ['OPENAI_API_KEY'] = 'dummy-key-for-parsing-only'
     print("Note: Using dummy API key - LLM tests will be skipped\n")
 
-# Import after setting key
-try:
-    from scripts.evaluation.run_planbench_full import parse_pddl_problem, generate_bdi_plan
-except ImportError:
-    # If imports fail, we can't run tests
-    pass
+def _generate_plan_with_layers(
+    beliefs: str,
+    desire: str,
+    init_state: dict,
+) -> tuple[object, bool, dict]:
+    """Exercise the current planner + verifier stack without reviving legacy shims."""
+    planner = BDIPlanner(auto_repair=False, domain="blocksworld")
+    pred = planner.generate_plan(beliefs=beliefs, desire=desire)
+    plan = pred.plan
+
+    struct_result = PlanVerifier.verify(plan.to_networkx())
+    pddl_actions = bdi_to_pddl_actions(plan, domain="blocksworld")
+    physics_valid, physics_errors = BlocksworldPhysicsValidator.validate_plan(
+        pddl_actions,
+        init_state,
+    )
+
+    metrics = {
+        'verification_layers': {
+            'structural': {
+                'valid': struct_result.is_valid,
+                'errors': struct_result.errors,
+                'hard_errors': struct_result.hard_errors,
+                'warnings': struct_result.warnings,
+            },
+            'physics': {
+                'valid': physics_valid,
+                'errors': physics_errors,
+            },
+        },
+        'overall_valid': struct_result.is_valid and physics_valid,
+        'num_nodes': len(plan.nodes),
+        'num_edges': len(plan.edges),
+    }
+    return plan, metrics['overall_valid'], metrics
 
 def test_pddl_parser_init_state():
     """Test that parse_pddl_problem correctly extracts init_state"""
@@ -81,9 +114,9 @@ def test_pddl_parser_init_state():
         pytest.fail(f"Exception during parsing: {e}")
 
 def test_multi_layer_verification():
-    """Test that generate_bdi_plan includes multi-layer verification"""
+    """Test that the current planner stack exposes layered verification metrics."""
     print("="*80)
-    print("  Test 2: Multi-Layer Verification in generate_bdi_plan()")
+    print("  Test 2: Multi-Layer Verification in current planner stack")
     print("="*80 + "\n")
 
     if not HAS_API_KEY:
@@ -101,7 +134,7 @@ def test_multi_layer_verification():
     }
 
     try:
-        plan, is_valid, metrics = generate_bdi_plan(beliefs, desire, init_state, timeout=30)
+        plan, is_valid, metrics = _generate_plan_with_layers(beliefs, desire, init_state)
 
         # Check metrics structure
         assert 'verification_layers' in metrics, "verification_layers missing from metrics"
@@ -153,7 +186,7 @@ def test_physics_catches_errors():
     }
 
     try:
-        plan, is_valid, metrics = generate_bdi_plan(beliefs, desire, init_state, timeout=30)
+        plan, is_valid, metrics = _generate_plan_with_layers(beliefs, desire, init_state)
 
         struct_valid = metrics['verification_layers']['structural']['valid']
         physics_valid = metrics['verification_layers']['physics']['valid']
