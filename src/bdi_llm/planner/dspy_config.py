@@ -7,6 +7,33 @@ from .lm_adapter import ResponsesAPILM
 
 # Module-level flag to ensure DSPy is configured only once
 _dspy_configured: bool = False
+_REASONING_MODEL_TAGS = (
+    'gpt-5',
+    'gpt-oss',
+    'o1',
+    'o3',
+    'glm5',
+    'glm-5',
+    'glm47flash',
+    'glm-4.7',
+    'glm-4.7-flash',
+    'z-ai/glm',
+    'zai-org/glm',
+)
+_GLM_MODEL_TAGS = (
+    'glm5',
+    'glm-5',
+    'glm47flash',
+    'glm-4.7',
+    'glm-4.7-flash',
+    'z-ai/glm',
+    'zai-org/glm',
+)
+
+
+def _model_has_any_tag(model_name: str, tags: tuple[str, ...]) -> bool:
+    model_name_lower = model_name.lower()
+    return any(tag in model_name_lower for tag in tags)
 
 
 def configure_dspy():
@@ -28,8 +55,7 @@ def configure_dspy():
 
     # Check if model is a reasoning model (gpt-5, o1, etc.)
     model_name_lower = Config.MODEL_NAME.lower()
-    reasoning_model_tags = ['gpt-5', 'gpt-oss', 'o1', 'o3', 'glm5', 'glm-5', 'z-ai/glm']
-    is_reasoning_model = any(model_type in model_name_lower for model_type in reasoning_model_tags)
+    is_reasoning_model = _model_has_any_tag(Config.MODEL_NAME, _REASONING_MODEL_TAGS)
 
     # Check if model is a Gemini model
     is_gemini_model = 'gemini' in model_name_lower
@@ -40,11 +66,17 @@ def configure_dspy():
     # Check if model uses NVIDIA API (nvidia/ prefix or integrate.api.nvidia.com)
     is_nvidia_api = (model_name_lower.startswith('nvidia/') or
                      (Config.OPENAI_API_BASE and 'nvidia' in Config.OPENAI_API_BASE.lower()))
-    is_glm_model = any(tag in model_name_lower for tag in ('glm5', 'glm-5', 'z-ai/glm'))
+    is_glm_model = _model_has_any_tag(Config.MODEL_NAME, _GLM_MODEL_TAGS)
+    glm_chat_template_kwargs = (
+        {'enable_thinking': True, 'clear_thinking': False}
+        if is_glm_model and Config.ENABLE_THINKING
+        else None
+    )
 
     # Prepare LM configuration based on model type
     lm_config = {
         'model': Config.MODEL_NAME,
+        'seed': Config.SEED,
     }
 
     # Add API key based on model type
@@ -69,15 +101,13 @@ def configure_dspy():
                 api_key=credentials['openai'],
                 api_base=Config.OPENAI_API_BASE or 'https://integrate.api.nvidia.com/v1',
                 reasoning_effort=Config.REASONING_EFFORT,
-                max_tokens=16000,
+                max_tokens=Config.MAX_TOKENS,
                 timeout=Config.TIMEOUT,
                 num_retries=10,
+                seed=Config.SEED,
+                temperature=Config.TEMPERATURE,
                 use_chat_completions=True,  # Use Chat Completions API for NVIDIA
-                chat_template_kwargs=(
-                    {'enable_thinking': True, 'clear_thinking': False}
-                    if is_glm_model
-                    else None
-                ),
+                chat_template_kwargs=glm_chat_template_kwargs,
             )
             dspy.configure(lm=lm)
             _dspy_configured = True
@@ -89,10 +119,13 @@ def configure_dspy():
                 api_key=credentials['openai'],
                 api_base=Config.OPENAI_API_BASE,
                 reasoning_effort=Config.REASONING_EFFORT,
-                max_tokens=16000,
+                max_tokens=Config.MAX_TOKENS,
                 timeout=Config.TIMEOUT,
                 num_retries=10,
-                use_chat_completions=False,  # Use Responses API for infiniteai
+                seed=Config.SEED,
+                temperature=Config.TEMPERATURE,
+                use_chat_completions=is_glm_model,
+                chat_template_kwargs=glm_chat_template_kwargs,
             )
             dspy.configure(lm=lm)
             _dspy_configured = True
