@@ -8,8 +8,7 @@ The active runtime is the `src/bdi_llm/` package, the entrypoints in `src/interf
 
 Do **not** treat these as the mainline runtime unless a task explicitly says so:
 - `scripts/evaluation/_legacy/` — historical runners kept for reference
-- `scripts/swe_bench/` — SWE-bench subsystem (see "Next steps" below; not current focus)
-- `workspaces/pnsv_workspace/` — architecture/reference workspace, not the default import path used by current runners
+- `scripts/swe_bench/` — SWE-bench subsystem has been removed/deferred; no active runner here
 
 ## Setup and common commands
 
@@ -55,7 +54,7 @@ pytest tests/integration/test_integration.py -q
 Notes:
 - Most unit tests are offline.
 - `tests/integration/test_integration.py` exercises live planner generation and needs API credentials.
-- Local symbolic verification needs a working VAL binary at `workspaces/planbench_data/planner_tools/VAL/validate`.
+- Local symbolic verification needs a working VAL binary at `planbench_data/planner_tools/VAL/validate`.
 
 ### Demo and MCP entrypoints
 
@@ -84,21 +83,21 @@ Use `run_generic_pddl_eval.py` as the current generic PDDL runner. Do not defaul
 ### TravelPlanner
 
 ```bash
-python scripts/evaluation/run_travelplanner_baseline.py --split validation --max_instances 3 --travelplanner_home workspaces/TravelPlanner_official
-python scripts/evaluation/run_travelplanner_bdi.py --split validation --max_instances 3 --travelplanner_home workspaces/TravelPlanner_official
-python scripts/evaluation/run_travelplanner_repair.py --split validation --max_instances 3 --travelplanner_home workspaces/TravelPlanner_official
+python scripts/evaluation/run_travelplanner_baseline.py --split validation --max_instances 3 --travelplanner_home /path/to/TravelPlanner_official
+python scripts/evaluation/run_travelplanner_bdi.py --split validation --max_instances 3 --travelplanner_home /path/to/TravelPlanner_official
+python scripts/evaluation/run_travelplanner_repair.py --split validation --max_instances 3 --travelplanner_home /path/to/TravelPlanner_official
 
 # Release matrix / validation orchestration
-python scripts/evaluation/run_travelplanner_release_matrix.py --run-validation --workers 20 --travelplanner-home workspaces/TravelPlanner_official
+python scripts/evaluation/run_travelplanner_release_matrix.py --run-validation --workers 20 --travelplanner-home /path/to/TravelPlanner_official
 
 # Generate test-set submissions
 python scripts/evaluation/run_travelplanner_test_submit.py --mode bdi-repair --output_dir runs/tp_test_submit --workers 100
 ```
 
-TravelPlanner requires:
-- the official checkout at `workspaces/TravelPlanner_official/` (or `TRAVELPLANNER_HOME` / `--travelplanner_home`)
-- the official database files under that checkout
-- access to the Hugging Face `osunlp/TravelPlanner` dataset
+TravelPlanner requires an external checkout of the official repo. It is **not** stored in this repo.
+Supply the path via the `TRAVELPLANNER_HOME` environment variable or the `--travelplanner_home` CLI flag.
+The checkout must contain the official database files, and the Hugging Face `osunlp/TravelPlanner` dataset
+must be accessible.
 
 ## Configuration and runtime assumptions
 
@@ -118,12 +117,12 @@ Important variables:
 Important detail: `Config._resolve_key()` ignores placeholder strings like `${VAR}`. Put real values in `.env` or export them in the shell.
 
 The current runtime resolves VAL under:
-- `workspaces/planbench_data/planner_tools/VAL/validate`
+- `planbench_data/planner_tools/VAL/validate`
 
 If local symbolic verification fails on macOS, check executable permissions:
 
 ```bash
-chmod +x workspaces/planbench_data/planner_tools/VAL/validate
+chmod +x planbench_data/planner_tools/VAL/validate
 ```
 
 ## High-level architecture
@@ -210,7 +209,7 @@ The flow is:
 2. the adapter injects the output contract from `travelplanner/spec.md` into `domain_context`
 3. `travelplanner/engine.py` generates a `TravelPlannerItinerary`
 4. `travelplanner/serializer.py` converts it into official submission rows
-5. `travelplanner/official.py` evaluates it with the official evaluator from `workspaces/TravelPlanner_official`
+5. `travelplanner/official.py` evaluates it with the official evaluator from the external TravelPlanner checkout (path from `TRAVELPLANNER_HOME`)
 6. `travelplanner/runner.py` handles checkpointing, summaries, and optional MLflow logging
 
 Repair is split into two layers:
@@ -220,32 +219,28 @@ Repair is split into two layers:
 `TRAVELPLANNER_BDI_PROMPT_VERSION` selects the BDI prompt stack in `travelplanner/engine.py`.
 Current code defaults to `v3`; `v4` remains available as an experimental path.
 
-### 8. SWE-bench (next step — not current focus)
-
-SWE-bench code lives under `src/bdi_llm/swe_bench/` and `scripts/swe_bench/`. A full 500-instance SWE-bench Verified run scored **34/500 (6.8%)** with GPT-5(low) on 2026-03-11. Results concentrated in small repos (pytest 47%, pylint 50%, astropy 36%) while large repos (django 0/231, sympy 0/75) failed entirely due to search_block matching and environment setup issues. See `runs/swe_bench_full_verified/` on the GCP instance `swe-bench-runner` for detailed results. Further SWE-bench optimization is deferred to future work.
-
-### 9. Other active subsystems
+### 8. Other active subsystems
 
 - `scripts/replanning/run_dynamic_replanning.py` + `src/bdi_llm/dynamic_replanner/` — execution-aware replanning after grounded-action failure
 
 ## Data and artifact conventions
 
-- `workspaces/planbench_data/` — current PDDL benchmark assets and VAL binary
-- `workspaces/TravelPlanner_official/` — external official TravelPlanner checkout used for evaluation
+- `planbench_data/` — current PDDL benchmark assets and VAL binary
+- TravelPlanner official checkout — external repo, NOT stored here; path supplied via `TRAVELPLANNER_HOME` or `--travelplanner_home`
 - `runs/` — mutable checkpoints, scratch outputs, and MLflow data (`runs/mlflow/`)
 - `artifacts/paper_eval_20260213/` — frozen paper evidence snapshot; do not edit or treat mutable reruns as replacements for paper numbers
 - `RESULTS_PROVENANCE.md` — exact source files for every benchmark number in README; update when regenerating results
 
 ## Project automation and docs (non-runtime)
 
-- `.ralphy/` + `scripts/ralph/` — Ralph autonomous agent executor (PRD-driven task decomposition with quality gates)
+- `scripts/ralph/` — Ralph autonomous agent executor (PRD-driven task decomposition with quality gates)
 - `paper_icml2026/` — ICML paper artifacts (figures, sections, compiled paper)
 - `docs/conductor/` — documentation hub (product, workflow, tech stack, tracks)
 - `docs/c4/` — C4 architecture diagrams (context, container, component)
 
 ## Known repo gotcha
 
-The current runtime code resolves PlanBench assets under `workspaces/planbench_data/`, while `Dockerfile` still copies a root-level `planbench_data/` tree. Re-check Dockerfile assumptions before relying on container builds for the current mainline runtime.
+PlanBench assets live at the repo root under `planbench_data/`. The `Dockerfile` correctly copies this root-level `planbench_data/` tree — that `COPY` directive is accurate. Any reference to `workspaces/planbench_data/` in older notes or scripts was the stale path; `planbench_data/` at the repo root is the canonical location.
 
 ## Bridges2 / PSC deployment lessons
 

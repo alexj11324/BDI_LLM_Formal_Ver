@@ -218,3 +218,7 @@ configs/setup_state.json
 
 # Other files
 eval_model.md
+
+# Cleanup 2026-04-18
+scripts/ralph/.last-branch
+INSTINCT_RECOMMENDATIONS.md
