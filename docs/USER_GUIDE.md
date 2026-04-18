@@ -1,407 +1,246 @@
-# Integration Guide: Multi-Layer Symbolic Verification
+# Integration Guide: Current Mainline Verification
 
-**Last Updated**: 2026-03-01
-**Purpose**: Guide for using and understanding the integrated symbolic verification system
+**Last Updated**: 2026-04-18  
+**Purpose**: Practical guide for using the repository's current verification entrypoints and public helpers
 
 ---
 
 ## Overview
 
-The BDI-LLM framework now includes a **three-layer verification system** that validates plans at multiple levels of abstraction:
+The current mainline runtime exposes three complementary verification layers:
 
-1. **Layer 1 - Structural Verification**: hard errors (empty graph, cycles) + soft warnings (disconnected components)
-2. **Layer 2a - Physics Validation**: Domain-specific physical constraints (currently blocksworld)
-3. **Layer 2b - PDDL Semantic Validation**: PDDL preconditions and goal achievement (VAL; local binary required)
+1. **Structural verification** via `PlanVerifier`
+2. **PDDL symbolic verification** via `PDDLSymbolicVerifier` and `VAL`
+3. **Domain-specific checks** such as `BlocksworldPhysicsValidator`
 
----
+For PDDL workloads, the repository now supports two primary CLI surfaces:
 
-## MCP Server Integration
+- `scripts/evaluation/run_generic_pddl_eval.py` for the generic mainline PDDL flow
+- `scripts/evaluation/run_verification_only.py` for built-in-domain verification studies without repair
 
-The framework can be run as a Model Context Protocol (MCP) Server, allowing AI agents (like Claude Desktop) to use it as a native toolset.
+For code-level integrations, use:
 
-### 1. Building the Docker Image
-To ensure all dependencies (including the compiled VAL tool) are present, build the Docker image:
-
-```bash
-docker build -t bdi-verifier .
-```
-
-### 2. Running the Server
-Run the container, passing credentials for your configured provider:
-
-```bash
-docker run -i --rm -e OPENAI_API_KEY=$OPENAI_API_KEY bdi-verifier
-# or:
-# docker run -i --rm -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY bdi-verifier
-# docker run -i --rm -e GOOGLE_API_KEY=$GOOGLE_API_KEY bdi-verifier
-# docker run -i --rm -e GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa.json bdi-verifier
-```
-
-### 3. Exposed Tools
-The server exposes the following tools to the agent:
-
-*   **`generate_plan(beliefs, desire, domain)`**: Generates a BDI plan from natural language.
-*   **`verify_plan(domain_pddl, problem_pddl, plan_actions)`**: Verifies a PDDL plan using the internal symbolic verifier.
-*   **`execute_verified_plan(domain_pddl, problem_pddl, plan_actions, command_to_execute, rationale)`**:
-    *   **"Trojan Horse" Pattern**: This tool acts as a secure gatekeeper.
-    *   It first **verifies** the provided PDDL plan.
-    *   **Only if verification passes** does it execute the `command_to_execute`.
-    *   This allows agents to perform actions (like `cp`, `mv`, etc.) safely, ensuring the logical plan backing them is sound.
+- `from bdi_llm.planner import BDIPlanner`
+- `from scripts.evaluation.planbench_utils import parse_pddl_problem, bdi_to_pddl_actions`
 
 ---
 
 ## Quick Start
 
-### Running Multi-Layer Verification
+### Run the generic mainline PDDL flow
 
 ```bash
-# Run with physics validation on 3 instances
-python scripts/evaluation/run_planbench_full.py --domain blocksworld --max_instances 3
+# Single generic PDDL problem
+python scripts/evaluation/run_generic_pddl_eval.py \
+  --domain_pddl tests/fixtures/gripper/domain.pddl \
+  --problem_pddl tests/fixtures/gripper/problem1.pddl
 
-# Run full 100-instance benchmark
-python scripts/evaluation/run_planbench_full.py --domain blocksworld --max_instances 100
+# Batch run with VAL verification
+python scripts/evaluation/run_generic_pddl_eval.py \
+  --domain_pddl tests/fixtures/gripper/domain.pddl \
+  --problem_dir tests/fixtures/gripper \
+  --execution_mode VERIFY_WITH_VAL
 ```
 
-### Interpreting Results
+### Run verification-only analysis on built-in domains
 
-The output will show comparative analysis:
-
-```
---- Multi-Layer Verification Comparison ---
-Structural-only success: 10 (33.3%)
-Multi-layer success: 8 (26.7%)
-Physics caught: 2 additional errors
+```bash
+python scripts/evaluation/run_verification_only.py --domain blocksworld --max_instances 10
+python scripts/evaluation/run_verification_only.py --domain logistics --max_instances 10
+python scripts/evaluation/run_verification_only.py --domain depots --max_instances 10
 ```
 
-**What this means:**
-- **Structural-only success**: Plans that passed hard structural checks (no empty graph, no cycles). Disconnected components are tracked as warnings.
-- **Multi-layer success**: Plans that passed BOTH structural AND physics validation
-- **Physics caught**: Additional errors found by physics validator that structural verification missed
-
----
-
-## New Metrics Structure
-
-### Before Integration
+### Read a PDDL problem and inspect the extracted init state
 
 ```python
-{
-    'generation_time': 1.23,
-    'is_valid': True,
-    'errors': [],
-    'num_nodes': 5,
-    'num_edges': 4
-}
+from scripts.evaluation.planbench_utils import parse_pddl_problem
+
+pddl_data = parse_pddl_problem(
+    "workspaces/planbench_data/plan-bench/instances/blocksworld/generated/instance-10.pddl"
+)
+
+print(pddl_data["problem_name"])
+print(pddl_data["domain_name"])
+print(pddl_data["init_state"])
 ```
-
-### After Integration
-
-```python
-{
-    'generation_time': 1.23,
-    'verification_layers': {
-        'structural': {
-            'valid': True,
-            'hard_errors': [],
-            'warnings': []
-        },
-        'physics': {
-            'valid': True,
-            'errors': []
-        }
-    },
-    'overall_valid': True,  # structural AND physics
-    'num_nodes': 5,
-    'num_edges': 4
-}
-```
-
-**Key Changes:**
-- `verification_layers`: Separate results for each validation layer
-- `structural.hard_errors` vs `structural.warnings`: blocking issues vs non-blocking diagnostics
-- `overall_valid`: Combined validation result (must pass ALL layers)
-- Backward compatible: Old keys (`num_nodes`, `num_edges`, `generation_time`) still present
 
 ---
 
 ## API Usage
 
-### 1. Using BlocksworldPhysicsValidator Directly
+### 1. Validate a blocksworld action list directly
 
 ```python
-from src.bdi_llm.symbolic_verifier import BlocksworldPhysicsValidator
+from bdi_llm.symbolic_verifier import BlocksworldPhysicsValidator
 
-# Define initial state
 init_state = {
-    'on_table': ['a', 'b'],  # Blocks on table
-    'on': [],                # (block1, block2) tuples
-    'clear': ['a', 'b'],     # Clear blocks
-    'holding': None          # Block in hand (or None)
+    "on_table": ["a", "b"],
+    "on": [],
+    "clear": ["a", "b"],
+    "holding": None,
 }
 
-# Define plan actions
-plan = [
+plan_actions = [
     "(pick-up a)",
-    "(stack a b)"
+    "(stack a b)",
 ]
 
-# Validate
 validator = BlocksworldPhysicsValidator()
-is_valid, errors = validator.validate_plan(plan, init_state)
+is_valid, errors = validator.validate_plan(plan_actions, init_state)
 
-if is_valid:
-    print("Plan is physically valid!")
-else:
-    print(f"Physics errors: {errors}")
+print(is_valid)
+print(errors)
 ```
 
-### 2. Using Multi-Layer Verification in Plan Generation
+### 2. Generate a plan with `BDIPlanner` and build layered metrics
 
 ```python
-from run_planbench_full import generate_bdi_plan
+from bdi_llm.planner import BDIPlanner
+from bdi_llm.symbolic_verifier import BlocksworldPhysicsValidator
+from bdi_llm.verifier import PlanVerifier
+from scripts.evaluation.planbench_utils import bdi_to_pddl_actions
 
-# Generate plan with multi-layer verification
-beliefs = "Block a and block b are on the table. Block a is clear. Block b is clear. The hand is empty."
+beliefs = (
+    "Block a and block b are on the table. "
+    "Block a is clear. Block b is clear. The hand is empty."
+)
 desire = "Block a is on block b."
-
 init_state = {
-    'on_table': ['a', 'b'],
-    'on': [],
-    'clear': ['a', 'b'],
-    'holding': None
+    "on_table": ["a", "b"],
+    "on": [],
+    "clear": ["a", "b"],
+    "holding": None,
 }
 
-plan, is_valid, metrics = generate_bdi_plan(beliefs, desire, init_state)
+planner = BDIPlanner(auto_repair=False, domain="blocksworld")
+pred = planner.generate_plan(beliefs=beliefs, desire=desire)
+plan = pred.plan
 
-# Check results
-print(f"Overall valid: {metrics['overall_valid']}")
-print(f"Structural: {metrics['verification_layers']['structural']['valid']}")
-print(f"Physics: {metrics['verification_layers']['physics']['valid']}")
+struct_result = PlanVerifier.verify(plan.to_networkx())
+plan_actions = bdi_to_pddl_actions(plan, domain="blocksworld")
+physics_valid, physics_errors = BlocksworldPhysicsValidator.validate_plan(
+    plan_actions,
+    init_state,
+)
 
-if not is_valid:
-    print("Errors:")
-    for layer, data in metrics['verification_layers'].items():
-        if not data['valid']:
-            print(f"  {layer}: {data['errors']}")
+metrics = {
+    "verification_layers": {
+        "structural": {
+            "valid": struct_result.is_valid,
+            "errors": struct_result.errors,
+            "hard_errors": struct_result.hard_errors,
+            "warnings": struct_result.warnings,
+        },
+        "physics": {
+            "valid": physics_valid,
+            "errors": physics_errors,
+        },
+    },
+    "overall_valid": struct_result.is_valid and physics_valid,
+    "num_nodes": len(plan.nodes),
+    "num_edges": len(plan.edges),
+}
+
+print(metrics["overall_valid"])
+print(metrics["verification_layers"]["structural"]["valid"])
+print(metrics["verification_layers"]["physics"]["valid"])
 ```
 
-### 3. Parsing PDDL with init_state Extraction
+### 3. Convert a `BDIPlan` to PDDL actions
 
 ```python
-from run_planbench_full import parse_pddl_problem
+from scripts.evaluation.planbench_utils import bdi_to_pddl_actions
 
-# Parse PDDL problem file
-pddl_data = parse_pddl_problem('workspaces/planbench_data/plan-bench/instances/blocksworld/generated/instance-10.pddl')
-
-# Access init_state
-init_state = pddl_data['init_state']
-# Returns: {'on_table': [...], 'on': [...], 'clear': [...], 'holding': None}
-
-# Also available:
-# pddl_data['problem_name']
-# pddl_data['objects']
-# pddl_data['init']  # Raw PDDL predicates
-# pddl_data['goal']
+pddl_actions = bdi_to_pddl_actions(plan, domain="blocksworld")
+print(pddl_actions)
 ```
 
 ---
 
-## Error Types
+## Current Verification Flow
 
-### Structural Errors (Layer 1)
-
-```python
-# Examples:
-"Graph contains cycles: ['node1', 'node2', 'node1']"
-"Empty plan - no action nodes"
-```
-
-**Cause**: Blocking structural violations (no executable topological order)
-**Solution**: LLM needs to regenerate plan with proper dependencies
-
-### Structural Warnings (Layer 1)
-
-```python
-# Examples:
-"Plan graph has disconnected components - may indicate parallel independent subplans"
-```
-
-**Cause**: Non-blocking structural concerns
-**Solution**: Continue to Layer 2 validation; auto-repair can still connect components when needed
-
-### Physics Errors (Layer 2a)
-
-```python
-# Examples:
-"Cannot pick up block 'a' - it is not clear (has 'b' on top)"
-"Cannot stack block 'a' - hand is empty"
-"Cannot put down block 'a' on block 'b' - 'b' is not clear"
-```
-
-**Cause**: Violates blocksworld physical constraints
-**Solution**: LLM needs to respect current state and physics rules
-
-### PDDL Semantic Errors (Layer 2b - VAL)
-
-```python
-# Examples (when VAL is available):
-"Action 'pick-up a' preconditions not satisfied"
-"Goal state not achieved: (on a b) is false"
-```
-
-**Cause**: PDDL semantic violations
-**Solution**: LLM needs to generate valid PDDL-compliant plans
-
----
-
-## Verification Flow Diagram
-
-```
-PDDL Problem File
+```text
+PDDL problem file
     ↓
 parse_pddl_problem()
-    ├─ objects: ['a', 'b', 'c']
-    ├─ init: ['ontable a', 'clear a', ...]
-    ├─ goal: ['on a b', 'on b c']
-    └─ init_state: {'on_table': ['a'], ...}  ← NEW
     ↓
-pddl_to_natural_language()
-    ├─ beliefs: "Block a is on table..."
-    └─ desire: "Block a is on block b..."
+beliefs / desire / init_state
     ↓
-generate_bdi_plan(beliefs, desire, init_state)
+BDIPlanner.generate_plan(...)
     ↓
-    ├─ LLM generates BDIPlan
+BDIPlan
     ↓
-    ├─ Layer 1: PlanVerifier.verify(graph)
-    │   → structural validation result
+PlanVerifier.verify(plan.to_networkx())
     ↓
-    ├─ bdi_to_pddl_actions(plan)
-    │   → ["(pick-up a)", "(stack a b)"]
+bdi_to_pddl_actions(plan)
     ↓
-    ├─ Layer 2a: BlocksworldPhysicsValidator.validate_plan(actions, init_state)
-    │   → physics validation result
+BlocksworldPhysicsValidator.validate_plan(...)
     ↓
-    └─ Combine results
-        → overall_valid = structural AND physics
+optional VAL verification in run_generic_pddl_eval.py
+    ↓
+layered metrics + run artifacts
 ```
 
 ---
 
 ## Testing
 
-### Unit Tests (No API Key Required)
+### Offline tests
 
 ```bash
-# Test physics validator
-pytest tests/test_symbolic_verifier.py -v
+# Physics validator
+pytest tests/unit/test_symbolic_verifier.py -q
 
-# Test Phase 2 integration (offline)
-pytest tests/test_integration_phase2.py -v
+# Generic helper + planner integration
+pytest tests/integration/test_generic_pddl_integration.py -q
+
+# Blocksworld conversion / parser checks
+pytest tests/integration/test_integration_phase2.py -q
 ```
 
-### Integration Tests (API-dependent)
+### API-dependent tests
 
 ```bash
-# Set credentials for your configured provider:
-# - OpenAI / NVIDIA-compatible gateway: OPENAI_API_KEY
-# - Anthropic: ANTHROPIC_API_KEY
-# - Gemini/Vertex: GOOGLE_API_KEY or GOOGLE_APPLICATION_CREDENTIALS
-
-# Run integration tests
-pytest tests/test_integration.py -q
-pytest tests/test_val_integration.py -q
-
-# Run small batch
-python scripts/evaluation/run_planbench_full.py --domain blocksworld --max_instances 3
+# Requires valid provider credentials
+pytest tests/integration/test_integrated_verification.py -q
+pytest tests/integration/test_integration.py -q
 ```
 
-`tests/test_integration.py` now skips automatically when provider credentials are missing/invalid.
-
----
-
-## Known Limitations
-
-### 1. Domain-Specific Physics Validation
-
-**Current**: Only blocksworld is fully supported
-**Workaround**: Physics validation skipped for other domains (falls back to structural only)
-
-### 2. VAL Verifier Platform Dependency
-
-**Issue**: VAL binary is platform-specific
-**Status**: Repository currently includes a macOS arm64 binary at `workspaces/planbench_data/planner_tools/VAL/validate`
-**Workaround**: On unsupported platforms, compile VAL locally or use Docker
-**Solution**: Keep a platform-matched VAL binary in `workspaces/planbench_data/planner_tools/VAL/`
-
-### 3. Provider Credentials Required for API-Dependent Testing
-
-**Offline tests**: Physics validator, PDDL parser, metrics structure
-**Online tests**: Full LLM integration with plan generation
-**Workaround**: API-dependent tests now auto-skip when credentials are unavailable
-
----
-
-## Comparison with Previous System
-
-| Aspect | Before Integration | After Integration |
-|--------|-------------------|-------------------|
-| **Validation Layers** | 1 (Structural only) | 2 (Structural + Physics) |
-| **Error Detection** | DAG violations | DAG + Physical constraints |
-| **Metrics** | Flat structure | Layered structure |
-| **Success Rate** | ~67% (structural) | ~50-60% (multi-layer, stricter) |
-| **Error Feedback** | Generic graph errors | Specific physics violations |
+If provider credentials are missing or obviously fake, API-dependent tests should skip rather than hard-fail.
 
 ---
 
 ## Troubleshooting
 
-### Problem: `init_state` is None
+### Problem: `init_state` is missing
 
-**Cause**: PDDL parser failed to extract initial state
-**Check**:
+Use the current parser helper and inspect the returned keys directly:
+
 ```python
-pddl_data = parse_pddl_problem('path/to/file.pddl')
-if 'init_state' not in pddl_data:
-    print("Parser missing init_state extraction")
+from scripts.evaluation.planbench_utils import parse_pddl_problem
+
+pddl_data = parse_pddl_problem("path/to/problem.pddl")
+assert "init_state" in pddl_data
 ```
 
-### Problem: Physics validation always passes
+### Problem: physics validation always passes
 
-**Cause**: `init_state` not provided to `generate_bdi_plan()`
-**Solution**: Pass `init_state` parameter:
+Make sure you are validating the serialized PDDL action list, not the raw `BDIPlan` object:
+
 ```python
-plan, valid, metrics = generate_bdi_plan(beliefs, desire, init_state)
+plan_actions = bdi_to_pddl_actions(plan, domain="blocksworld")
+is_valid, errors = BlocksworldPhysicsValidator.validate_plan(plan_actions, init_state)
 ```
 
-### Problem: Metrics missing `verification_layers`
+### Problem: generic planner raises missing `domain_context`
 
-**Cause**: Using old version of `generate_bdi_plan()`
-**Check**: Verify function signature includes `init_state` parameter
-
----
-
-## Next Steps
-
-### For Researchers
-
-1. **Run 100-instance benchmark** to get comprehensive statistics
-2. **Analyze error distribution** across validation layers
-3. **Compare success rates** before/after integration
-
-### For Developers
-
-1. **Implement feedback loop**: Pass physics errors back to LLM for auto-repair
-2. **Add BDI consistency layer**: Validate Beliefs/Desires/Intentions coherence
-3. **Fix VAL integration**: Recompile for macOS or containerize
+That error means you are using a generic PDDL domain without constructing a `DomainSpec` from the domain file. Use `run_generic_pddl_eval.py` or build a `DomainSpec.from_pddl(...)` before calling `BDIPlanner`.
 
 ---
 
 ## References
 
-- **Conductor Setup**: `docs/conductor/index.md`
-- [Wiki Catalogue](../wiki-catalogue.md)
-- **C4 Architecture**: `docs/c4/c4-context.md`
-- **Technical Reference**: `docs/TECHNICAL_REFERENCE.md`
-- **Benchmarks**: `docs/BENCHMARKS.md`
-- **Test Suite**: `tests/test_integrated_verification.py`, `tests/test_integration_phase2.py`
+- [Functional Flow](FUNCTIONAL_FLOW.md)
+- [Benchmarks](BENCHMARKS.md)
+- [Technical Reference](TECHNICAL_REFERENCE.md)
+- [README](../README.md)

@@ -6,9 +6,9 @@ Verification-Only PlanBench Evaluation
 Evaluates the PNSV verification framework WITHOUT repair.
 Flow: LLM generates plan → Structural verification → VAL verification → Record results
 
-This script is DECOUPLED from the full pipeline (run_planbench_full.py).
-It reuses PDDL parsing and NL conversion utilities but has its own
-clean evaluation loop focused purely on verification metrics.
+This script is DECOUPLED from the generic evaluation runner's repair path.
+It reuses planbench_utils helpers but keeps its own clean evaluation loop
+focused purely on verification metrics.
 
 Usage:
     # Run on blocksworld (10 instances for testing)
