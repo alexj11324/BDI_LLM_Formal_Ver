@@ -380,7 +380,7 @@ cd /ocean/projects/cis260113p/zjiang9/repo/BDI_LLM_Formal_Ver
 sbatch scripts/psc_deploy/serve_glm_mtp.sbatch
 # 等 3-5 min 模型 load + MTP compile
 # 拿到节点:squeue -u $USER -o '%.10i %.25j %R' 看 NODELIST
-# ready 指标:log 里出现 'Application startup complete' + 端口 8000
+# ready 指标:log 里出现 'Application startup complete' + 端口 47259(见 run_vllm_glm.sh)
 ```
 
 **ready_env 文件(每次换 serve 节点要更新)**:
@@ -389,8 +389,8 @@ sbatch scripts/psc_deploy/serve_glm_mtp.sbatch
 
 ```bash
 export VLLM_HOST=<node_name>
-export VLLM_PORT=8000
-export OPENAI_API_BASE=http://<node_name>:8000/v1
+export VLLM_PORT=47259
+export OPENAI_API_BASE=http://<node_name>:47259/v1
 export LLM_MODEL=openai/glm-4.7-flash
 export MODEL_NAME=glm-4.7-flash
 export MAX_MODEL_LEN_EFFECTIVE=65536
