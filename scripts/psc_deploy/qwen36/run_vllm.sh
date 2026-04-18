@@ -42,7 +42,7 @@ singularity exec --nv \
   vllm serve Qwen/Qwen3.6-35B-A3B \
   --port ${PORT:-47260} \
   --tensor-parallel-size ${TP_SIZE:-4} \
-  --max-model-len 32768 \
+  --max-model-len 65536 \
   --gpu-memory-utilization 0.90 \
   --reasoning-parser qwen3 \
   --tool-call-parser qwen3_coder \
