@@ -76,14 +76,14 @@ run_smoke_once() {
     VLLM_PID=""
     print_storage_snapshot "after smoke (${env_kind})" | tee -a "${ACTIVE_SERVICE_LOG}"
     return 0
-  fi
-
-  local rc=$?
+  else
+    local rc=$?
   echo "=== Smoke failed (${env_kind}) ===" | tee -a "${ACTIVE_SERVICE_LOG}"
   tail -n 120 "${ACTIVE_SERVICE_LOG}" || true
   cleanup_vllm
   VLLM_PID=""
   return "${rc}"
+  fi
 }
 
 echo "=== Starting GLM-4.7-Flash smoke ==="

@@ -39,7 +39,6 @@ apptainer_exec_bdi() {
   APPTAINERENV_PIP_CACHE_DIR="${BDI_PIP_CACHE}" \
   APPTAINERENV_TMPDIR="${BDI_TMP_ROOT}" \
   APPTAINERENV_PYTHONNOUSERSITE="1" \
-  APPTAINERENV_OPENAI_API_KEY="${OPENAI_API_KEY}" \
   apptainer exec --nv --cleanenv --writable-tmpfs \
     --bind "$(apptainer_host_binds)" \
     "${BDI_APPTAINER_IMG}" \

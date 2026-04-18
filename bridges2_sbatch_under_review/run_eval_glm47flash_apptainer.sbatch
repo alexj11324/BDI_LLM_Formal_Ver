@@ -90,7 +90,6 @@ echo "=== Starting vLLM in Apptainer ==="
 : > "${SERVICE_LOG}"
 apptainer_exec_bdi "
 source '${BDI_APPTAINER_VENV}/bin/activate'
-export OPENAI_API_KEY='${OPENAI_API_KEY}'
 export HF_HOME='${BDI_HF_HOME}'
 export HF_HUB_CACHE='${BDI_HF_HUB_CACHE}'
 export VLLM_USE_FLASHINFER_MOE_FP16='${VLLM_USE_FLASHINFER_MOE_FP16}'
@@ -107,7 +106,7 @@ echo "=== Run verification-only evaluation in Apptainer ==="
 apptainer_exec_bdi "
 source '${BDI_APPTAINER_VENV}/bin/activate'
 export OPENAI_API_BASE='${OPENAI_API_BASE}'
-export OPENAI_API_KEY='${OPENAI_API_KEY}'
+export OPENAI_API_KEY='EMPTY'
 export LLM_MODEL='${LLM_MODEL}'
 export SAVE_REASONING_TRACE='${SAVE_REASONING_TRACE}'
 export REASONING_TRACE_MAX_CHARS='${REASONING_TRACE_MAX_CHARS}'
