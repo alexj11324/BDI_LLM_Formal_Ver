@@ -7,8 +7,8 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
 #SBATCH -t 04:00:00
-#SBATCH -o /ocean/projects/cis250019p/zjiang9/serve_mtp_%j.out
-#SBATCH -e /ocean/projects/cis250019p/zjiang9/serve_mtp_%j.err
+#SBATCH -o /ocean/projects/cis260113p/zjiang9/repo/BDI_LLM_Formal_Ver/logs/slurm/glm47_serve_%j.out
+#SBATCH -e /ocean/projects/cis260113p/zjiang9/repo/BDI_LLM_Formal_Ver/logs/slurm/glm47_serve_%j.err
 
 set -eu
 echo "===== node=$(hostname) job=$SLURM_JOB_ID start=$(date) ====="
