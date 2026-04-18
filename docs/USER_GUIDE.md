@@ -16,7 +16,7 @@ The current mainline runtime exposes three complementary verification layers:
 For PDDL workloads, the repository now supports two primary CLI surfaces:
 
 - `scripts/evaluation/run_generic_pddl_eval.py` for the generic mainline PDDL flow
-- `scripts/evaluation/run_verification_only.py` for built-in-domain verification studies without repair
+- `scripts/evaluation/run_planbench_paperaligned.py` for built-in PlanBench domains and paper-aligned `baseline` / `bdi` / `bdi-repair` reporting
 
 For code-level integrations, use:
 
@@ -42,12 +42,12 @@ python scripts/evaluation/run_generic_pddl_eval.py \
   --execution_mode VERIFY_WITH_VAL
 ```
 
-### Run verification-only analysis on built-in domains
+### Run paper-aligned analysis on built-in PlanBench domains
 
 ```bash
-python scripts/evaluation/run_verification_only.py --domain blocksworld --max_instances 10
-python scripts/evaluation/run_verification_only.py --domain logistics --max_instances 10
-python scripts/evaluation/run_verification_only.py --domain depots --max_instances 10
+python scripts/evaluation/run_planbench_paperaligned.py --domain blocksworld --execution_mode bdi-repair --max_instances 10
+python scripts/evaluation/run_planbench_paperaligned.py --domain logistics --execution_mode bdi-repair --max_instances 10
+python scripts/evaluation/run_planbench_paperaligned.py --domain depots --execution_mode bdi-repair --max_instances 10
 ```
 
 ### Read a PDDL problem and inspect the extracted init state

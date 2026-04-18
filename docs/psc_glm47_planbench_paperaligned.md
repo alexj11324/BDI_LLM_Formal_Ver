@@ -1,25 +1,22 @@
 # PSC Bridges2 上运行 GLM-4.7-Flash PlanBench 论文对齐评测
 
-这份文档对应当前仓库里的“GPU 推理服务 + RM 评测编排”实现。
+这份文档只保留当前支持的主线路径：
 
-目标是：
+1. `GPU-shared` 只负责跑常驻 GLM-4.7-Flash 推理服务
+2. `RM-shared` 只负责跑 `paperaligned` 单 domain eval 和聚合 job
+3. 所有持久化写路径都落在 `/ocean/projects/cis260113p/zjiang9/`
 
-1. `GPU-shared` 只负责在 H100 上跑 GLM-4.7-Flash 推理服务。
-2. `RM-shared` 只负责读取 PlanBench、转 beliefs/desire、跑 `PlanVerifier`、调用 VAL、写 checkpoint、汇总 `Baseline / BDI / BDI-Repair`，以及导出论文表格。
-3. 所有持久化写路径都落在 `/ocean/projects/cis260113p/zjiang9/`，不把 cache / tmp / logs 写到 `HOME` 或 `/jet/home/zjiang9/`。
+仓库中的 GLM-4.7-Flash 评测只保留这条主线，不再维护其他旁路。
 
-## 产物与脚本
+## 支持的脚本
 
 ### GPU 侧
 
 - [scripts/psc_deploy/serve_persistent.sh](../scripts/psc_deploy/serve_persistent.sh)
   作用：启动常驻 GLM 推理服务，自动尝试 `202752 -> 131072 -> 65536` 的 `max-model-len` 回退链，并写出：
-  - `server_manifest.json`
   - `serve_<JOBID>_access.txt`
   - `glm47flash_service_ready_env.sh`
-
-- [scripts/psc_deploy/deploy_verify.sh](../scripts/psc_deploy/deploy_verify.sh)
-  作用：一次性验证部署链路，会启动服务、跑 3 次固定 prompt 的 deterministic smoke test，然后退出。
+  - `server_manifest_<JOBID>.json`
 
 ### RM 侧
 
@@ -69,7 +66,7 @@ cd /ocean/projects/cis260113p/zjiang9/repo/BDI_LLM_Formal_Ver
 git status --short
 ```
 
-如果缺环境依赖，先用仓库现有安装脚本在 `RM-shared` 上补环境：
+如果缺环境依赖，先用现有安装脚本在 `RM-shared` 上补环境：
 
 ```bash
 cd /ocean/projects/cis260113p/zjiang9/repo/BDI_LLM_Formal_Ver
@@ -109,22 +106,7 @@ export MAX_MODEL_LEN_EFFECTIVE=<202752_or_131072_or_65536>
 export SERVER_MANIFEST_PATH=/ocean/.../server_manifest_<JOBID>.json
 ```
 
-## 2. 可选：先做一次部署验证
-
-如果你刚改过服务脚本，建议先跑一次 verify：
-
-```bash
-cd /ocean/projects/cis260113p/zjiang9/repo/BDI_LLM_Formal_Ver
-sbatch scripts/psc_deploy/deploy_verify.sh
-```
-
-这个脚本会：
-
-1. 尝试启动服务
-2. 跑 3 次相同 prompt、`temperature=0.0`、`seed=42` 的请求
-3. 用 `cmp` 检查三次响应是否 bit-exact
-
-## 3. 提交单个 domain 的 RM 评测 job
+## 2. 提交单个 domain 的 RM 评测 job
 
 默认模式是：
 
@@ -168,7 +150,7 @@ do
 done
 ```
 
-## 4. 为什么只跑一次 `bdi-repair`
+## 3. 为什么只跑一次 `bdi-repair`
 
 这套 runner 的 `bdi-repair` 模式会在同一次 run 里同时产出：
 
@@ -178,7 +160,7 @@ done
 
 所以不用再把 `Baseline`、`BDI`、`BDI-Repair` 拆成 3 次作业。
 
-## 5. 结果文件怎么看
+## 4. 结果文件怎么看
 
 单个 domain 跑完后，结果目录大致长这样：
 
@@ -198,7 +180,7 @@ done
 - `run_manifest_<domain>.json`
   是本次 domain 级 provenance，包括 deterministic、cache 开关、服务 manifest 路径等
 
-## 6. 聚合成论文表格
+## 5. 聚合成论文表格
 
 等五个 domain 都跑完后，提交汇总 job：
 
@@ -230,33 +212,22 @@ sbatch --export=ALL,RUN_TAG=${RUN_TAG} \
 - `aggregate_manifest.json`
   聚合 provenance
 
-## 7. 建议的实际执行顺序
+## 6. 建议的实际执行顺序
 
-### 第一次跑
-
-1. `sbatch scripts/psc_deploy/deploy_verify.sh`
-2. `sbatch scripts/psc_deploy/serve_persistent.sh`
-3. 先提 `blocksworld` dry-run：
+1. `sbatch scripts/psc_deploy/serve_persistent.sh`
+2. 先提 `blocksworld` dry-run：
    `MAX_INSTANCES=20`
-4. 检查 dry-run 结果
-5. 再顺序提五个全量 domain
-6. 五个都完成后跑聚合 job
+3. 检查 dry-run 结果
+4. 再顺序提五个全量 domain
+5. 五个都完成后跑聚合 job
 
-### 后续复跑
-
-如果服务已经稳定：
-
-1. 启 GPU 服务
-2. 顺序提五个 RM domain job
-3. 跑聚合 job
-
-## 8. 停服务
+## 7. 停服务
 
 ```bash
 scancel <GPU_SERVER_JOBID>
 ```
 
-## 9. 目前默认值
+## 8. 目前默认值
 
 - `LLM_TEMPERATURE=0.0`
 - `LLM_SEED=42`
@@ -270,7 +241,7 @@ scancel <GPU_SERVER_JOBID>
   - `131072`
   - `65536`
 
-## 10. 已知注意事项
+## 9. 已知注意事项
 
 - 这套文档假设 GPU 服务是单实例长驻，然后 RM job 通过 `OPENAI_API_BASE` 去调用它。
 - 默认不并行压同一个 GPU 服务；五个 domain job 建议顺序提交。

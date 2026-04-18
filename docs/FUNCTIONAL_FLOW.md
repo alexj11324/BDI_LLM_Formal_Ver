@@ -32,7 +32,7 @@ This page also intentionally does **not** duplicate benchmark tables. Use these 
 | Surface | What is current | Primary anchors |
 | --- | --- | --- |
 | Shared planning / verification substrate | Main runtime library used by the active runners | `src/bdi_llm/planning_task.py -> PlanningTask`, `src/bdi_llm/schemas.py -> BDIPlan`, `src/bdi_llm/planner/domain_spec.py -> DomainSpec`, `src/bdi_llm/planner/bdi_engine.py -> BDIPlanner`, `src/bdi_llm/verifier.py -> PlanVerifier`, `src/bdi_llm/symbolic_verifier.py -> PDDLSymbolicVerifier`, `src/bdi_llm/symbolic_verifier.py -> IntegratedVerifier` |
-| Generic PDDL / PlanBench-style runtime | Primary PDDL entrypoints | `scripts/evaluation/run_generic_pddl_eval.py -> main`, `scripts/evaluation/run_generic_pddl_eval.py -> run_evaluation`, `scripts/evaluation/run_verification_only.py -> run_verification_eval` |
+| Generic PDDL / PlanBench-style runtime | Primary PDDL entrypoints | `scripts/evaluation/run_generic_pddl_eval.py -> main`, `scripts/evaluation/run_generic_pddl_eval.py -> run_evaluation`, `scripts/evaluation/run_planbench_paperaligned.py -> main` |
 | TravelPlanner runtime | First-class non-PDDL runtime | `scripts/evaluation/run_travelplanner_eval.py -> main`, `src/bdi_llm/travelplanner/runner.py -> run_split`, `scripts/evaluation/run_travelplanner_release_matrix.py -> main`, `scripts/evaluation/run_travelplanner_test_submit.py -> main` |
 | Interfaces | Thin user / agent-facing surfaces | `src/interfaces/cli.py -> main`, `src/interfaces/mcp_server.py -> generate_plan`, `src/interfaces/mcp_server.py -> verify_plan`, `src/interfaces/mcp_server.py -> execute_verified_plan` |
 | Secondary active subsystems | Active, but not the main benchmark narrative | `scripts/replanning/run_dynamic_replanning.py -> run_dynamic_replanning_eval`, `scripts/swe_bench/run_swe_bench_batch.py -> main` |
@@ -157,11 +157,11 @@ It exposes two execution modes:
 - `GENERATE_ONLY`
 - `VERIFY_WITH_VAL`
 
-There is also an active verification-study harness:
+There is also an active built-in PlanBench runner:
 
-- `scripts/evaluation/run_verification_only.py -> run_verification_eval`
+- `scripts/evaluation/run_planbench_paperaligned.py -> main`
 
-But that second script is **not** the canonical generic PDDL adapter / serializer runtime. It is a built-in-domain verification harness retained as an active secondary surface.
+That second script is the supported built-in-domain surface for paper-aligned `baseline` / `bdi` / `bdi-repair` reporting. It complements the generic PDDL adapter / serializer runtime rather than replacing it.
 
 ### 3.2 Mainline generic PDDL flow
 
@@ -210,16 +210,15 @@ The current generic flow is:
 
    under `runs/generic_pddl_eval/<timestamp>/`.
 
-### 3.3 Where `run_verification_only.py` fits
+### 3.3 Where `run_planbench_paperaligned.py` fits
 
-`run_verification_only.py` is still active, but it should be described as a **verification-focused harness**, not as the center of the generic runtime.
+`run_planbench_paperaligned.py` is the supported built-in PlanBench entrypoint for paper-aligned reporting.
 
-Its key anchors are:
+Its key anchor is:
 
-- `scripts/evaluation/run_verification_only.py -> generate_and_verify`
-- `scripts/evaluation/run_verification_only.py -> run_verification_eval`
+- `scripts/evaluation/run_planbench_paperaligned.py -> main`
 
-Unlike the main generic runner, it primarily relies on compatibility utilities under `scripts/evaluation/planbench_utils/` for built-in PlanBench domains. That makes it useful for verification studies, but not the best document anchor for “how the current generic PDDL runtime is architected.”
+Unlike the generic runner, it is specialized for built-in PlanBench domains and records `baseline_result`, `bdi_initial_result`, and `bdi_repair_result` in one pass. That makes it the right operational anchor for built-in-domain PlanBench reruns, while `run_generic_pddl_eval.py` remains the architecture anchor for arbitrary PDDL domains.
 
 ## 4. Current TravelPlanner runtime
 
