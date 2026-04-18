@@ -347,3 +347,91 @@ repo on PSC Bridges2.
 - **nightly 镜像漏装 pandas** → 脚本内已加 `pip install pandas pyarrow` + `--writable-tmpfs` 修复。
 - Claude Code 全局 hook `~/.claude/hooks/psc_cache_guard.py` 会拦截 inline
   `apptainer exec` / `vllm serve` 缺 cache env vars 的命令。
+
+### 9. GLM-4.7-Flash 官方 API 对齐部署 + 双 benchmark 评测(2026-04-18 已验证)
+
+**顶层设计**: 4 个脚本构成最小闭环,缺一刀全链路断。
+
+**4 个脚本对应职责**:
+
+| 脚本 | 作用 |
+|---|---|
+| `scripts/psc_deploy/run_vllm_glm.sh` | vLLM 启动体,使用 `vllm/vllm-openai:latest` 镜像 + 7 个官方 flag + 全套 cache 重定向 |
+| `scripts/psc_deploy/serve_glm_mtp.sbatch` | 4h GPU-shared sbatch wrapper(调用上面脚本)。`-A cis260113p` |
+| `bridges2_sbatch_under_review/run_eval_glm47flash_travelplanner.sbatch` | TravelPlanner validation eval,RM-shared 8h,读 `BDI_SERVICE_READY_ENV_FILE` |
+| `bridges2_sbatch_under_review/run_planbench_glm47flash.sbatch` | PlanBench paper-aligned eval,RM-shared 8h,读同一个 ready_env |
+
+**官方 7 个必开 flag(任一不开 → 输出不对齐官方 API)**:
+
+```
+--tensor-parallel-size 1        (硬件约束,官方推荐 4)
+--speculative-config.method mtp (MTP 投机解码加速,bit-wise 等价)
+--speculative-config.num_speculative_tokens 1
+--tool-call-parser glm47
+--reasoning-parser glm45
+--enable-auto-tool-choice
+--served-model-name glm-4.7-flash  (注意有连字符,不是 glm47flash)
+```
+
+**提交 serve job(第一步,必须先于 eval)**:
+
+```bash
+cd /ocean/projects/cis260113p/zjiang9/repo/BDI_LLM_Formal_Ver
+sbatch scripts/psc_deploy/serve_glm_mtp.sbatch
+# 等 3-5 min 模型 load + MTP compile
+# 拿到节点:squeue -u $USER -o '%.10i %.25j %R' 看 NODELIST
+# ready 指标:log 里出现 'Application startup complete' + 端口 8000
+```
+
+**ready_env 文件(每次换 serve 节点要更新)**:
+
+位置: `/ocean/projects/cis260113p/zjiang9/runs/status/glm-4.7-flash_interactive_ready_env.sh`
+
+```bash
+export VLLM_HOST=<node_name>
+export VLLM_PORT=8000
+export OPENAI_API_BASE=http://<node_name>:8000/v1
+export LLM_MODEL=openai/glm-4.7-flash
+export MODEL_NAME=glm-4.7-flash
+export MAX_MODEL_LEN_EFFECTIVE=65536
+export SERVER_MANIFEST_PATH=/ocean/projects/cis260113p/zjiang9/runs/server_manifests/server_manifest_interactive_mtp.json
+```
+
+**提交 TravelPlanner eval**:
+
+```bash
+USER_SITE=/ocean/projects/cis260113p/zjiang9/python_user/lib/python3.12/site-packages
+READY=/ocean/projects/cis260113p/zjiang9/runs/status/glm-4.7-flash_interactive_ready_env.sh
+RUN_TAG=glm47flash_tp_apialign_$(date +%Y%m%d_%H%M)
+
+sbatch --mem=15G \
+  --export=ALL,RUN_TAG=$RUN_TAG,WORKERS=4,BDI_SERVICE_READY_ENV_FILE=$READY,LLM_MODEL=openai/glm-4.7-flash,PYTHONPATH=$USER_SITE \
+  bridges2_sbatch_under_review/run_eval_glm47flash_travelplanner.sbatch
+```
+
+**提交 PlanBench eval**:
+
+```bash
+sbatch --export=ALL,RUN_TAG=glm47flash_pb_apialign_$(date +%Y%m%d_%H%M),WORKERS=4,BDI_SERVICE_READY_ENV_FILE=$READY,LLM_MODEL=openai/glm-4.7-flash,PYTHONPATH=$USER_SITE \
+  bridges2_sbatch_under_review/run_planbench_glm47flash.sbatch
+```
+
+**关键 env var 约束**:
+
+- `PYTHONPATH=$USER_SITE` 必传,否则 `ModuleNotFoundError: No module named 'dspy'`
+- `LLM_ENABLE_THINKING=true` 已写死在 val sbatch,配合 `--reasoning-parser glm45` 让推理走 `reasoning_content` 字段
+- RM-shared 有 `2000M/core` 内存上限,`--mem=15G` 对 8 cores 刚好(别用 16G)
+- SLURM account `-A cis260113p`(不是 cis250019p,那只是文件路径)
+
+**验收指标**:
+
+- `silent_failure_rate = (template_echo + blank_submission) / total` 应 < 5%
+- 若 > 10%,检查 parser flag 是否 1 个都没漏、`LLM_ENABLE_THINKING=true`、`served-model-name` 是否带连字符
+- smoke test 应同时返回 `reasoning` 和 `content` 两个字段的 JSON
+
+**常见坑**:
+
+1. jet/home 25G quota 被 HF 下载打爆 → `SINGULARITYENV_HF_HOME` 重定向到 /ocean(`run_vllm_glm.sh` 内已处理)
+2. `${SCRIPT_DIR}/../` 相对路径 source 在 SLURM 下失效(SLURM 会把 sbatch 复制到 `/var/spool/slurm/d/`) → 所有 source 路径必须绝对
+3. Bridges2 login node 有多个(br001-br014),`ssh bridges2` 可能落到不同节点 → daemon/watchdog 不能靠 PID 杀,要把脚本本身 disable
+4. `--served-model-name` 必须与 eval 端 `LLM_MODEL=openai/<name>` 一致,连字符都要对齐
