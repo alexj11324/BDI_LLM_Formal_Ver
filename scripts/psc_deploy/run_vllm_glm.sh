@@ -29,4 +29,5 @@ singularity exec --nv \
   --reasoning-parser glm45 \
   --enable-auto-tool-choice \
   --served-model-name glm-4.7-flash \
-  --max-model-len 65536
+  --max-model-len 65536 \
+  --port 47259

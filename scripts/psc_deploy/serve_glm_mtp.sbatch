@@ -12,4 +12,4 @@
 
 set -eu
 echo "===== node=$(hostname) job=$SLURM_JOB_ID start=$(date) ====="
-exec bash /ocean/projects/cis250019p/zjiang9/run_vllm_glm.sh
+exec bash /ocean/projects/cis260113p/zjiang9/repo/BDI_LLM_Formal_Ver/scripts/psc_deploy/run_vllm_glm.sh
