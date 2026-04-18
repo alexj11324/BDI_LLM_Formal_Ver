@@ -24,8 +24,9 @@ import os
 import json
 import re
 import time
+import argparse
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
+from typing import Any, Dict, List, Tuple, Optional
 from datetime import datetime
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -42,6 +43,12 @@ from bdi_llm.planner.domain_spec import (
     encode_planbench_symbol,
 )
 from bdi_llm.config import Config
+from bdi_llm.planbench_eval_runtime import (
+    EvalRuntimeConfig,
+    build_run_manifest,
+    normalize_eval_runtime,
+    write_json_atomic,
+)
 from bdi_llm.schemas import BDIPlan
 from bdi_llm.planning_task import PDDLPlanSerializer, PlanningTask
 from bdi_llm.verifier import PlanVerifier
@@ -123,6 +130,77 @@ def checkpoint_path(output_dir: str, domain: str, execution_mode: str) -> str:
 
 def stage_result_key(execution_mode: str) -> str:
     return STAGE_RESULT_KEYS[resolve_execution_mode(execution_mode)]
+
+
+def build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="PlanBench Full Benchmark Evaluation")
+    parser.add_argument("--domain", type=str,
+                       choices=[
+                           "blocksworld",
+                           "logistics",
+                           "depots",
+                           "obfuscated_deceptive_logistics",
+                           "obfuscated_randomized_logistics",
+                       ],
+                       help="Domain to evaluate")
+    parser.add_argument("--all_domains", action="store_true",
+                       help="Evaluate all domains")
+    parser.add_argument("--max_instances", type=int, default=None,
+                       help="Maximum number of instances per domain (default: all)")
+    parser.add_argument("--resume", type=str, default=None,
+                       help="Resume from checkpoint file")
+    parser.add_argument("--output_dir", type=str, default="runs/planbench_results",
+                       help="Output directory for results")
+    parser.add_argument("--parallel", action="store_true",
+                       help="Enable parallel execution")
+    parser.add_argument("--workers", type=int, default=200,
+                       help="Number of parallel workers (default: 200)")
+    parser.add_argument("--instances", type=str, default=None,
+                       help="File containing list of instance paths to evaluate (one per line)")
+    parser.add_argument("--checkpoint_every", type=int, default=1,
+                       help="Save checkpoint every N completed instances (default: 1)")
+    parser.add_argument("--execution_mode", type=str, default="bdi-repair",
+                       choices=["baseline", "bdi", "bdi-repair"],
+                       help="Run pipeline up to this checkpoint (default: bdi-repair)")
+    parser.add_argument("--disable_repair_cache", action="store_true",
+                       help="Disable the process-global repair cache for this run")
+    parser.add_argument("--disable_early_exit", action="store_true",
+                       help="Disable early-exit heuristics for this run")
+    parser.add_argument("--deterministic", action="store_true",
+                       help="Force a deterministic single-worker run with caches disabled")
+    parser.add_argument("--manifest_out", type=str, default=None,
+                       help="Optional path for a per-domain run manifest JSON")
+    return parser
+
+
+def apply_runtime_controls(runtime_config: EvalRuntimeConfig) -> None:
+    os.environ["BDI_REPAIR_CACHE_ENABLED"] = "false" if runtime_config.disable_repair_cache else "true"
+    os.environ["API_BUDGET_EARLY_EXIT_ENABLED"] = (
+        "false" if runtime_config.disable_early_exit else "true"
+    )
+
+    Config.API_BUDGET_EARLY_EXIT_ENABLED = not runtime_config.disable_early_exit
+    if runtime_config.deterministic:
+        Config.TEMPERATURE = 0.0
+
+
+def resolve_manifest_path(
+    manifest_out: str | None,
+    *,
+    domain: str,
+    multi_domain: bool,
+) -> str | None:
+    if manifest_out is None:
+        return None
+    if not multi_domain:
+        return manifest_out
+
+    target = Path(manifest_out)
+    suffix = "".join(target.suffixes)
+    if suffix:
+        stem = target.name[:-len(suffix)]
+        return str(target.with_name(f"{stem}_{domain}{suffix}"))
+    return str(target.with_name(f"{target.name}_{domain}"))
 
 # MLflow integration for experiment tracking
 try:
@@ -2260,10 +2338,7 @@ def find_all_instances(base_path: str, domain: str) -> List[str]:
 
 def save_checkpoint_atomic(results: dict, checkpoint_file: str) -> None:
     """Persist checkpoint atomically to reduce corruption risk on interruption."""
-    tmp_file = f"{checkpoint_file}.tmp"
-    with open(tmp_file, 'w') as f:
-        json.dump(results, f, indent=2)
-    os.replace(tmp_file, checkpoint_file)
+    write_json_atomic(checkpoint_file, results)
 
 def evaluate_single_instance(instance_file: str, domain: str, execution_mode: str | None = None) -> dict:
     """
@@ -2583,8 +2658,11 @@ def run_batch_evaluation(
 
     # Save final results
     output_file = f"{output_dir}/results_{domain}_{resolved_mode}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    with open(output_file, 'w') as f:
-        json.dump(results, f, indent=2)
+    write_json_atomic(output_file, results)
+    results['artifacts'] = {
+        'checkpoint_file': checkpoint_file,
+        'output_file': output_file,
+    }
 
     # Log metrics and artifacts to MLflow
     if MLFLOW_AVAILABLE and mlflow_run_id:
@@ -2644,38 +2722,7 @@ def run_batch_evaluation(
 # ============================================================================
 
 def main():
-    import argparse
-
-    parser = argparse.ArgumentParser(description="PlanBench Full Benchmark Evaluation")
-    parser.add_argument("--domain", type=str,
-                       choices=[
-                           "blocksworld",
-                           "logistics",
-                           "depots",
-                           "obfuscated_deceptive_logistics",
-                           "obfuscated_randomized_logistics",
-                       ],
-                       help="Domain to evaluate")
-    parser.add_argument("--all_domains", action="store_true",
-                       help="Evaluate all domains")
-    parser.add_argument("--max_instances", type=int, default=None,
-                       help="Maximum number of instances per domain (default: all)")
-    parser.add_argument("--resume", type=str, default=None,
-                       help="Resume from checkpoint file")
-    parser.add_argument("--output_dir", type=str, default="runs/planbench_results",
-                       help="Output directory for results")
-    parser.add_argument("--parallel", action="store_true",
-                       help="Enable parallel execution")
-    parser.add_argument("--workers", type=int, default=200,
-                       help="Number of parallel workers (default: 200)")
-    parser.add_argument("--instances", type=str, default=None,
-                       help="File containing list of instance paths to evaluate (one per line)")
-    parser.add_argument("--checkpoint_every", type=int, default=1,
-                       help="Save checkpoint every N completed instances (default: 1)")
-    parser.add_argument("--execution_mode", type=str, default="bdi-repair",
-                       choices=["baseline", "bdi", "bdi-repair"],
-                       help="Run pipeline up to this checkpoint (default: bdi-repair)")
-
+    parser = build_arg_parser()
     args = parser.parse_args()
 
     # Check API credentials using project config resolution (supports .env + fallback aliases)
@@ -2707,21 +2754,79 @@ def main():
     os.environ['AGENT_EXECUTION_MODE'] = args.execution_mode
     print(f"AGENT_EXECUTION_MODE={args.execution_mode}")
 
+    runtime_config = normalize_eval_runtime(
+        deterministic=args.deterministic,
+        disable_repair_cache=args.disable_repair_cache,
+        disable_early_exit=args.disable_early_exit,
+        parallel=args.parallel,
+        max_workers=args.workers,
+    )
+    apply_runtime_controls(runtime_config)
+    print(
+        "Runtime controls:",
+        json.dumps(
+            {
+                "deterministic": runtime_config.deterministic,
+                "disable_repair_cache": runtime_config.disable_repair_cache,
+                "disable_early_exit": runtime_config.disable_early_exit,
+                "parallel": runtime_config.parallel,
+                "workers": runtime_config.max_workers,
+            }
+        ),
+    )
+
     # Run evaluation
     all_results = {}
+    multi_domain = len(domains) > 1
     for domain in domains:
         results = run_batch_evaluation(
             domain=domain,
             max_instances=args.max_instances,
             resume_from=args.resume,
             output_dir=args.output_dir,
-            parallel=args.parallel,
-            max_workers=args.workers,
+            parallel=runtime_config.parallel,
+            max_workers=runtime_config.max_workers,
             instances_file=args.instances,
             checkpoint_every=args.checkpoint_every,
             execution_mode=args.execution_mode,
         )
         all_results[domain] = results
+
+        manifest_path = resolve_manifest_path(
+            args.manifest_out,
+            domain=domain,
+            multi_domain=multi_domain,
+        )
+        if manifest_path:
+            summary = results.get("summary", {})
+            manifest = build_run_manifest(
+                domain=domain,
+                execution_mode=args.execution_mode,
+                output_dir=args.output_dir,
+                checkpoint_file=results.get("artifacts", {}).get("checkpoint_file", checkpoint_path(args.output_dir, domain, args.execution_mode)),
+                deterministic=runtime_config.deterministic,
+                disable_repair_cache=runtime_config.disable_repair_cache,
+                disable_early_exit=runtime_config.disable_early_exit,
+                parallel=runtime_config.parallel,
+                max_workers=runtime_config.max_workers,
+                results_summary={
+                    "baseline": summary.get("baseline", {}),
+                    "bdi": summary.get("bdi", {}),
+                    "bdi_repair": summary.get("bdi_repair", {}),
+                    "val_repair": summary.get("val_repair", {}),
+                },
+                extra_metadata={
+                    "model_name": Config.MODEL_NAME,
+                    "openai_api_base": Config.OPENAI_API_BASE,
+                    "seed": Config.SEED,
+                    "temperature": Config.TEMPERATURE,
+                    "server_manifest_path": os.environ.get("SERVER_MANIFEST_PATH"),
+                    "service_ready_env_path": os.environ.get("BDI_SERVICE_READY_ENV_FILE"),
+                    "results_output_file": results.get("artifacts", {}).get("output_file"),
+                },
+            )
+            write_json_atomic(manifest_path, manifest)
+            print(f"Run manifest saved to: {manifest_path}")
 
     # Print overall summary
     if len(domains) > 1:

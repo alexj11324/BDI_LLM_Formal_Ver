@@ -9,9 +9,14 @@ Author: BDI-LLM Performance Team
 Date: 2026-03-05
 """
 
+import os
 import threading
 from collections import deque
 from typing import Any
+
+
+def _repair_cache_enabled() -> bool:
+    return os.environ.get("BDI_REPAIR_CACHE_ENABLED", "true").lower() == "true"
 
 
 class RepairCache:
@@ -75,13 +80,36 @@ class RepairCache:
             }
 
 
+class NullRepairCache:
+    """No-op cache used for deterministic evaluation runs."""
+
+    def get(self, domain: str, error_signature: str, plan_hash: str) -> Any | None:
+        return None
+
+    def put(self, domain: str, error_signature: str, plan_hash: str, result: Any) -> None:
+        return None
+
+    def get_stats(self) -> dict[str, Any]:
+        return {
+            "size": 0,
+            "hits": 0,
+            "misses": 0,
+            "hit_rate": "0.00%",
+            "enabled": False,
+        }
+
+
 # Global repair cache
 _repair_cache: RepairCache | None = None
+_null_repair_cache = NullRepairCache()
 
 
 def get_repair_cache(max_size: int = 1000) -> RepairCache:
     """Get or create global repair cache."""
     global _repair_cache
+
+    if not _repair_cache_enabled():
+        return _null_repair_cache
 
     if _repair_cache is None:
         _repair_cache = RepairCache(max_size)

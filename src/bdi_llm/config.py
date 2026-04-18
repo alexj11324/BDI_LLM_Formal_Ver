@@ -36,6 +36,10 @@ class Config:
     MODEL_NAME = os.environ.get("LLM_MODEL", "openai/gpt-4o")
     MAX_TOKENS = int(os.environ.get("LLM_MAX_TOKENS", "4000"))
     TEMPERATURE = float(os.environ.get("LLM_TEMPERATURE", "0.2"))
+    SEED = int(os.environ.get("LLM_SEED", "42"))
+    ENABLE_THINKING = os.environ.get("LLM_ENABLE_THINKING", "true").lower() in {
+        "1", "true", "yes", "on"
+    }
     REASONING_EFFORT = os.environ.get("REASONING_EFFORT", "medium")
     TIMEOUT = int(os.environ.get("LLM_TIMEOUT", "600"))
     SAVE_REASONING_TRACE = os.environ.get("SAVE_REASONING_TRACE", "false").lower() in {

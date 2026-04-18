@@ -44,13 +44,20 @@ class ResponsesAPILM(dspy.BaseLM):
     def __init__(self, model, api_key, api_base, reasoning_effort='low',
                  max_tokens=16000, timeout=600, num_retries=10,
                  use_chat_completions=False,
-                 chat_template_kwargs: dict[str, Any] | None = None):
+                 chat_template_kwargs: dict[str, Any] | None = None,
+                 seed: int | None = None,
+                 temperature: float = 1.0):
         """
         Args:
             use_chat_completions: If True, use /v1/chat/completions endpoint (NVIDIA).
                                   If False, use /v1/responses endpoint (infiniteai).
         """
-        super().__init__(model=model, model_type='chat', temperature=1.0, max_tokens=max_tokens)
+        super().__init__(
+            model=model,
+            model_type='chat',
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
         self.api_key = api_key
         self.api_base = api_base.rstrip('/')
         self.reasoning_effort = reasoning_effort
@@ -58,6 +65,7 @@ class ResponsesAPILM(dspy.BaseLM):
         self.num_retries = num_retries
         self.use_chat_completions = use_chat_completions
         self.chat_template_kwargs = chat_template_kwargs or {}
+        self.seed = seed
         self._last_reasoning_content = None  # Store reasoning for logging
         self._last_output_text = None  # Store raw model output text for audit
 
@@ -157,6 +165,8 @@ class ResponsesAPILM(dspy.BaseLM):
         }
         if self.chat_template_kwargs:
             payload['chat_template_kwargs'] = self.chat_template_kwargs
+        if self.seed is not None:
+            payload['seed'] = self.seed
 
         # For reasoning models, add reasoning_effort if supported
         if self.reasoning_effort:
@@ -220,6 +230,8 @@ class ResponsesAPILM(dspy.BaseLM):
         }
         if instructions:
             payload['instructions'] = instructions
+        if self.seed is not None:
+            payload['seed'] = self.seed
         self._last_reasoning_content = None
         self._last_output_text = None
         resp = self._session.post(url, json=payload, headers=headers,

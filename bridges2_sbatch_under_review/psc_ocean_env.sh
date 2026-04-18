@@ -21,12 +21,14 @@ export BDI_SLURM_LOG_ROOT="${BDI_SLURM_LOG_ROOT:-${BDI_LOG_ROOT}/slurm}"
 export BDI_SERVICE_LOG_ROOT="${BDI_SERVICE_LOG_ROOT:-${BDI_LOG_ROOT}/services}"
 export BDI_RUN_ROOT="${BDI_RUN_ROOT:-${BDI_PROJECT_ROOT}/runs}"
 export BDI_STATUS_ROOT="${BDI_STATUS_ROOT:-${BDI_RUN_ROOT}/status}"
+export BDI_TABLE_ROOT="${BDI_TABLE_ROOT:-${BDI_RUN_ROOT}/tables}"
 export BDI_VENDOR_ROOT="${BDI_VENDOR_ROOT:-${BDI_PROJECT_ROOT}/vendor}"
 export BDI_VLLM_SRC_ROOT="${BDI_VLLM_SRC_ROOT:-${BDI_VENDOR_ROOT}/vllm-main}"
 export BDI_MODEL_REPO="${BDI_MODEL_REPO:-zai-org/GLM-4.7-Flash}"
 export BDI_VLLM_STABLE_ENV="${BDI_VLLM_STABLE_ENV:-${BDI_ENV_ROOT}/vllm_serve_clean}"
 export BDI_VLLM_NIGHTLY_ENV="${BDI_VLLM_NIGHTLY_ENV:-${BDI_ENV_ROOT}/vllm_serve_nightly}"
 export BDI_READY_ENV_FILE="${BDI_READY_ENV_FILE:-${BDI_STATUS_ROOT}/glm47flash_ready_env.sh}"
+export BDI_SERVICE_READY_ENV_FILE="${BDI_SERVICE_READY_ENV_FILE:-${BDI_STATUS_ROOT}/glm47flash_service_ready_env.sh}"
 export BDI_TORCH_WHEEL_INDEX="${BDI_TORCH_WHEEL_INDEX:-https://download.pytorch.org/whl/cu128}"
 export BDI_VLLM_STABLE_VERSION="${BDI_VLLM_STABLE_VERSION:-0.11.2}"
 export BDI_VLLM_NIGHTLY_INDEX="${BDI_VLLM_NIGHTLY_INDEX:-https://wheels.vllm.ai/nightly}"
@@ -60,7 +62,8 @@ mkdir -p \
   "${BDI_SLURM_LOG_ROOT}" \
   "${BDI_SERVICE_LOG_ROOT}" \
   "${BDI_RUN_ROOT}" \
-  "${BDI_STATUS_ROOT}"
+  "${BDI_STATUS_ROOT}" \
+  "${BDI_TABLE_ROOT}"
 
 select_vllm_env_prefix() {
   local env_kind="${1:-stable}"
