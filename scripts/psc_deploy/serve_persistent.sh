@@ -14,7 +14,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../bridges2_sbatch_under_review/psc_ocean_env.sh
-source "/ocean/projects/cis260113p/zjiang9/repo/BDI_LLM_Formal_Ver/bridges2_sbatch_under_review/psc_ocean_env.sh"
+source "${SCRIPT_DIR}/../bridges2_sbatch_under_review/psc_ocean_env.sh"
 
 PROJECT="${BDI_PROJECT_ROOT}"
 REPO_ROOT="${BDI_REPO_ROOT}"
@@ -192,9 +192,6 @@ start_server_attempt() {
         --gpu-memory-utilization ${GPU_MEM_UTIL} \
         --port $PORT \
         --host 0.0.0.0 \
-        --reasoning-parser glm45 \
-        --tool-call-parser glm47 \
-        --enable-auto-tool-choice \
         --served-model-name ${MODEL_NAME}
     " > "${active_log}" 2>&1 &
   SERVER_PID=$!
