@@ -185,6 +185,8 @@ echo "Aggregate job: ${AGG_JOB}"
 
 Validation job 即使中途失败，已完成的 instance 结果仍残留在磁盘。聚合脚本使用 `OFFICIAL_DENOMINATORS`（validation N=180），对部分数据聚合会产生误导性的 Table 3（分母固定，分子偏低）。`afterok` 保证 180 × 3 mode 全部干净完成后才触发聚合，避免将不完整数据写入论文表格。
 
+> **进一步的完整性保护**：聚合脚本会在读取结果后强制检查每个 mode 行数是否等于 180；任一 mode 不足 180 行会直接 `ValueError` 退出，不写出表格，避免半成品结果污染表格。
+
 **Test job 失败不影响本步骤：**
 
 聚合脚本只读取 `${BDI_RUN_ROOT}/${RUN_TAG}/travelplanner/validation/`，与 test submission 目录完全独立。Test job 失败不会影响 validation table 的生成。

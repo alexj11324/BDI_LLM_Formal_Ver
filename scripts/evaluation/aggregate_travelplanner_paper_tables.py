@@ -38,9 +38,27 @@ try:
     )
     _HAS_METRICS_MODULE = True
 except ImportError:
-    OFFICIAL_DENOMINATORS = {}  # type: ignore[assignment]
-    COMMONSENSE_KEYS = []       # type: ignore[assignment]
-    HARD_KEYS = []              # type: ignore[assignment]
+    COMMONSENSE_KEYS = [
+        "is_valid_information_in_current_city",
+        "is_valid_information_in_sandbox",
+        "is_reasonable_visiting_city",
+        "is_valid_restaurants",
+        "is_valid_transportation",
+        "is_valid_attractions",
+        "is_valid_accommodation",
+        "is_not_absent",
+    ]
+    HARD_KEYS = [
+        "valid_cost",
+        "valid_room_rule",
+        "valid_cuisine",
+        "valid_room_type",
+        "valid_transportation",
+    ]
+    OFFICIAL_DENOMINATORS = {  # type: ignore[assignment]
+        "validation": {"commonsense": 1440, "hard": 420, "samples": 180},
+        "test": {"commonsense": 8000, "hard": 2290, "samples": 1000},
+    }
     _HAS_METRICS_MODULE = False
 
 MODES = ("baseline", "bdi", "bdi-repair")
@@ -124,6 +142,8 @@ def _compute_micro_stats(result_rows: list[dict[str, Any]], metrics_key: str) ->
                 cs_total += 1
                 if passed:
                     cs_pass += 1
+            else:
+                cs_total += 1
 
         hd = m.get("hard_constraint_details") or {}
         for key in HARD_KEYS:
@@ -137,8 +157,8 @@ def _compute_micro_stats(result_rows: list[dict[str, Any]], metrics_key: str) ->
                     hd_pass += 1
 
     denom = OFFICIAL_DENOMINATORS.get("validation", {})
-    cs_official = denom.get("commonsense", cs_total) if cs_total > 0 else 1
-    hd_official = denom.get("hard", hd_total) if hd_total > 0 else 1
+    cs_official = denom.get("commonsense") or cs_total or 1
+    hd_official = denom.get("hard") or hd_total or 1
 
     return {
         "commonsense_micro": cs_pass / cs_official if cs_official else 0.0,
@@ -161,6 +181,20 @@ def _build_mode_stats(
     stats = _reduce_rows(metric_dicts)
     stats["micro"] = _compute_micro_stats(result_rows, metrics_key)
     return stats
+
+
+def _assert_expected_samples(all_rows: dict[str, list[dict[str, Any]]]) -> None:
+    """Fail fast if any mode is missing rows or the count deviates from the official validation N."""
+    expected = OFFICIAL_DENOMINATORS.get("validation", {}).get("samples")
+    if expected is None:
+        return
+
+    for mode, rows in all_rows.items():
+        if len(rows) != expected:
+            raise ValueError(
+                f"Expected {expected} rows for mode='{mode}' but found {len(rows)}. "
+                "Validation aggregation requires a complete run (180 samples per mode)."
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -254,6 +288,8 @@ def aggregate(results_root: Path, output_dir: Path, run_tag: str | None) -> None
             }
         )
         print(f"[{mode}] Loaded {len(result_rows)} rows from {path.name}")
+
+    _assert_expected_samples(all_rows)
 
     # 2. Compute per-section stats
     #    Non-oracle: baseline/bdi use "metrics"; bdi-repair uses "non_oracle_metrics"
