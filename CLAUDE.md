@@ -238,9 +238,38 @@ Current code defaults to `v3`; `v4` remains available as an experimental path.
 - `docs/conductor/` — documentation hub (product, workflow, tech stack, tracks)
 - `docs/c4/` — C4 architecture diagrams (context, container, component)
 
-## Known repo gotcha
+## Known repo gotcha — PlanBench assets dual layout (by design)
 
-PlanBench assets live at the repo root under `planbench_data/`. The `Dockerfile` correctly copies this root-level `planbench_data/` tree — that `COPY` directive is accurate. Any reference to `workspaces/planbench_data/` in older notes or scripts was the stale path; `planbench_data/` at the repo root is the canonical location.
+There are **two** PlanBench asset trees in this repo. Both are real and serve
+different deployment paths — neither is "stale". Pick the right one for the
+context:
+
+- **`workspaces/planbench_data/`** — the path used by the **Python runtime**:
+  - `src/bdi_llm/config.py` `_default_val_path` defaults here.
+  - `src/bdi_llm/symbolic_verifier.py` docstring documents this default.
+  - `tests/integration/*` and `tests/unit/test_domain_spec.py` reference it.
+  - `bridges2_sbatch_under_review/bdi_env.env` `VAL_VALIDATOR_PATH` points here.
+  - This is what gets used for any `python scripts/...` invocation on a
+    local machine or on Bridges2.
+- **`planbench_data/`** (repo root) — the path used **only by the Docker image**:
+  - `Dockerfile` `COPY planbench_data /app/planbench_data` copies this tree
+    into the container.
+  - Inside the container, `ENV VAL_VALIDATOR_PATH=/app/planbench_data/...`
+    overrides the Python default.
+  - The host-side path is never read at runtime by the Python code; it
+    exists purely as a Docker build context.
+
+**Practical implications**:
+
+- If a runner reports `VAL validator not found at: planbench_data/...`, the
+  problem is that the env var (or `--val_path` CLI arg) is pointing at the
+  wrong layout for the runtime in use. On Bridges2 / local Python,
+  `VAL_VALIDATOR_PATH` must point under `workspaces/planbench_data/`. Inside
+  the Docker container, it must point under `/app/planbench_data/`.
+- If you `git mv` either tree to consolidate, you must also update every
+  reference in `src/`, `tests/`, `Dockerfile`, `bridges2_sbatch_under_review/`,
+  README, and docs. Do not consolidate as a casual cleanup — both trees are
+  load-bearing for their respective deployment paths.
 
 ## Bridges2 / PSC deployment lessons
 
