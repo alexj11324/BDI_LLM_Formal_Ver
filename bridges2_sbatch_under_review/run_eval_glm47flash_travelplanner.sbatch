@@ -37,7 +37,7 @@ set +a
 
 export TRAVELPLANNER_HOME="${BDI_PROJECT_ROOT}/TravelPlanner_official"
 export TRAVELPLANNER_BDI_PROMPT_VERSION="${TRAVELPLANNER_BDI_PROMPT_VERSION:-v3}"
-export LLM_ENABLE_THINKING="false"   # override bdi_env.env for TravelPlanner
+export LLM_ENABLE_THINKING="true"   # override bdi_env.env for TravelPlanner
 export LLM_TIMEOUT="${LLM_TIMEOUT:-900}"  # TravelPlanner itineraries are longer
 
 if [ ! -d "${TRAVELPLANNER_HOME}/evaluation" ] || [ ! -f "${TRAVELPLANNER_HOME}/evaluation/eval.py" ]; then
