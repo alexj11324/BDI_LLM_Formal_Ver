@@ -4,9 +4,9 @@
 #SBATCH -p GPU-shared
 #SBATCH --gres=gpu:h100-80:1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=64G
-#SBATCH -t 04:00:00
+#SBATCH --cpus-per-task=12
+#SBATCH --mem=128G
+#SBATCH -t 12:00:00
 #SBATCH -o /ocean/projects/cis260113p/zjiang9/repo/BDI_LLM_Formal_Ver/logs/slurm/glm47_serve_%j.out
 #SBATCH -e /ocean/projects/cis260113p/zjiang9/repo/BDI_LLM_Formal_Ver/logs/slurm/glm47_serve_%j.err
 
