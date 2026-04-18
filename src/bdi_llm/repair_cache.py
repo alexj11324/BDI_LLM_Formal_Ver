@@ -77,16 +77,26 @@ class RepairCache:
                 "hits": self._hits,
                 "misses": self._misses,
                 "hit_rate": f"{hit_rate:.2%}",
+                "enabled": True,
             }
 
 
-class NullRepairCache:
+class NullRepairCache(RepairCache):
     """No-op cache used for deterministic evaluation runs."""
 
-    def get(self, domain: str, error_signature: str, plan_hash: str) -> Any | None:
+    def __init__(self) -> None:
+        super().__init__(max_size=0)
+
+    def get(self, _domain: str, _error_signature: str, _plan_hash: str) -> Any | None:
         return None
 
-    def put(self, domain: str, error_signature: str, plan_hash: str, result: Any) -> None:
+    def put(
+        self,
+        _domain: str,
+        _error_signature: str,
+        _plan_hash: str,
+        _result: Any,
+    ) -> None:
         return None
 
     def get_stats(self) -> dict[str, Any]:

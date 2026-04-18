@@ -32,6 +32,8 @@ export BDI_SERVICE_READY_ENV_FILE="${BDI_SERVICE_READY_ENV_FILE:-${BDI_STATUS_RO
 export BDI_TORCH_WHEEL_INDEX="${BDI_TORCH_WHEEL_INDEX:-https://download.pytorch.org/whl/cu128}"
 export BDI_VLLM_STABLE_VERSION="${BDI_VLLM_STABLE_VERSION:-0.11.2}"
 export BDI_VLLM_NIGHTLY_INDEX="${BDI_VLLM_NIGHTLY_INDEX:-https://wheels.vllm.ai/nightly}"
+export BDI_VLLM_GIT_REF="${BDI_VLLM_GIT_REF:-origin/main}"
+export BDI_VLLM_PRECOMPILED_WHEEL_COMMIT="${BDI_VLLM_PRECOMPILED_WHEEL_COMMIT:-nightly}"
 export BDI_PYPI_INDEX_URL="${BDI_PYPI_INDEX_URL:-https://pypi.org/simple}"
 export BDI_TRANSFORMERS_GIT_URL="${BDI_TRANSFORMERS_GIT_URL:-git+https://github.com/huggingface/transformers.git}"
 

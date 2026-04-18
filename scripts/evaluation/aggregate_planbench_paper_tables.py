@@ -14,12 +14,12 @@ from bdi_llm.planbench_reporting import DOMAIN_ORDER, aggregate_planbench_result
 
 def _latest_result_file(results_root: Path, domain: str) -> Path:
     domain_dir = results_root / domain
-    candidates = sorted(domain_dir.rglob("results_*_bdi-repair_*.json"))
+    candidates = list(domain_dir.rglob("results_*_bdi-repair_*.json"))
     if not candidates:
-        candidates = sorted(domain_dir.rglob("results_*.json"))
+        candidates = list(domain_dir.rglob("results_*.json"))
     if not candidates:
         raise FileNotFoundError(f"No result JSON found for domain={domain} under {domain_dir}")
-    return candidates[-1]
+    return max(candidates, key=lambda path: path.stat().st_mtime)
 
 
 def build_arg_parser() -> argparse.ArgumentParser:

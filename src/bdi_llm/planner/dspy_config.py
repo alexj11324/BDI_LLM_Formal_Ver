@@ -101,7 +101,7 @@ def configure_dspy():
                 api_key=credentials['openai'],
                 api_base=Config.OPENAI_API_BASE or 'https://integrate.api.nvidia.com/v1',
                 reasoning_effort=Config.REASONING_EFFORT,
-                max_tokens=16000,
+                max_tokens=Config.MAX_TOKENS,
                 timeout=Config.TIMEOUT,
                 num_retries=10,
                 seed=Config.SEED,

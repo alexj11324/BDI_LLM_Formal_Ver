@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 import json
 
 from src.bdi_llm.planner.lm_adapter import ResponsesAPILM
 
 
 class _FakeResponse:
-    def raise_for_status(self):
+    def raise_for_status(self) -> None:
         return None
 
-    def iter_lines(self):
+    def iter_lines(self) -> Iterator[bytes]:
         payload = {
             "choices": [
                 {
@@ -28,8 +29,17 @@ class _FakeResponse:
 def test_chat_completions_payload_includes_seed_and_temperature(monkeypatch):
     recorded: dict[str, object] = {}
 
-    def fake_post(url, json=None, headers=None, stream=None, timeout=None):
+    def fake_post(
+        _url: str,
+        json: object | None = None,
+        headers: object | None = None,
+        stream: object | None = None,
+        timeout: object | None = None,
+    ) -> _FakeResponse:
         recorded["payload"] = json
+        recorded["headers"] = headers
+        recorded["stream"] = stream
+        recorded["timeout"] = timeout
         return _FakeResponse()
 
     lm = ResponsesAPILM(

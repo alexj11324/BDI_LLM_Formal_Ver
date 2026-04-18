@@ -39,8 +39,5 @@ python scripts/evaluation/aggregate_planbench_paper_tables.py \
   --results_root "${RESULTS_ROOT}" \
   --output_dir "${TABLE_OUT}"
 
-EXIT=$?
 date
-echo "=== Exit: ${EXIT} ==="
 ls -la "${TABLE_OUT}"
-exit "${EXIT}"

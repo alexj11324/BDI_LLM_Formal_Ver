@@ -83,7 +83,7 @@ def build_run_manifest(
         "summary": results_summary,
     }
     if extra_metadata:
-        manifest.update(extra_metadata)
+        manifest["extra_metadata"] = extra_metadata
     return manifest
 
 
@@ -92,5 +92,10 @@ def write_json_atomic(path: str | Path, payload: dict[str, Any]) -> None:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = target.with_suffix(target.suffix + ".tmp")
-    tmp_path.write_text(json.dumps(payload, indent=2) + "\n")
-    tmp_path.replace(target)
+    try:
+        tmp_path.write_text(json.dumps(payload, indent=2) + "\n")
+        tmp_path.replace(target)
+    except Exception:
+        if tmp_path.exists():
+            tmp_path.unlink(missing_ok=True)
+        raise

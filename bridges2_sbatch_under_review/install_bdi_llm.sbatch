@@ -10,6 +10,8 @@
 #SBATCH --output=/ocean/projects/cis260113p/zjiang9/logs/slurm/inst_bdi_%j.out
 #SBATCH --error=/ocean/projects/cis260113p/zjiang9/logs/slurm/inst_bdi_%j.err
 
+set -euo pipefail
+
 module purge
 module load anaconda3/2024.10-1
 source /ocean/projects/cis260113p/zjiang9/repo/BDI_LLM_Formal_Ver/bridges2_sbatch_under_review/psc_ocean_env.sh
@@ -32,6 +34,10 @@ fi
 
 echo
 echo "=== Recreate clean conda env ==="
+if [[ -z "${ENV_PREFIX}" || "${ENV_PREFIX}" == "/" || "${ENV_PREFIX}" != "${BDI_ENV_ROOT}"/* ]]; then
+  echo "ERROR: ENV_PREFIX is empty or outside ${BDI_ENV_ROOT}: '${ENV_PREFIX}'" >&2
+  exit 1
+fi
 rm -rf "${ENV_PREFIX}"
 conda create --yes --prefix "${ENV_PREFIX}" python=3.11
 activate_conda_prefix "${ENV_PREFIX}"
@@ -56,12 +62,12 @@ else
   else
     git -C "${BDI_VLLM_SRC_ROOT}" fetch origin
   fi
-  git -C "${BDI_VLLM_SRC_ROOT}" checkout origin/main
+  git -C "${BDI_VLLM_SRC_ROOT}" checkout "${BDI_VLLM_GIT_REF}"
 
   echo
   echo "=== Install vLLM main branch with precompiled wheel ==="
   VLLM_USE_PRECOMPILED=1 \
-  VLLM_PRECOMPILED_WHEEL_COMMIT=nightly \
+  VLLM_PRECOMPILED_WHEEL_COMMIT="${BDI_VLLM_PRECOMPILED_WHEEL_COMMIT}" \
   uv pip install --python "${ENV_PREFIX}/bin/python" --editable "${BDI_VLLM_SRC_ROOT}"
 
   echo

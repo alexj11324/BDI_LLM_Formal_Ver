@@ -1,11 +1,10 @@
 #!/bin/bash
 #SBATCH --job-name=dl_glm47f
 #SBATCH --account=cis260113p
-#SBATCH --partition=GPU-shared
+#SBATCH --partition=RM-shared
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
-#SBATCH --gres=gpu:v100-16:1
 #SBATCH --mem=20G
 #SBATCH --time=00:30:00
 #SBATCH --output=/ocean/projects/cis260113p/zjiang9/logs/slurm/dl_glm47f_%j.out
@@ -22,10 +21,12 @@ python3 << 'PYEOF'
 from huggingface_hub import snapshot_download
 import os
 os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
+cache_dir = os.environ.get("BDI_HF_HUB_CACHE", "/ocean/projects/cis260113p/zjiang9/hf_cache/hub")
+max_workers = max(int(os.environ.get("SLURM_CPUS_PER_TASK", "4")), 1)
 path = snapshot_download(
     repo_id="zai-org/GLM-4.7-Flash",
-    cache_dir="/ocean/projects/cis260113p/zjiang9/hf_cache/hub",
-    max_workers=16,
+    cache_dir=cache_dir,
+    max_workers=max_workers,
 )
 print(f"Downloaded to: {path}")
 PYEOF

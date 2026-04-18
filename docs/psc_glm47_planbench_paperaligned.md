@@ -12,25 +12,25 @@
 
 ### GPU 侧
 
-- [scripts/psc_deploy/serve_persistent.sh](/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/scripts/psc_deploy/serve_persistent.sh)
+- [scripts/psc_deploy/serve_persistent.sh](../scripts/psc_deploy/serve_persistent.sh)
   作用：启动常驻 GLM 推理服务，自动尝试 `202752 -> 131072 -> 65536` 的 `max-model-len` 回退链，并写出：
   - `server_manifest.json`
   - `serve_<JOBID>_access.txt`
   - `glm47flash_service_ready_env.sh`
 
-- [scripts/psc_deploy/deploy_verify.sh](/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/scripts/psc_deploy/deploy_verify.sh)
+- [scripts/psc_deploy/deploy_verify.sh](../scripts/psc_deploy/deploy_verify.sh)
   作用：一次性验证部署链路，会启动服务、跑 3 次固定 prompt 的 deterministic smoke test，然后退出。
 
 ### RM 侧
 
-- [bridges2_sbatch_under_review/run_eval_glm47flash_paperaligned.sbatch](/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/bridges2_sbatch_under_review/run_eval_glm47flash_paperaligned.sbatch)
+- [bridges2_sbatch_under_review/run_eval_glm47flash_paperaligned.sbatch](../bridges2_sbatch_under_review/run_eval_glm47flash_paperaligned.sbatch)
   作用：单个 domain 的 RM 评测 job。固定调用：
   `python scripts/evaluation/run_planbench_paperaligned.py --execution_mode bdi-repair --deterministic`
 
-- [bridges2_sbatch_under_review/aggregate_planbench_glm47flash_paperaligned.sbatch](/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/bridges2_sbatch_under_review/aggregate_planbench_glm47flash_paperaligned.sbatch)
+- [bridges2_sbatch_under_review/aggregate_planbench_glm47flash_paperaligned.sbatch](../bridges2_sbatch_under_review/aggregate_planbench_glm47flash_paperaligned.sbatch)
   作用：读取五个 domain 的结果，生成 paper 主表和附录表。
 
-- [scripts/evaluation/aggregate_planbench_paper_tables.py](/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/scripts/evaluation/aggregate_planbench_paper_tables.py)
+- [scripts/evaluation/aggregate_planbench_paper_tables.py](../scripts/evaluation/aggregate_planbench_paper_tables.py)
   作用：把五个 domain 的 `summary` 聚合成：
   - `pddl_results_glm47flash_table.json`
   - `pddl_results_glm47flash_table.tex`
@@ -49,15 +49,15 @@ export BDI_REPO_ROOT=/ocean/projects/cis260113p/zjiang9/repo/BDI_LLM_Formal_Ver
 关键输出目录：
 
 - GPU 就绪文件：
-  `/ocean/projects/cis260113p/zjiang9/repo/BDI_LLM_Formal_Ver/runs/status/glm47flash_service_ready_env.sh`
+  `$BDI_STATUS_ROOT/glm47flash_service_ready_env.sh`
 - GPU manifest：
-  `/ocean/projects/cis260113p/zjiang9/repo/BDI_LLM_Formal_Ver/runs/server_manifests/`
+  `$BDI_RUN_ROOT/server_manifests/`
 - Domain 结果：
-  `/ocean/projects/cis260113p/zjiang9/runs/<RUN_TAG>/<DOMAIN>/`
+  `$BDI_RUN_ROOT/<RUN_TAG>/<DOMAIN>/`
 - 聚合表：
-  `/ocean/projects/cis260113p/zjiang9/runs/tables/<RUN_TAG>/`
+  `$BDI_TABLE_ROOT/<RUN_TAG>/`
 - SLURM 日志：
-  `/ocean/projects/cis260113p/zjiang9/repo/BDI_LLM_Formal_Ver/logs/slurm/`
+  `$BDI_SLURM_LOG_ROOT/`
 
 ## 0. 预检
 
@@ -94,8 +94,8 @@ squeue -u "$USER"
 服务启动成功后，会写两个最重要的文件：
 
 ```bash
-cat /ocean/projects/cis260113p/zjiang9/repo/BDI_LLM_Formal_Ver/logs/serve_<JOBID>_access.txt
-cat /ocean/projects/cis260113p/zjiang9/repo/BDI_LLM_Formal_Ver/runs/status/glm47flash_service_ready_env.sh
+cat "${BDI_REPO_ROOT}/logs/serve_<JOBID>_access.txt"
+cat "${BDI_STATUS_ROOT}/glm47flash_service_ready_env.sh"
 ```
 
 `glm47flash_service_ready_env.sh` 至少会包含：

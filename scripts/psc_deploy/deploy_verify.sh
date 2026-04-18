@@ -12,14 +12,18 @@
 
 set -euo pipefail
 
-PROJECT=/ocean/projects/cis260113p/zjiang9
-REPO_ROOT=$PROJECT/repo/BDI_LLM_Formal_Ver
-SIF=$PROJECT/apptainer/vllm_nightly.sif
-HF_CACHE=$PROJECT/hf_cache
-CACHE_ROOT=$PROJECT/vllm_runtime_cache
-RUN_ROOT=$REPO_ROOT/runs
-MANIFEST_ROOT=$RUN_ROOT/server_manifests
-LOG_DIR=$REPO_ROOT/logs
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../bridges2_sbatch_under_review/psc_ocean_env.sh
+source "${SCRIPT_DIR}/../bridges2_sbatch_under_review/psc_ocean_env.sh"
+
+PROJECT="${BDI_PROJECT_ROOT}"
+REPO_ROOT="${BDI_REPO_ROOT}"
+SIF="${SIF:-${PROJECT}/apptainer/vllm_nightly.sif}"
+HF_CACHE="${BDI_HF_HOME}"
+CACHE_ROOT="${PROJECT}/vllm_runtime_cache"
+RUN_ROOT="${BDI_RUN_ROOT}"
+MANIFEST_ROOT="${RUN_ROOT}/server_manifests"
+LOG_DIR="${REPO_ROOT}/logs"
 SERVER_MANIFEST=$MANIFEST_ROOT/server_manifest_verify_${SLURM_JOB_ID}.json
 
 mkdir -p \
@@ -27,7 +31,6 @@ mkdir -p \
   "$MANIFEST_ROOT" \
   "$CACHE_ROOT"/{vllm,triton,xdg,xdg_config,torch_inductor,tmp}
 
-PORT=$((8000 + SLURM_JOB_ID % 1000))
 GPU_MEM_UTIL="${GPU_MEM_UTIL:-0.92}"
 READINESS_TIMEOUT="${READINESS_TIMEOUT:-900}"
 MAX_MODEL_LEN_CANDIDATES=(202752 131072 65536)
@@ -43,6 +46,18 @@ cleanup() {
   fi
 }
 trap cleanup EXIT
+
+pick_free_port() {
+  python - <<'PY'
+import socket
+
+with socket.socket() as sock:
+    sock.bind(("", 0))
+    print(sock.getsockname()[1])
+PY
+}
+
+PORT="${PORT:-$(pick_free_port)}"
 
 write_server_manifest() {
   local active_log="$1"
@@ -149,7 +164,8 @@ if [[ -z "${SELECTED_MAX_MODEL_LEN}" ]]; then
   exit 1
 fi
 
-curl -fsS "http://127.0.0.1:${PORT}/v1/models"
+curl -fsS "http://127.0.0.1:${PORT}/v1/models" > "${LOG_DIR}/glm47_verify_${SLURM_JOB_ID}_models.json"
+grep -q '"glm47flash"' "${LOG_DIR}/glm47_verify_${SLURM_JOB_ID}_models.json"
 
 for idx in 1 2 3; do
   curl -fsS -X POST "http://127.0.0.1:${PORT}/v1/chat/completions" \
@@ -161,14 +177,35 @@ for idx in 1 2 3; do
       "temperature": 0.0,
       "seed": 42
     }' > "${LOG_DIR}/glm47_verify_${SLURM_JOB_ID}_resp_${idx}.json"
+  python - <<'PY' "${LOG_DIR}/glm47_verify_${SLURM_JOB_ID}_resp_${idx}.json" "${LOG_DIR}/glm47_verify_${SLURM_JOB_ID}_resp_${idx}.norm.json"
+import json
+import sys
+from pathlib import Path
+
+source = Path(sys.argv[1])
+target = Path(sys.argv[2])
+payload = json.loads(source.read_text())
+choices = payload.get("choices", [])
+messages = []
+for choice in choices:
+    message = choice.get("message", {})
+    messages.append(
+        {
+            "content": message.get("content"),
+            "tool_calls": message.get("tool_calls"),
+            "finish_reason": choice.get("finish_reason"),
+        }
+    )
+target.write_text(json.dumps({"choices": messages}, indent=2) + "\n")
+PY
 done
 
 cmp -s \
-  "${LOG_DIR}/glm47_verify_${SLURM_JOB_ID}_resp_1.json" \
-  "${LOG_DIR}/glm47_verify_${SLURM_JOB_ID}_resp_2.json"
+  "${LOG_DIR}/glm47_verify_${SLURM_JOB_ID}_resp_1.norm.json" \
+  "${LOG_DIR}/glm47_verify_${SLURM_JOB_ID}_resp_2.norm.json"
 cmp -s \
-  "${LOG_DIR}/glm47_verify_${SLURM_JOB_ID}_resp_2.json" \
-  "${LOG_DIR}/glm47_verify_${SLURM_JOB_ID}_resp_3.json"
+  "${LOG_DIR}/glm47_verify_${SLURM_JOB_ID}_resp_2.norm.json" \
+  "${LOG_DIR}/glm47_verify_${SLURM_JOB_ID}_resp_3.norm.json"
 
 echo "[$(date)] [DONE] Deployment verification OK"
 echo "Server manifest: ${SERVER_MANIFEST}"

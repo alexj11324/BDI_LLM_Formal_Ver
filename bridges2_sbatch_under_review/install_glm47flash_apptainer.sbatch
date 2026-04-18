@@ -25,7 +25,7 @@ if [[ ! -d "${BDI_VLLM_SRC_ROOT}/.git" ]]; then
 else
   git -C "${BDI_VLLM_SRC_ROOT}" fetch origin
 fi
-git -C "${BDI_VLLM_SRC_ROOT}" checkout origin/main
+git -C "${BDI_VLLM_SRC_ROOT}" checkout "${BDI_VLLM_GIT_REF}"
 
 VERIFY_PY="${BDI_TMP_ROOT}/install_glm47flash_apptainer_verify.py"
 cat > "${VERIFY_PY}" <<'PY'
@@ -46,7 +46,7 @@ uv pip install --python '${BDI_APPTAINER_VENV}/bin/python' \
   torch torchvision torchaudio \
   --index-url https://download.pytorch.org/whl/cu126
 VLLM_USE_PRECOMPILED=1 \
-VLLM_PRECOMPILED_WHEEL_COMMIT=nightly \
+VLLM_PRECOMPILED_WHEEL_COMMIT='${BDI_VLLM_PRECOMPILED_WHEEL_COMMIT}' \
 VLLM_PRECOMPILED_WHEEL_VARIANT='${BDI_VLLM_PRECOMPILED_WHEEL_VARIANT}' \
 uv pip install --python '${BDI_APPTAINER_VENV}/bin/python' --editable '${BDI_VLLM_SRC_ROOT}'
 python -m pip install --upgrade '${BDI_TRANSFORMERS_GIT_URL}'

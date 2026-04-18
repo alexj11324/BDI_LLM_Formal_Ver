@@ -12,15 +12,19 @@
 
 set -euo pipefail
 
-PROJECT=/ocean/projects/cis260113p/zjiang9
-REPO_ROOT=$PROJECT/repo/BDI_LLM_Formal_Ver
-SIF=$PROJECT/apptainer/vllm_nightly.sif
-HF_CACHE=$PROJECT/hf_cache
-CACHE_ROOT=$PROJECT/vllm_runtime_cache
-RUN_ROOT=$REPO_ROOT/runs
-STATUS_ROOT=$RUN_ROOT/status
-MANIFEST_ROOT=$RUN_ROOT/server_manifests
-LOG_DIR=$REPO_ROOT/logs
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../bridges2_sbatch_under_review/psc_ocean_env.sh
+source "${SCRIPT_DIR}/../bridges2_sbatch_under_review/psc_ocean_env.sh"
+
+PROJECT="${BDI_PROJECT_ROOT}"
+REPO_ROOT="${BDI_REPO_ROOT}"
+SIF="${SIF:-${PROJECT}/apptainer/vllm_nightly.sif}"
+HF_CACHE="${BDI_HF_HOME}"
+CACHE_ROOT="${PROJECT}/vllm_runtime_cache"
+RUN_ROOT="${BDI_RUN_ROOT}"
+STATUS_ROOT="${BDI_STATUS_ROOT}"
+MANIFEST_ROOT="${RUN_ROOT}/server_manifests"
+LOG_DIR="${REPO_ROOT}/logs"
 ACCESS_INFO=$LOG_DIR/serve_${SLURM_JOB_ID}_access.txt
 READY_ENV=$STATUS_ROOT/glm47flash_service_ready_env.sh
 SERVER_MANIFEST=$MANIFEST_ROOT/server_manifest_${SLURM_JOB_ID}.json
@@ -31,7 +35,6 @@ mkdir -p \
   "$MANIFEST_ROOT" \
   "$CACHE_ROOT"/{vllm,triton,xdg,xdg_config,torch_inductor,tmp}
 
-PORT=$((8000 + SLURM_JOB_ID % 1000))
 NODE=$(hostname -s)
 NODE_IP=$(hostname -I | awk '{print $1}')
 MODEL_NAME=glm47flash
@@ -44,14 +47,26 @@ FALLBACK_FROM=""
 FALLBACK_REASON=""
 ATTEMPT_LOGS=()
 
-trap cleanup_server EXIT
-
 cleanup_server() {
   if [[ -n "${SERVER_PID:-}" ]] && kill -0 "${SERVER_PID}" >/dev/null 2>&1; then
     kill "${SERVER_PID}" >/dev/null 2>&1 || true
     wait "${SERVER_PID}" >/dev/null 2>&1 || true
   fi
 }
+
+trap cleanup_server EXIT
+
+pick_free_port() {
+  python - <<'PY'
+import socket
+
+with socket.socket() as sock:
+    sock.bind(("", 0))
+    print(sock.getsockname()[1])
+PY
+}
+
+PORT="${PORT:-$(pick_free_port)}"
 
 write_access_info() {
   cat > "$ACCESS_INFO" <<EOF
