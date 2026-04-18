@@ -435,3 +435,58 @@ sbatch --export=ALL,RUN_TAG=glm47flash_pb_apialign_$(date +%Y%m%d_%H%M),WORKERS=
 2. `${SCRIPT_DIR}/../` 相对路径 source 在 SLURM 下失效(SLURM 会把 sbatch 复制到 `/var/spool/slurm/d/`) → 所有 source 路径必须绝对
 3. Bridges2 login node 有多个(br001-br014),`ssh bridges2` 可能落到不同节点 → daemon/watchdog 不能靠 PID 杀,要把脚本本身 disable
 4. `--served-model-name` 必须与 eval 端 `LLM_MODEL=openai/<name>` 一致,连字符都要对齐
+
+### 10. GLM-4.7-Flash deployment 踩坑清单(2026-04-18 session)
+
+接上节,本次 debug 踩的具体坑 + 根因 + 规避。
+
+**坑 1: GPU-shared 节点 port 8000 被别的租户占用**
+- 症状: `OSError: [Errno 98] Address already in use`
+- 根因: GPU-shared 是多租户,同节点多用户共享端口空间;默认 port 8000 极易撞。  
+  之前 interactive 成功是因为 salloc 挑到的节点恰好没人占 8000,纯运气。
+- 规避: `run_vllm_glm.sh` 强制 `--port 47259`(不常见高位端口,私用范围)。
+- 诊断抓手: vllm 启动 log 会打印 `non-default args: {...}`,  
+  如果 `'port'` 字段缺席 = `--port` 没生效。
+
+**坑 2: interactive session 默认 walltime 只有 1 小时**
+- 症状: serve 跑到 1h 整点被 SLURM TIMEOUT 强制终止,eval 全失败。
+- 规避: salloc 必须显式 `-t 08:00:00`;长跑用 sbatch GPU-shared(`serve_glm_mtp.sbatch` 的 4h)。
+
+**坑 3: 文件分叉 — repo 改了但 sbatch exec 的是别处副本**
+- 症状: 改了 `scripts/psc_deploy/run_vllm_glm.sh` 后重提 serve,依旧跑旧行为。
+- 根因: sbatch 里写的是 `exec bash /ocean/projects/cis250019p/zjiang9/run_vllm_glm.sh`,  
+  那是 repo 外的副本,repo 改动没同步过去。
+- 规避: sbatch 统一 `exec bash <repo-absolute-path>/scripts/psc_deploy/run_vllm_glm.sh`,  
+  不在 repo 外放任何可执行副本。
+
+**坑 4: SLURM 提交时快照 sbatch 文件**
+- 症状: `sbatch` 后再改 sbatch 内容,**对已提交的 job 不生效**。
+- 根因: SLURM 在 sbatch 提交时把文件复制到 `/var/spool/slurm/d/job<N>/slurm_script`。
+- 规避: 改完 sbatch 必须 scancel + 重提,不能 `scontrol update` 改 Command。
+
+**坑 5: PSC 账号二元性 — filesystem vs compute allocation**
+- Filesystem 在 `/ocean/projects/cis250019p/zjiang9/`(用户 home 所属 group)。
+- Compute allocation 在 `cis260113p`(sbatch `-A cis260113p`)。
+- 两者不互通,sbatch 用错 account → permission denied。
+
+**坑 6: bridges2 login node 有多个(br001-br014)**
+- `ssh bridges2` 每次可能落到不同 login node,`ps` 只看当前节点进程。
+- watchdog/daemon 杀不干净要 **rename 脚本本身**(釜底抽薪),不能只靠 PID。
+
+**坑 7: `SINGULARITYENV_*` 传 env var 到容器内**
+- 宿主 export 的变量**不自动**传进 singularity 容器,必须用 `SINGULARITYENV_` 前缀。
+- 也见 warning: `SINGULARITYENV_VLLM_CACHE_ROOT is set, but APPTAINERENV_VLLM_CACHE_ROOT is preferred` —  
+  新版 apptainer 推荐 `APPTAINERENV_` 前缀,但老版 singularity-CE 仍识别 `SINGULARITYENV_`。二选一即可,不影响功能。
+
+**坑 8: val_interact 的 silent failure 桶演化**
+- 未开 parser: template_echo + JSONAdapter parse fail(17.5%)
+- 开 parser 但 thinking=false: NoneType 错误(27.5%,content=null)
+- 开 parser + thinking=true + 正确 served-model-name: 0-5% silent failure ✅
+- 三步配置缺一不可,任何一个错都会有特征性失败模式。
+
+**诊断复盘模板**(下次 debug 时按这个顺序排查):
+1. 看 vllm log 最后 5 行 error → 定位最直接原因(bind/OOM/import)
+2. 看 `non-default args:` → 验证你的 flag 真的传到 vllm 了
+3. curl `/v1/models` → 验证端点起来且模型名字对
+4. 发一次带推理的请求 → 验证 reasoning 和 content 字段分离
+5. 看 eval checkpoint 的 error bucket 分布 → 定位 silent failure 模式
