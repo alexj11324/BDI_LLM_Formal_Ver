@@ -102,8 +102,51 @@ sbatch --export=ALL,RUN_TAG=glm47flash_tp_val_$(date +%Y%m%d),WORKERS=16 \
 
 ```bash
 # server ready env 文件写盘后才能提交 eval job
-cat /ocean/projects/cis260113p/zjiang9/status/glm47flash_service_ready_env.sh
+cat /ocean/projects/cis260113p/zjiang9/runs/status/glm47flash_service_ready_env.sh
+# 等价形式：cat ${BDI_RUN_ROOT}/status/glm47flash_service_ready_env.sh
 ```
+
+---
+
+## 3.5. 防 stale ready-env（提交 eval job 前必读）
+
+### 为什么有这个问题
+
+`glm47flash_service_ready_env.sh` 是持久化文件，不会随 server job 结束自动删除。如果之前的 server job 留下了旧的 ready-env，步骤 3 中的 `while [ ! -f "$READY_ENV" ]` 循环会立即退出（文件已存在），然后 eval job 拿着**过期的 `OPENAI_API_BASE`**（旧 job 的 host:port）去连接，`wait_for_openai_compat` 超时失败，eval job 报 `Server not ready within 120s` 退出。
+
+### 缓解措施
+
+**第一步（在提交 serve job 之前）**：先清理旧的 ready-env 文件，避免新 eval job 读到旧地址：
+
+```bash
+READY_ENV="${BDI_RUN_ROOT}/status/glm47flash_service_ready_env.sh"
+# 等价绝对路径：/ocean/projects/cis260113p/zjiang9/runs/status/glm47flash_service_ready_env.sh
+rm -f "$READY_ENV"
+# 然后再提交 serve job：
+sbatch scripts/psc_deploy/serve_persistent.sh
+```
+
+**第二步（等 ready-env 写盘之后、提交 eval job 之前）**：source ready-env 并对推理服务做连通性验证，确认真正可达再提交 eval：
+
+```bash
+source "$READY_ENV"
+SERVE_OK=0
+for i in 1 2 3 4 5 6; do
+  if curl -fsS "${OPENAI_API_BASE}/models" >/dev/null; then
+    echo "serve verified"; SERVE_OK=1; break
+  fi
+  echo "serve not ready, retry $i"; sleep 20
+done
+if [ "$SERVE_OK" -ne 1 ]; then
+  echo "ERROR: serve unreachable after 6 retries" >&2
+  exit 1
+fi
+# 验证通过后再提交 eval job：
+sbatch --export=ALL,RUN_TAG=glm47flash_tp_val_$(date +%Y%m%d),WORKERS=16 \
+  bridges2_sbatch_under_review/run_eval_glm47flash_travelplanner.sbatch
+```
+
+6 次 × 20s = 最多等待 2 分钟。如果全部 curl 失败则 `exit 1` fail-closed，**不继续提交 eval job**，避免浪费 SU 配额在一个不可能成功的评测上。
 
 ---
 
@@ -124,7 +167,44 @@ sbatch --export=ALL,RUN_TAG=glm47flash_tp_test_$(date +%Y%m%d),WORKERS=16,HF_TOK
 
 ---
 
-## 5. Output 布局
+## 5. 聚合 paper validation table
+
+Validation job（Step 3）跑完后，用以下命令提交聚合 job，生成论文 Table 3：
+
+```bash
+AGG_JOB=$(sbatch --parsable \
+  --dependency=afterok:${VAL_JOB} \
+  --export=ALL,RUN_TAG=${RUN_TAG} \
+  bridges2_sbatch_under_review/aggregate_travelplanner_paperaligned.sbatch)
+echo "Aggregate job: ${AGG_JOB}"
+```
+
+`VAL_JOB` 是步骤 3 提交 validation sbatch 时拿到的 job ID（`sbatch --parsable` 返回纯数字 ID）。
+
+**为什么用 `afterok` 而非 `afterany`：**
+
+Validation job 即使中途失败，已完成的 instance 结果仍残留在磁盘。聚合脚本使用 `OFFICIAL_DENOMINATORS`（validation N=180），对部分数据聚合会产生误导性的 Table 3（分母固定，分子偏低）。`afterok` 保证 180 × 3 mode 全部干净完成后才触发聚合，避免将不完整数据写入论文表格。
+
+**Test job 失败不影响本步骤：**
+
+聚合脚本只读取 `${BDI_RUN_ROOT}/${RUN_TAG}/travelplanner/validation/`，与 test submission 目录完全独立。Test job 失败不会影响 validation table 的生成。
+
+**输出文件：**
+
+```text
+${BDI_TABLE_ROOT}/${RUN_TAG}/travelplanner/
+  tp_validation_table.tex          # 论文 Table 3 LaTeX 格式
+  tp_validation_table.json         # 同内容 JSON，便于程序读取
+  tp_aggregate_manifest.json       # 聚合元数据（run tag、时间戳、实例数等）
+```
+
+`BDI_TABLE_ROOT` 默认为 `${BDI_RUN_ROOT}/tables`（即 `/ocean/projects/cis260113p/zjiang9/runs/tables`）。
+
+> **Test table 聚合本 plan 不做**。本地 `test_submit/` 目录只有平铺的 `checkpoint_<mode>.json` / `diagnostics_<mode>.json` / `submission_<mode>.jsonl` / `test_soleplanning_<mode>.jsonl`，没有 `results_travelplanner_*.json`。paper test table 的数字来自官方 leaderboard 返回（`leaderboard_results.json`），schema 对齐和聚合逻辑留作后续 follow-up。
+
+---
+
+## 6. Output 布局
 
 ### Validation
 
@@ -151,20 +231,23 @@ ${BDI_RUN_ROOT}/${RUN_TAG}/travelplanner/
 ```text
 ${BDI_RUN_ROOT}/${RUN_TAG}/travelplanner_test/
   test_submit/
-    baseline/
-      results_*.json
-      submission_*.jsonl
-      checkpoint_*.json
-    bdi/
-      results_*.json
-      submission_*.jsonl
-      checkpoint_*.json
-    bdi-repair/
-      results_*.json
-      submission_*.jsonl
-      checkpoint_*.json
-  release_matrix_<stamp>.json
+    checkpoint_baseline.json
+    checkpoint_bdi.json
+    checkpoint_bdi-repair.json
+    diagnostics_baseline.json
+    diagnostics_bdi.json
+    diagnostics_bdi-repair.json
+    submission_baseline.jsonl
+    submission_bdi.jsonl
+    submission_bdi-repair.jsonl
+    test_soleplanning_baseline.jsonl
+    test_soleplanning_bdi.jsonl
+    test_soleplanning_bdi-repair.jsonl
+    leaderboard_results.json          # 若 leaderboard 成功上传
+  release_matrix_<stamp>.json         # 进程元数据汇总（不含指标数字）
 ```
+
+> **注意**：test_submit 目录**是平铺的,没有 per-mode 子目录**——三个 mode 的 checkpoint / diagnostics / submission / test_soleplanning 文件通过文件名 mode 后缀区分(`checkpoint_baseline.json`、`checkpoint_bdi.json`、`checkpoint_bdi-repair.json` 共存于 `test_submit/` 下),由 `run_travelplanner_test_submit.py:89` 和 `run_travelplanner_release_matrix.py:115` 决定。test_submit **没有** `results_*.json`,因为 test 数据集没有公开标注,无法在本地计算 5 指标 + Final Pass Rate。paper test table 的数字来自官方 leaderboard 返回(`leaderboard_results.json`),schema 对齐和聚合逻辑留作后续 follow-up。
 
 ### Slurm 日志
 
@@ -178,16 +261,18 @@ logs/slurm/
 
 ### 文件说明
 
-| 文件 | 内容 |
-|------|------|
-| `results_*.json` | 每条 instance 的完整评测结果（5 个指标 + Final Pass Rate） |
-| `submission_*.jsonl` | 官方格式提交文件（`idx`、`query`、`plan` 字段） |
-| `checkpoint_*.json` | 运行中间态，支持断点续跑 |
-| `release_matrix_<stamp>.json` | 三种 mode 的汇总 + 元数据（prompt_version、workers、walltime 等） |
+| 文件 | 出现位置 | 内容 |
+|------|----------|------|
+| `results_*.json` | validation 各 mode 子目录 | 每条 instance 的完整评测结果（5 个指标 + Final Pass Rate） |
+| `submission_*.jsonl` | validation 和 test 各 mode 子目录 | 官方格式提交文件（`idx`、`query`、`plan` 字段） |
+| `checkpoint_*.json` | validation 和 test 各 mode 子目录 | 运行中间态，支持断点续跑 |
+| `diagnostics_*.json` | test 各 mode 子目录 | 实例级错误/超时统计 |
+| `test_soleplanning_*.jsonl` | test 各 mode 子目录 | 官方 leaderboard 上传格式（soleplanning split） |
+| `release_matrix_<stamp>.json` | travelplanner / travelplanner_test 根 | 三种 mode 的汇总 + 元数据（prompt_version、workers、walltime 等） |
 
 ---
 
-## 6. 已知坑与排障
+## 7. 已知坑与排障
 
 ### `LLM_ENABLE_THINKING=false` 强制覆盖
 
@@ -216,7 +301,7 @@ cat logs/slurm/glm47_tp_setup_<JOBID>.out | grep -E 'FOUND|MISSING|ERROR'
 
 1. 检查 GPU server job 状态：`squeue -u $USER`
 2. 如果 server 不在 RUNNING：先提交 `sbatch scripts/psc_deploy/serve_persistent.sh`，等待进入 RUNNING
-3. 确认 ready 文件已写盘：`ls /ocean/projects/cis260113p/zjiang9/status/glm47flash_service_ready_env.sh`
+3. 确认 ready 文件已写盘：`ls /ocean/projects/cis260113p/zjiang9/runs/status/glm47flash_service_ready_env.sh`（即 `${BDI_RUN_ROOT}/status/glm47flash_service_ready_env.sh`）
 4. 重新提交 RM eval job
 
 ### `WORKERS` 上限
@@ -231,7 +316,7 @@ cat logs/slurm/glm47_tp_setup_<JOBID>.out | grep -E 'FOUND|MISSING|ERROR'
 
 ---
 
-## 7. 与 PlanBench 的关系
+## 8. 与 PlanBench 的关系
 
 本流程和 PlanBench 论文对齐评测（见 `docs/psc_glm47_planbench_paperaligned.md`）共用同一个 GPU server 实例（`serve_persistent.sh`），不需要分别启动。
 
