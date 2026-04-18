@@ -22,7 +22,7 @@ set +a
 
 if [[ ! -f "${BDI_SERVICE_READY_ENV_FILE}" ]]; then
   echo "Missing GPU service ready env: ${BDI_SERVICE_READY_ENV_FILE}" >&2
-  echo "Start scripts/psc_deploy/serve_persistent.sh first." >&2
+  echo "Start scripts/psc_deploy/<model>/serve.sbatch first and write the ready_env file." >&2
   exit 1
 fi
 

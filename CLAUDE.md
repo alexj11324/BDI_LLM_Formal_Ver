@@ -356,10 +356,10 @@ repo on PSC Bridges2.
 
 | 脚本 | 作用 |
 |---|---|
-| `scripts/psc_deploy/run_vllm_glm.sh` | vLLM 启动体,使用 `vllm/vllm-openai:latest` 镜像 + 7 个官方 flag + 全套 cache 重定向 |
-| `scripts/psc_deploy/serve_glm_mtp.sbatch` | 4h GPU-shared sbatch wrapper(调用上面脚本)。`-A cis260113p` |
-| `bridges2_sbatch_under_review/run_eval_glm47flash_travelplanner.sbatch` | TravelPlanner validation eval,RM-shared 8h,读 `BDI_SERVICE_READY_ENV_FILE` |
-| `bridges2_sbatch_under_review/run_planbench_glm47flash.sbatch` | PlanBench paper-aligned eval,RM-shared 8h,读同一个 ready_env |
+| `scripts/psc_deploy/glm47/run_vllm.sh` | vLLM 启动体,使用 `vllm/vllm-openai:latest` 镜像 + 7 个官方 flag + 全套 cache 重定向 |
+| `scripts/psc_deploy/glm47/serve.sbatch` | 4h GPU-shared sbatch wrapper(调用上面脚本)。`-A cis260113p` |
+| `scripts/psc_deploy/glm47/eval_travelplanner.sbatch` | TravelPlanner validation eval,RM-shared 8h,读 `BDI_SERVICE_READY_ENV_FILE` |
+| `scripts/psc_deploy/glm47/eval_planbench.sbatch` | PlanBench paper-aligned eval,RM-shared 8h,读同一个 ready_env |
 
 **官方 7 个必开 flag(任一不开 → 输出不对齐官方 API)**:
 
@@ -377,7 +377,7 @@ repo on PSC Bridges2.
 
 ```bash
 cd /ocean/projects/cis260113p/zjiang9/repo/BDI_LLM_Formal_Ver
-sbatch scripts/psc_deploy/serve_glm_mtp.sbatch
+sbatch scripts/psc_deploy/glm47/serve.sbatch
 # 等 3-5 min 模型 load + MTP compile
 # 拿到节点:squeue -u $USER -o '%.10i %.25j %R' 看 NODELIST
 # ready 指标:log 里出现 'Application startup complete' + 端口 47259(见 run_vllm_glm.sh)
@@ -406,14 +406,14 @@ RUN_TAG=glm47flash_tp_apialign_$(date +%Y%m%d_%H%M)
 
 sbatch --mem=15G \
   --export=ALL,RUN_TAG=$RUN_TAG,WORKERS=4,BDI_SERVICE_READY_ENV_FILE=$READY,LLM_MODEL=openai/glm-4.7-flash,PYTHONPATH=$USER_SITE \
-  bridges2_sbatch_under_review/run_eval_glm47flash_travelplanner.sbatch
+  scripts/psc_deploy/glm47/eval_travelplanner.sbatch
 ```
 
 **提交 PlanBench eval**:
 
 ```bash
 sbatch --export=ALL,RUN_TAG=glm47flash_pb_apialign_$(date +%Y%m%d_%H%M),WORKERS=4,BDI_SERVICE_READY_ENV_FILE=$READY,LLM_MODEL=openai/glm-4.7-flash,PYTHONPATH=$USER_SITE \
-  bridges2_sbatch_under_review/run_planbench_glm47flash.sbatch
+  scripts/psc_deploy/glm47/eval_planbench.sbatch
 ```
 
 **关键 env var 约束**:
@@ -453,7 +453,7 @@ sbatch --export=ALL,RUN_TAG=glm47flash_pb_apialign_$(date +%Y%m%d_%H%M),WORKERS=
 - 规避: salloc 必须显式 `-t 08:00:00`;长跑用 sbatch GPU-shared(`serve_glm_mtp.sbatch` 的 4h)。
 
 **坑 3: 文件分叉 — repo 改了但 sbatch exec 的是别处副本**
-- 症状: 改了 `scripts/psc_deploy/run_vllm_glm.sh` 后重提 serve,依旧跑旧行为。
+- 症状: 改了 `scripts/psc_deploy/glm47/run_vllm.sh` 后重提 serve,依旧跑旧行为。
 - 根因: sbatch 里写的是 `exec bash /ocean/projects/cis250019p/zjiang9/run_vllm_glm.sh`,  
   那是 repo 外的副本,repo 改动没同步过去。
 - 规避: sbatch 统一 `exec bash <repo-absolute-path>/scripts/psc_deploy/run_vllm_glm.sh`,  
@@ -490,3 +490,57 @@ sbatch --export=ALL,RUN_TAG=glm47flash_pb_apialign_$(date +%Y%m%d_%H%M),WORKERS=
 3. curl `/v1/models` → 验证端点起来且模型名字对
 4. 发一次带推理的请求 → 验证 reasoning 和 content 字段分离
 5. 看 eval checkpoint 的 error bucket 分布 → 定位 silent failure 模式
+
+### 11. Qwen3.6-35B-A3B 部署 + dual benchmark (与 GLM-4.7-Flash 并列可选)
+
+Model folder layout (每个模型自包含,scripts 不混):
+
+```
+scripts/psc_deploy/
+├── glm47/             # GLM-4.7-Flash
+│   ├── run_vllm.sh
+│   ├── run_interactive.sh
+│   ├── serve.sbatch
+│   ├── eval_travelplanner.sbatch
+│   ├── eval_travelplanner_test.sbatch
+│   └── eval_planbench.sbatch
+└── qwen36/            # Qwen3.6-35B-A3B
+    ├── run_vllm.sh
+    ├── serve.sbatch
+    ├── eval_travelplanner.sbatch
+    └── eval_planbench.sbatch
+```
+
+**Qwen3.6 official flags (差异于 GLM)**:
+- `--reasoning-parser qwen3` (而非 glm45)
+- `--tool-call-parser qwen3_coder` (而非 glm47)
+- `--speculative-config '{"method":"qwen3_next_mtp","num_speculative_tokens":2}'` (JSON 格式,与 GLM MTP 语法不同)
+- `--language-model-only` (text-only mode,skip vision encoder,省显存)
+- `--max-model-len 32768` (35B 在 80GB 上 context 要降)
+- `--served-model-name qwen3.6-35b-a3b`
+- 端口 47260 (避开 GLM 的 47259)
+
+**提交 Qwen3.6 完整 pipeline**:
+
+```bash
+cd /ocean/projects/cis260113p/zjiang9/repo/BDI_LLM_Formal_Ver
+
+# Step 1: serve
+sbatch scripts/psc_deploy/qwen36/serve.sbatch
+
+# Step 2: 写 ready_env 到 status/qwen3.6-35b-a3b_ready_env.sh (参考 GLM 格式,端口 47260)
+
+# Step 3: eval (并行 TP + PlanBench)
+USER_SITE=/ocean/projects/cis260113p/zjiang9/python_user/lib/python3.12/site-packages
+READY=/ocean/projects/cis260113p/zjiang9/runs/status/qwen3.6-35b-a3b_ready_env.sh
+TAG=qwen36_$(date +%Y%m%d_%H%M)
+
+sbatch --export=ALL,RUN_TAG=$TAG,WORKERS=4,BDI_SERVICE_READY_ENV_FILE=$READY,LLM_MODEL=openai/qwen3.6-35b-a3b,PYTHONPATH=$USER_SITE \
+  scripts/psc_deploy/qwen36/eval_travelplanner.sbatch
+
+sbatch --export=ALL,RUN_TAG=$TAG,WORKERS=4,BDI_SERVICE_READY_ENV_FILE=$READY,LLM_MODEL=openai/qwen3.6-35b-a3b,PYTHONPATH=$USER_SITE \
+  scripts/psc_deploy/qwen36/eval_planbench.sbatch
+```
+
+**两模型并存**: GLM 可以 47259 + Qwen 47260 同节点运行(显存够的话),或分两个 serve job 到不同节点。eval sbatch 通过 ready_env 指向不同 endpoint 即可切换模型。
+
