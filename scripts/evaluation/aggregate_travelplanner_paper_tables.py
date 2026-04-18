@@ -89,7 +89,7 @@ def _reduce_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
     Args:
         rows: Each element is a metrics dict with boolean fields
-              ``delivery``, ``commonsense``, ``hard_constraint``, ``final_pass``.
+              ``delivery``, ``commonsense_pass``, ``hard_constraint_pass``, ``final_pass``.
 
     Returns:
         Dict with keys:
@@ -106,8 +106,8 @@ def _reduce_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
             "N": 0,
         }
 
-    commonsense_pass_rate = sum(bool(r.get("commonsense", False)) for r in rows) / n
-    hard_constraint_pass_rate = sum(bool(r.get("hard_constraint", False)) for r in rows) / n
+    commonsense_pass_rate = sum(bool(r.get("commonsense_pass", False)) for r in rows) / n
+    hard_constraint_pass_rate = sum(bool(r.get("hard_constraint_pass", False)) for r in rows) / n
     final_pass_rate = sum(bool(r.get("final_pass", False)) for r in rows) / n
     delivery_rate = sum(bool(r.get("delivery", False)) for r in rows) / n
 
@@ -209,8 +209,13 @@ def _fmt(value: float) -> str:
 def _render_latex(
     non_oracle: dict[str, dict[str, Any]],
     oracle: dict[str, dict[str, Any]],
+    sample_count: int,
 ) -> str:
     """Render the two-section Table 3 LaTeX fragment."""
+    def _fmt_boldmax(values: list[float], value: float) -> str:
+        max_v = max(values)
+        return f"\\textbf{{{_fmt(value)}}}" if value == max_v else _fmt(value)
+
     b_no = non_oracle["baseline"]
     d_no = non_oracle["bdi"]
     r_no = non_oracle["bdi-repair"]
@@ -222,7 +227,7 @@ def _render_latex(
     lines = [
         r"\begin{table}[t]",
         r"\centering",
-        r"\caption{TravelPlanner validation results ($N{=}180$). "
+        rf"\caption{{TravelPlanner validation results ($N{{=}}{sample_count}$). "
         r"Non-oracle path is deployment-aligned; oracle path provides a diagnostic ceiling.}",
         r"\label{tab:tp_val}",
         r"\begin{tabular}{@{}lccc@{}}",
@@ -231,29 +236,35 @@ def _render_latex(
         r"\midrule",
         r"Metric & Baseline & BDI & BDI-Repair \\",
         r"\midrule",
-        f"Commonsense Pass & {_fmt(b_no['commonsense_pass_rate'])} & "
-        f"{_fmt(d_no['commonsense_pass_rate'])} & "
-        f"{_fmt(r_no['commonsense_pass_rate'])} \\\\",
-        f"Hard Constr.\\ Pass & {_fmt(b_no['hard_constraint_pass_rate'])} & "
-        f"{_fmt(d_no['hard_constraint_pass_rate'])} & "
-        f"\\textbf{{{_fmt(r_no['hard_constraint_pass_rate'])}}} \\\\",
-        f"\\textbf{{Final Pass Rate}} & {_fmt(b_no['final_pass_rate'])} & "
-        f"{_fmt(d_no['final_pass_rate'])} & "
-        f"\\textbf{{{_fmt(r_no['final_pass_rate'])}}} \\\\",
+        f"Commonsense Pass & "
+        f"{_fmt_boldmax([b_no['commonsense_pass_rate'], d_no['commonsense_pass_rate'], r_no['commonsense_pass_rate']] , b_no['commonsense_pass_rate'])} & "
+        f"{_fmt_boldmax([b_no['commonsense_pass_rate'], d_no['commonsense_pass_rate'], r_no['commonsense_pass_rate']] , d_no['commonsense_pass_rate'])} & "
+        f"{_fmt_boldmax([b_no['commonsense_pass_rate'], d_no['commonsense_pass_rate'], r_no['commonsense_pass_rate']] , r_no['commonsense_pass_rate'])} \\\\",
+        f"Hard Constr.\\ Pass & "
+        f"{_fmt_boldmax([b_no['hard_constraint_pass_rate'], d_no['hard_constraint_pass_rate'], r_no['hard_constraint_pass_rate']], b_no['hard_constraint_pass_rate'])} & "
+        f"{_fmt_boldmax([b_no['hard_constraint_pass_rate'], d_no['hard_constraint_pass_rate'], r_no['hard_constraint_pass_rate']], d_no['hard_constraint_pass_rate'])} & "
+        f"{_fmt_boldmax([b_no['hard_constraint_pass_rate'], d_no['hard_constraint_pass_rate'], r_no['hard_constraint_pass_rate']], r_no['hard_constraint_pass_rate'])} \\\\",
+        f"Final Pass Rate & "
+        f"{_fmt_boldmax([b_no['final_pass_rate'], d_no['final_pass_rate'], r_no['final_pass_rate']], b_no['final_pass_rate'])} & "
+        f"{_fmt_boldmax([b_no['final_pass_rate'], d_no['final_pass_rate'], r_no['final_pass_rate']], d_no['final_pass_rate'])} & "
+        f"{_fmt_boldmax([b_no['final_pass_rate'], d_no['final_pass_rate'], r_no['final_pass_rate']], r_no['final_pass_rate'])} \\\\",
         r"\midrule",
         r"\multicolumn{4}{@{}l}{\textit{Oracle (diagnostic upper bound)}} \\",
         r"\midrule",
         r"Metric & Baseline & BDI & BDI-Repair \\",
         r"\midrule",
-        f"Commonsense Pass & {_fmt(b_or['commonsense_pass_rate'])} & "
-        f"{_fmt(d_or['commonsense_pass_rate'])} & "
-        f"\\textbf{{{_fmt(r_or['commonsense_pass_rate'])}}} \\\\",
-        f"Hard Constr.\\ Pass & {_fmt(b_or['hard_constraint_pass_rate'])} & "
-        f"{_fmt(d_or['hard_constraint_pass_rate'])} & "
-        f"\\textbf{{{_fmt(r_or['hard_constraint_pass_rate'])}}} \\\\",
-        f"\\textbf{{Final Pass Rate}} & {_fmt(b_or['final_pass_rate'])} & "
-        f"{_fmt(d_or['final_pass_rate'])} & "
-        f"\\textbf{{{_fmt(r_or['final_pass_rate'])}}} \\\\",
+        f"Commonsense Pass & "
+        f"{_fmt_boldmax([b_or['commonsense_pass_rate'], d_or['commonsense_pass_rate'], r_or['commonsense_pass_rate']], b_or['commonsense_pass_rate'])} & "
+        f"{_fmt_boldmax([b_or['commonsense_pass_rate'], d_or['commonsense_pass_rate'], r_or['commonsense_pass_rate']], d_or['commonsense_pass_rate'])} & "
+        f"{_fmt_boldmax([b_or['commonsense_pass_rate'], d_or['commonsense_pass_rate'], r_or['commonsense_pass_rate']], r_or['commonsense_pass_rate'])} \\\\",
+        f"Hard Constr.\\ Pass & "
+        f"{_fmt_boldmax([b_or['hard_constraint_pass_rate'], d_or['hard_constraint_pass_rate'], r_or['hard_constraint_pass_rate']], b_or['hard_constraint_pass_rate'])} & "
+        f"{_fmt_boldmax([b_or['hard_constraint_pass_rate'], d_or['hard_constraint_pass_rate'], r_or['hard_constraint_pass_rate']], d_or['hard_constraint_pass_rate'])} & "
+        f"{_fmt_boldmax([b_or['hard_constraint_pass_rate'], d_or['hard_constraint_pass_rate'], r_or['hard_constraint_pass_rate']], r_or['hard_constraint_pass_rate'])} \\\\",
+        f"Final Pass Rate & "
+        f"{_fmt_boldmax([b_or['final_pass_rate'], d_or['final_pass_rate'], r_or['final_pass_rate']], b_or['final_pass_rate'])} & "
+        f"{_fmt_boldmax([b_or['final_pass_rate'], d_or['final_pass_rate'], r_or['final_pass_rate']], d_or['final_pass_rate'])} & "
+        f"{_fmt_boldmax([b_or['final_pass_rate'], d_or['final_pass_rate'], r_or['final_pass_rate']], r_or['final_pass_rate'])} \\\\",
         r"\bottomrule",
         r"\end{tabular}",
         r"\end{table}",
@@ -290,6 +301,7 @@ def aggregate(results_root: Path, output_dir: Path, run_tag: str | None) -> None
         print(f"[{mode}] Loaded {len(result_rows)} rows from {path.name}")
 
     _assert_expected_samples(all_rows)
+    sample_count = len(next(iter(all_rows.values()))) if all_rows else 0
 
     # 2. Compute per-section stats
     #    Non-oracle: baseline/bdi use "metrics"; bdi-repair uses "non_oracle_metrics"
@@ -306,7 +318,7 @@ def aggregate(results_root: Path, output_dir: Path, run_tag: str | None) -> None
     }
 
     # 3. Render LaTeX
-    latex_str = _render_latex(non_oracle, oracle)
+    latex_str = _render_latex(non_oracle, oracle, sample_count)
 
     # 4. Write outputs
     now_iso = datetime.now(timezone.utc).isoformat()
@@ -320,6 +332,7 @@ def aggregate(results_root: Path, output_dir: Path, run_tag: str | None) -> None
         "aggregation_timestamp": now_iso,
         "inputs": input_meta,
         "reducer_version": "v1",
+        "sample_count": sample_count,
     }
 
     tex_path = output_dir / "tp_validation_table.tex"

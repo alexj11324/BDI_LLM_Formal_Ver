@@ -85,7 +85,7 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     env = os.environ.copy()
-    env['TRAVELPLANNER_BDI_PROMPT_VERSION'] = 'v3'
+    env.setdefault('TRAVELPLANNER_BDI_PROMPT_VERSION', 'v3')
 
     summary: dict[str, object] = {
         'prompt_version': env['TRAVELPLANNER_BDI_PROMPT_VERSION'],

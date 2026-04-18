@@ -8,7 +8,7 @@ The active runtime is the `src/bdi_llm/` package, the entrypoints in `src/interf
 
 Do **not** treat these as the mainline runtime unless a task explicitly says so:
 - `scripts/evaluation/_legacy/` — historical runners kept for reference
-- `scripts/swe_bench/` — SWE-bench subsystem; not current focus
+- `scripts/swe_bench/` — SWE-bench subsystem has been removed/deferred; no active runner here
 
 ## Setup and common commands
 
