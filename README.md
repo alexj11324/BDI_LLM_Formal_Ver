@@ -275,7 +275,7 @@ These were the earlier TravelPlanner validation numbers before the current conve
 | Command | Description |
 | ------- | ----------- |
 | `python scripts/evaluation/run_generic_pddl_eval.py --domain_pddl tests/fixtures/gripper/domain.pddl --problem_pddl tests/fixtures/gripper/problem1.pddl` | Run a single generic PDDL problem through the current mainline evaluation path |
-| `python scripts/evaluation/run_verification_only.py --domain blocksworld --max_instances 10` | Run generation + structural + VAL verification without the repair loop |
+| `python scripts/evaluation/run_planbench_paperaligned.py --domain blocksworld --execution_mode bdi-repair --max_instances 10` | Run the built-in PlanBench paper-aligned path and record `baseline` / `bdi` / `bdi-repair` in one pass |
 | `python scripts/evaluation/run_travelplanner_eval.py --split validation --execution_mode bdi-repair --travelplanner_home workspaces/TravelPlanner_official` | Run the current TravelPlanner validation flow |
 | `python scripts/evaluation/run_travelplanner_release_matrix.py --run-validation --workers 20 --travelplanner-home workspaces/TravelPlanner_official` | Orchestrate the TravelPlanner validation / release matrix |
 | `python src/interfaces/cli.py` | Launch the local CLI demo entrypoint |

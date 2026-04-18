@@ -18,7 +18,7 @@ The active evaluation surfaces in this repository are:
 
 1. **Generic PDDL / PlanBench-style evaluation**
    - current runner: `scripts/evaluation/run_generic_pddl_eval.py`
-   - verification-only runner: `scripts/evaluation/run_verification_only.py`
+   - built-in PlanBench paper-aligned runner: `scripts/evaluation/run_planbench_paperaligned.py`
 
 2. **TravelPlanner**
    - current validation runner: `scripts/evaluation/run_travelplanner_eval.py`
@@ -110,8 +110,8 @@ python scripts/evaluation/run_generic_pddl_eval.py --domain_pddl tests/fixtures/
 # Batch generic PDDL directory with VAL checking
 python scripts/evaluation/run_generic_pddl_eval.py --domain_pddl tests/fixtures/gripper/domain.pddl --problem_dir tests/fixtures/gripper --execution_mode VERIFY_WITH_VAL
 
-# Verification-only evaluation
-python scripts/evaluation/run_verification_only.py --domain blocksworld --max_instances 10
+# Built-in PlanBench paper-aligned evaluation
+python scripts/evaluation/run_planbench_paperaligned.py --domain blocksworld --execution_mode bdi-repair --max_instances 10
 ```
 
 ### TravelPlanner

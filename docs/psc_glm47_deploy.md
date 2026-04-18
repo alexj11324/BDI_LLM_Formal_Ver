@@ -6,11 +6,11 @@
 
 ---
 
-## TL;DR — 两步跑通
+## TL;DR — 只保留支持路径
 
 ```bash
-# 1. 上传脚本(只需做一次)
-scp scripts/psc_deploy/*.sh bridges2:/ocean/projects/cis260113p/zjiang9/scripts/
+# 1. 上传长驻服务脚本(只需做一次)
+scp scripts/psc_deploy/serve_persistent.sh bridges2:/ocean/projects/cis260113p/zjiang9/scripts/
 # 若 scp 挂(sftp disabled),改用:
 #   cat scripts/psc_deploy/serve_persistent.sh | ssh bridges2 'cat > /ocean/projects/cis260113p/zjiang9/scripts/serve_persistent.sh'
 
@@ -24,21 +24,23 @@ ssh bridges2 'squeue -u $USER'
 ssh bridges2 'cat /ocean/projects/cis260113p/zjiang9/logs/serve_<JOBID>_access.txt'
 ```
 
+这份文档只保留 `serve_persistent.sh` 这条部署路径。
+
 ---
 
 ## 关键资产位置
 
 | 文件 | PSC 位置 | 作用 |
 |------|----------|------|
-| `vllm_nightly.sif` | `/ocean/projects/cis260113p/zjiang9/apptainer/` (8.5 GB) | vLLM nightly 镜像,**首次 pull 后持久复用** |
+| `vllm_nightly.sif` | `/ocean/projects/cis260113p/zjiang9/apptainer/` (8.5 GB) | vLLM nightly 镜像，首次 pull 后持久复用 |
 | GLM-4.7-Flash 权重 | `/ocean/projects/cis260113p/zjiang9/hf_cache/hub/models--zai-org--GLM-4.7-Flash/` (59 GB) | HF 缓存 |
-| Runtime cache | `/ocean/projects/cis260113p/zjiang9/vllm_runtime_cache/` | torch.compile / triton / inductor 编译缓存,warm start 用 |
+| Runtime cache | `/ocean/projects/cis260113p/zjiang9/vllm_runtime_cache/` | torch.compile / triton / inductor 编译缓存 |
 | 访问说明 | `/ocean/projects/cis260113p/zjiang9/logs/serve_<JOBID>_access.txt` | 每次启动自动写入 host:port |
-| 本 repo 脚本 | `scripts/psc_deploy/` | 部署验证 + 长驻 server |
+| 本 repo 脚本 | `scripts/psc_deploy/serve_persistent.sh` | 唯一支持的 GPU 服务入口 |
 
 ---
 
-## 调用 server(服务器 RUNNING 后)
+## 调用 server
 
 ### 方式 1: 在 PSC 内调用(login 或 compute node)
 ```bash
@@ -73,21 +75,21 @@ ssh bridges2 "scancel <JOBID>"
 
 ---
 
-## 踩过的坑(按顺序)
+## 踩过的坑
 
 | 坑 | 根因 | 修复 |
 |----|------|------|
 | **1. `glm4_moe_lite` 不识别** | `vllm/vllm-openai:latest` stable 不支持 GLM-4.7 | 改用 `:nightly` tag |
 | **2. `No module named 'pandas'`** | nightly 镜像漏装 pandas | `--writable-tmpfs` + 启动前 `pip install pandas pyarrow` |
-| **3. `Errno 122 Disk quota exceeded` (torch.compile)** | vLLM 默认写 `~/.cache/vllm/`,jet/home 25GB 爆 | **7 个 cache env vars 全部重定向到 Ocean** (见下) |
+| **3. `Errno 122 Disk quota exceeded` (torch.compile)** | vLLM 默认写 `~/.cache/vllm/`，`jet/home` 25GB 爆 | 7 个 cache env vars 全部重定向到 Ocean |
 
 ### 必备的 7 个 env vars(`serve_persistent.sh` 已内置)
 
 ```bash
---env HF_HOME=/hf_cache                  # HF 模型权重
+--env HF_HOME=/hf_cache
 --env HF_HUB_CACHE=/hf_cache/hub
---env VLLM_CACHE_ROOT=/cache/vllm        # vLLM torch.compile cache
---env TRITON_CACHE_DIR=/cache/triton     # Triton JIT
+--env VLLM_CACHE_ROOT=/cache/vllm
+--env TRITON_CACHE_DIR=/cache/triton
 --env TORCHINDUCTOR_CACHE_DIR=/cache/torch_inductor
 --env XDG_CACHE_HOME=/cache/xdg
 --env TMPDIR=/cache/tmp
@@ -101,15 +103,15 @@ ssh bridges2 "scancel <JOBID>"
 
 ---
 
-## 关键参数解释(给非运维用户)
+## 关键参数解释
 
 | 参数 | 通俗含义 |
 |------|---------|
-| `#SBATCH -t 04:00:00` | 服务器开 4 小时,到点自动关 |
+| `#SBATCH -t 04:00:00` | 服务开 4 小时，到点自动关 |
 | `--gres=gpu:h100-80:1` | 要 1 张 H100 80GB 显卡 |
-| `--max-model-len 8192` | 单次对话最多 8192 token(prompt + 回答之和) |
-| `--gpu-memory-utilization 0.92` | 显存用 92%(60GB 模型 + 14GB KV cache) |
-| `--served-model-name glm47flash` | API 里模型名叫 "glm47flash" |
+| `--gpu-memory-utilization 0.92` | 显存用 92% |
+| `--served-model-name glm47flash` | API 里模型名叫 `glm47flash` |
+| `--max-model-len` 回退链 | `202752 -> 131072 -> 65536` |
 
 ---
 
@@ -117,30 +119,28 @@ ssh bridges2 "scancel <JOBID>"
 
 | 阶段 | 墙钟 | SU(h100 = 2 SU/h) |
 |------|------|-------------------|
-| 首次 pull + 部署验证 | ~30 min | ~1 SU |
-| **日常启动**(SIF 已存) | ~5 min | ~0.2 SU |
+| 日常启动(SIF 已存) | ~5 min | ~0.2 SU |
 | 4h 长驻 server | 4 h | **8 SU** |
 
-`cis260113p` GPU 配额 1000 SU,可支持 125 次 4h server 会话。
+`cis260113p` GPU 配额 1000 SU，可支持约 125 次 4h server 会话。
 
 ---
 
 ## 防御机制
 
-- Hook: `~/.claude/hooks/psc_cache_guard.py` — 拦截 inline `apptainer exec / vllm serve` 缺 cache env vars 的命令(Claude Code 全局生效)
+- Hook: `~/.claude/hooks/psc_cache_guard.py` — 拦截 inline `apptainer exec / vllm serve` 缺 cache env vars 的命令
 - 触发条件: `apptainer exec` / `apptainer pull` / `vllm serve` / `vllm.entrypoints.openai` + PSC 标记(`bridges2`, `/ocean/projects/`, `cis*p`)
-- `sbatch xxx.sh` **不会触发**(提交器本身不写 cache)
+- `sbatch xxx.sh` 不触发，因为提交器本身不写 cache
 
 ---
 
-## 脚本对比
+## 后续主线
 
-| 脚本 | 用途 | 行为 |
-|------|------|------|
-| `deploy_verify.sh` (v4) | **一次性验证**部署链路 | 启动 → 加载 → smoke test → **自动关机** |
-| `serve_persistent.sh` (v5) | **长驻 server** 供推理/eval 调用 | 启动 → 一直跑到 walltime 或 scancel |
+部署完成后，后续评测只走：
 
-平时用 `serve_persistent.sh`;改环境后要验证则用 `deploy_verify.sh`。
+1. `scripts/psc_deploy/serve_persistent.sh`
+2. `bridges2_sbatch_under_review/run_eval_glm47flash_paperaligned.sbatch`
+3. `bridges2_sbatch_under_review/aggregate_planbench_glm47flash_paperaligned.sbatch`
 
 ---
 

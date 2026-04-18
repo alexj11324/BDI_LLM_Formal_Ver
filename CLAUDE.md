@@ -75,8 +75,8 @@ python scripts/evaluation/run_generic_pddl_eval.py --domain_pddl tests/fixtures/
 # Batch generic PDDL directory with VAL checking
 python scripts/evaluation/run_generic_pddl_eval.py --domain_pddl tests/fixtures/gripper/domain.pddl --problem_dir tests/fixtures/gripper --execution_mode VERIFY_WITH_VAL
 
-# Verification-only evaluation (generation + structural + VAL, no repair)
-python scripts/evaluation/run_verification_only.py --domain blocksworld --max_instances 10
+# Built-in PlanBench paper-aligned evaluation
+python scripts/evaluation/run_planbench_paperaligned.py --domain blocksworld --execution_mode bdi-repair --max_instances 10
 ```
 
 Use `run_generic_pddl_eval.py` as the current generic PDDL runner. Do not default to `_legacy/run_planbench_full.py` unless the task is explicitly about the old pipeline.
@@ -319,12 +319,11 @@ repo on PSC Bridges2.
 - Host-oriented scripts live under `bridges2_sbatch_under_review/`:
   - `psc_ocean_env.sh`
   - `install_bdi_llm.sbatch`
-  - `run_eval_glm47flash.sbatch`
+  - `run_eval_glm47flash_paperaligned.sbatch`
+  - `aggregate_planbench_glm47flash_paperaligned.sbatch`
 - Container-oriented scripts also live there:
   - `psc_apptainer_env.sh`
-  - `probe_glm47flash_apptainer.sbatch`
   - `install_glm47flash_apptainer.sbatch`
-  - `run_eval_glm47flash_apptainer.sbatch`
 
 ### 7. Operational gotchas from debugging
 
@@ -339,8 +338,9 @@ repo on PSC Bridges2.
 
 - **部署说明书**: `docs/psc_glm47_deploy.md`(TL;DR + 坑 + 访问方式 + 参数解释)
 - **工作脚本**:
-  - `scripts/psc_deploy/deploy_verify.sh` — 一次性验证(启动→测试→自动关)
   - `scripts/psc_deploy/serve_persistent.sh` — 长驻 server(持续 4h 供推理/eval)
+  - `bridges2_sbatch_under_review/run_eval_glm47flash_paperaligned.sbatch` — RM-shared 单 domain paper-aligned eval
+  - `bridges2_sbatch_under_review/aggregate_planbench_glm47flash_paperaligned.sbatch` — 聚合主表和附录表
 - **持久资产**(不要重建,直接复用):
   - SIF: `/ocean/projects/cis260113p/zjiang9/apptainer/vllm_nightly.sif`(8.5 GB)
   - HF 权重: `/ocean/projects/cis260113p/zjiang9/hf_cache/hub/models--zai-org--GLM-4.7-Flash`(59 GB)
