@@ -1,16 +1,17 @@
 #!/bin/bash
 # run_vllm.sh — GLM-4.7-Flash with HF cache on node-local /local NVMe
-# (mirrors qwen36/run_vllm.sh layout: bypass Lustre /ocean for weight I/O).
+# (mirrors qwen36/run_vllm.sh exactly: HF Hub → /local NVMe direct, no Lustre hop).
 #
-# Pre-warm: if /ocean canonical copy exists, rsync 59GB → /local in ~1 min
-# (Lustre→NVMe ~1GB/s) instead of paying the ~10-20 min HF Hub redownload.
-# First run on a brand-new node with no /ocean copy: HF downloads from CDN.
+# First run on a node: HF downloads ~59GB from CDN to /local NVMe (~10-20 min).
+# Subsequent runs on same node: cached, model load is seconds.
+#
+# RULE: never rsync from /ocean → /local — Lustre IO contention is unpredictable
+# and can saturate shared OSTs. Direct HF download uses parallel CDN chunks,
+# completely bypassing Lustre. See feedback_hf_cache_local_nvme_direct.md.
 
 set -eu
 export PROJECT=/ocean/projects/cis250019p/zjiang9
 export LOCAL_CACHE=/local/${USER:-zjiang9}/hf_cache
-export OCEAN_HF=$PROJECT/hf_cache
-export MODEL_REPO=models--zai-org--GLM-4.7-Flash
 
 # HF caches pinned to node-local NVMe (fast, no Lustre hop)
 export SINGULARITYENV_HF_HOME=$LOCAL_CACHE
@@ -28,22 +29,12 @@ export SINGULARITYENV_TMPDIR=$LOCAL_CACHE/tmp
 mkdir -p $LOCAL_CACHE/hub $LOCAL_CACHE/tmp
 mkdir -p $PROJECT/vllm_runtime_cache/{vllm,triton,torch_inductor,xdg}
 
-echo "===== GLM-4.7-Flash launcher (local-NVMe variant) ====="
+echo "===== GLM-4.7-Flash launcher (local-NVMe variant, no rsync) ====="
 echo "Node:           $(hostname)"
 echo "HF cache:       $LOCAL_CACHE"
 echo "Free /local:    $(df -h /local 2>/dev/null | tail -1 | awk '{print $4}')"
-
-# Pre-warm: rsync /ocean canonical → /local NVMe if missing
-if [ -d "$OCEAN_HF/hub/$MODEL_REPO" ] && [ ! -d "$LOCAL_CACHE/hub/$MODEL_REPO/snapshots" ]; then
-  echo "[pre-warm] rsync $OCEAN_HF/hub/$MODEL_REPO -> $LOCAL_CACHE/hub/ ..."
-  t0=$(date +%s)
-  rsync -aHL --info=progress2 "$OCEAN_HF/hub/$MODEL_REPO" "$LOCAL_CACHE/hub/" || \
-    echo "[pre-warm] rsync failed — will fall back to HF Hub download"
-  echo "[pre-warm] done in $(($(date +%s) - t0))s"
-fi
-
 echo "=== existing cache in /local ==="
-ls -lah $LOCAL_CACHE/hub/ 2>/dev/null | head -5 || echo "(empty, will download on first run)"
+ls -lah $LOCAL_CACHE/hub/ 2>/dev/null | head -5 || echo "(empty, will download from HF Hub on first run)"
 echo "================================"
 
 singularity exec --nv \
