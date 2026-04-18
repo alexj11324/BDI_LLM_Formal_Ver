@@ -1,25 +1,42 @@
 #!/bin/bash
-# run_vllm_qwen.sh
-# Official Qwen3.6-35B-A3B serving script with MTP + text-only + all parsers.
+# run_vllm_qwen.sh — Qwen3.6-35B-A3B with HF cache on node-local /local NVMe
+# (bypasses Lustre /ocean for weight I/O).
+#
+# First run on a new node: HF downloads ~60-70GB from HuggingFace CDN into
+# /local/$USER/hf_cache. Subsequent runs on the same node: read from local
+# NVMe (GB/s), model load is seconds.
 
+set -eu
 export PROJECT=/ocean/projects/cis250019p/zjiang9
+export LOCAL_CACHE=/local/${USER:-zjiang9}/hf_cache
 
-export SINGULARITYENV_HF_HOME=$PROJECT/hf_cache
-export SINGULARITYENV_HF_HUB_CACHE=$PROJECT/hf_cache/hub
-export SINGULARITYENV_HUGGINGFACE_HUB_CACHE=$PROJECT/hf_cache/hub
+# HF caches pinned to node-local NVMe (fast, no Lustre hop)
+export SINGULARITYENV_HF_HOME=$LOCAL_CACHE
+export SINGULARITYENV_HF_HUB_CACHE=$LOCAL_CACHE/hub
+export SINGULARITYENV_HUGGINGFACE_HUB_CACHE=$LOCAL_CACHE/hub
 
+# torch.compile / vllm / triton caches — keep on /ocean so they persist
+# across nodes (compile cache is expensive to rebuild).
 export SINGULARITYENV_VLLM_CACHE_ROOT=$PROJECT/vllm_runtime_cache/vllm
 export SINGULARITYENV_TRITON_CACHE_DIR=$PROJECT/vllm_runtime_cache/triton
 export SINGULARITYENV_TORCHINDUCTOR_CACHE_DIR=$PROJECT/vllm_runtime_cache/torch_inductor
 export SINGULARITYENV_XDG_CACHE_HOME=$PROJECT/vllm_runtime_cache/xdg
-export SINGULARITYENV_TMPDIR=$PROJECT/vllm_runtime_cache/tmp
+export SINGULARITYENV_TMPDIR=$LOCAL_CACHE/tmp
 
-mkdir -p $PROJECT/vllm_runtime_cache/{vllm,triton,torch_inductor,xdg,tmp}
-mkdir -p $PROJECT/hf_cache/hub
+mkdir -p $LOCAL_CACHE/hub $LOCAL_CACHE/tmp
+mkdir -p $PROJECT/vllm_runtime_cache/{vllm,triton,torch_inductor,xdg}
+
+echo "===== Qwen3.6 launcher (local-NVMe variant) ====="
+echo "Node:           $(hostname)"
+echo "HF cache:       $LOCAL_CACHE"
+echo "Free /local:    $(df -h /local 2>/dev/null | tail -1 | awk '{print $4}')"
+echo "=== existing cache in /local ==="
+ls -lah $LOCAL_CACHE/hub/ 2>/dev/null | head -5 || echo "(empty, will download on first run)"
+echo "================================"
 
 singularity exec --nv \
   --bind $PROJECT:/project \
-  --bind $PROJECT/hf_cache:$PROJECT/hf_cache \
+  --bind $LOCAL_CACHE:$LOCAL_CACHE \
   --bind $PROJECT/vllm_runtime_cache:$PROJECT/vllm_runtime_cache \
   $PROJECT/vllm-openai_latest.sif \
   vllm serve Qwen/Qwen3.6-35B-A3B \
