@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
 """
-PlanBench Full Benchmark Evaluation
-====================================
+PlanBench Paper-Aligned Evaluation
+==================================
 
-Tests BDI-LLM on all PlanBench instances (4,430 PDDL problems)
+Runs the paper-aligned PlanBench pipeline and records stage-level
+`baseline` / `bdi` / `bdi-repair` outputs in one pass.
 
 Usage:
     # Test all instances in blocksworld
-    python run_planbench_full.py --domain blocksworld --max_instances 100
+    python run_planbench_paperaligned.py --domain blocksworld --max_instances 100
 
     # Test all domains
-    python run_planbench_full.py --all_domains --max_instances 50
+    python run_planbench_paperaligned.py --all_domains --max_instances 50
 
     # Resume from checkpoint
-    python run_planbench_full.py --domain blocksworld --resume runs/checkpoint.json
+    python run_planbench_paperaligned.py --domain blocksworld --resume runs/checkpoint.json
 
 Author: BDI-LLM Research
 Date: 2026-02-03

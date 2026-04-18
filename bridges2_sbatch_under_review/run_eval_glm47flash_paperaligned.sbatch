@@ -66,7 +66,7 @@ curl -fsS "${OPENAI_MODELS_URL}"
 cd "${BDI_REPO_ROOT}"
 
 CMD=(
-  python scripts/evaluation/_legacy/run_planbench_full.py
+  python scripts/evaluation/run_planbench_paperaligned.py
   --domain "${DOMAIN}"
   --output_dir "${OUT_ROOT}"
   --execution_mode bdi-repair

@@ -25,7 +25,7 @@
 
 - [bridges2_sbatch_under_review/run_eval_glm47flash_paperaligned.sbatch](/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/bridges2_sbatch_under_review/run_eval_glm47flash_paperaligned.sbatch)
   作用：单个 domain 的 RM 评测 job。固定调用：
-  `python scripts/evaluation/_legacy/run_planbench_full.py --execution_mode bdi-repair --deterministic`
+  `python scripts/evaluation/run_planbench_paperaligned.py --execution_mode bdi-repair --deterministic`
 
 - [bridges2_sbatch_under_review/aggregate_planbench_glm47flash_paperaligned.sbatch](/Users/alexjiang/Documents/RA/BDI_LLM_Formal_Ver/bridges2_sbatch_under_review/aggregate_planbench_glm47flash_paperaligned.sbatch)
   作用：读取五个 domain 的结果，生成 paper 主表和附录表。
@@ -192,7 +192,7 @@ done
 其中：
 
 - `results_*.json`
-  是原始 legacy runner 结果，包含每题的 `baseline_result`、`bdi_initial_result`、`bdi_repair_result`
+  是原始 paper-aligned runner 结果，包含每题的 `baseline_result`、`bdi_initial_result`、`bdi_repair_result`
 - `checkpoint_*.json`
   是运行中间态
 - `run_manifest_<domain>.json`
