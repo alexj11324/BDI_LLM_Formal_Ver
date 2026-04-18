@@ -14,13 +14,15 @@ Date: 2026-02-04
 """
 
 import os
-import pytest
 from pathlib import Path
+
+import pytest
 
 from bdi_llm.planner import BDIPlanner
 from bdi_llm.symbolic_verifier import BlocksworldPhysicsValidator
 from bdi_llm.verifier import PlanVerifier
 from scripts.evaluation.planbench_utils import bdi_to_pddl_actions, parse_pddl_problem
+
 
 def _is_valid_api_key(key):
     if not key:
@@ -81,7 +83,9 @@ def test_pddl_parser_init_state():
     print("="*80 + "\n")
 
     # Use a generated instance file
-    instance_path = Path("workspaces/planbench_data/plan-bench/instances/blocksworld/generated/instance-2.pddl")
+    instance_path = Path(
+        "workspaces/planbench_data/plan-bench/instances/blocksworld/generated/instance-2.pddl"
+    )
 
     if not instance_path.exists():
         pytest.skip(f"Instance file not found: {instance_path}")
@@ -123,7 +127,13 @@ def test_multi_layer_verification():
         pytest.skip("Requires valid OPENAI_API_KEY")
 
     # Simple test case
-    beliefs = "Blocksworld domain with 3 blocks: a, b, c. Block a is on table and clear. Block b is on table and clear. Block c is on table and clear. Hand is empty."
+    beliefs = (
+        "Blocksworld domain with 3 blocks: a, b, c. "
+        "Block a is on table and clear. "
+        "Block b is on table and clear. "
+        "Block c is on table and clear. "
+        "Hand is empty."
+    )
     desire = "Stack all blocks: c on b, b on a"
 
     init_state = {
@@ -134,7 +144,7 @@ def test_multi_layer_verification():
     }
 
     try:
-        plan, is_valid, metrics = _generate_plan_with_layers(beliefs, desire, init_state)
+        _, _, metrics = _generate_plan_with_layers(beliefs, desire, init_state)
 
         # Check metrics structure
         assert 'verification_layers' in metrics, "verification_layers missing from metrics"
@@ -158,7 +168,9 @@ def test_multi_layer_verification():
         expected_overall = layers['structural']['valid'] and layers['physics']['valid']
         actual_overall = metrics['overall_valid']
 
-        assert expected_overall == actual_overall, f"overall_valid incorrect (expected {expected_overall}, got {actual_overall})"
+        assert expected_overall == actual_overall, (
+            f"overall_valid incorrect (expected {expected_overall}, got {actual_overall})"
+        )
 
         print("  ✅ PASS: Metrics structure correct")
 
@@ -175,7 +187,13 @@ def test_physics_catches_errors():
         pytest.skip("Requires valid OPENAI_API_KEY")
 
     # Create a scenario where structural might pass but physics should catch issues
-    beliefs = "Blocksworld with blocks a, b. Block b is on block a. Block a is on table. Block b is clear. Hand is empty."
+    beliefs = (
+        "Blocksworld with blocks a, b. "
+        "Block b is on block a. "
+        "Block a is on table. "
+        "Block b is clear. "
+        "Hand is empty."
+    )
     desire = "Pick up block a"  # This is physically impossible - a is not clear
 
     init_state = {
@@ -186,12 +204,12 @@ def test_physics_catches_errors():
     }
 
     try:
-        plan, is_valid, metrics = _generate_plan_with_layers(beliefs, desire, init_state)
+        _, _, metrics = _generate_plan_with_layers(beliefs, desire, init_state)
 
         struct_valid = metrics['verification_layers']['structural']['valid']
         physics_valid = metrics['verification_layers']['physics']['valid']
 
-        print(f"  Results:")
+        print("  Results:")
         print(f"     - Structural valid: {struct_valid}")
         print(f"     - Physics valid: {physics_valid}")
 
@@ -233,7 +251,7 @@ def test_multiple_instances():
                 pytest.fail(f"No init_state extracted from {instance_file.name}")
 
             # This should not crash
-            init_state = pddl_data['init_state']
+            _ = pddl_data['init_state']
 
         except Exception as e:
             pytest.fail(f"Exception processing {instance_file.name}: {e}")

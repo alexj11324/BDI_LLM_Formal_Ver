@@ -12,16 +12,17 @@ This tests:
 3. Layered metrics structure
 """
 
-import sys
 import os
+import sys
 from pathlib import Path
 
-# Set dummy API key to avoid import errors
-os.environ['OPENAI_API_KEY'] = 'test-key-for-imports'
+# Set a dummy API key only when the environment is otherwise empty.
+os.environ.setdefault('OPENAI_API_KEY', 'test-key-for-imports')
 
-from bdi_llm.schemas import BDIPlan, ActionNode
+from bdi_llm.schemas import ActionNode, BDIPlan
 from bdi_llm.symbolic_verifier import BlocksworldPhysicsValidator
 from scripts.evaluation.planbench_utils import bdi_to_pddl_actions, parse_pddl_problem
+
 
 def test_bdi_to_pddl_conversion():
     """Test converting BDI actions to PDDL format"""
@@ -54,7 +55,9 @@ def test_bdi_to_pddl_conversion():
 
     # Verify
     assert len(pddl_actions) == 2, f"Expected 2 actions, got {len(pddl_actions)}"
-    assert "(pick-up a)" in pddl_actions[0].lower(), f"Expected pick-up action, got {pddl_actions[0]}"
+    assert "(pick-up a)" in pddl_actions[0].lower(), (
+        f"Expected pick-up action, got {pddl_actions[0]}"
+    )
     assert "(stack a b)" in pddl_actions[1].lower(), f"Expected stack action, got {pddl_actions[1]}"
 
     print("  ✅ PASS\n")
@@ -103,23 +106,27 @@ def test_physics_validation_invalid_plan():
 
     print("Test 3: Physics Validation - Invalid Plan")
     print(f"  Actions: {pddl_actions}")
-    print(f"  Init state: on(c, a), so 'a' is NOT clear")
+    print("  Init state: on(c, a), so 'a' is NOT clear")
     print(f"  Valid: {is_valid}")
     print(f"  Errors: {errors}")
 
     assert not is_valid, "Expected invalid plan"
     assert len(errors) > 0, "Expected error messages"
-    assert any("not clear" in e.lower() for e in errors), f"Expected 'not clear' error, got: {errors}"
+    assert any("not clear" in e.lower() for e in errors), (
+        f"Expected 'not clear' error, got: {errors}"
+    )
 
     print("  ✅ PASS\n")
 
 def test_metrics_structure():
     """Test that metrics have the correct layered structure"""
     # Test with a real PDDL file
-    test_file = "workspaces/planbench_data/plan-bench/instances/blocksworld/generated/instance-10.pddl"
+    test_file = (
+        "workspaces/planbench_data/plan-bench/instances/blocksworld/generated/instance-10.pddl"
+    )
 
     if not Path(test_file).exists():
-        print(f"Test 4: Metrics Structure - SKIPPED (test file not found)")
+        print("Test 4: Metrics Structure - SKIPPED (test file not found)")
         return
 
     pddl_data = parse_pddl_problem(test_file)
