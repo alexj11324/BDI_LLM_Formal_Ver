@@ -41,7 +41,7 @@ singularity exec --nv \
   $PROJECT/vllm-openai_latest.sif \
   vllm serve Qwen/Qwen3.6-35B-A3B \
   --port ${PORT:-47260} \
-  --tensor-parallel-size 1 \
+  --tensor-parallel-size ${TP_SIZE:-4} \
   --max-model-len 32768 \
   --gpu-memory-utilization 0.90 \
   --reasoning-parser qwen3 \
