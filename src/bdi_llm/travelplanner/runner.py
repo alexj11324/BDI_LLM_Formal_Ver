@@ -242,6 +242,47 @@ def _log_progress(mode: str, split: str, completed: int, total: int, results: li
     print(f"[{split}/{mode}] {completed}/{total} complete, success={success}", flush=True)
 
 
+def _load_resume_state(
+    mode_dir: Path,
+    split: str,
+    mode: str,
+    enriched_samples: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any] | None], int]:
+    """Reload prior checkpoint and align rows back to enriched_samples positions by task_id.
+
+    Returns (results_with_prior_filled, completed_count). Stale or unmatched
+    task_ids are warned about and ignored. Missing/unreadable checkpoint
+    yields an empty result list.
+    """
+    total = len(enriched_samples)
+    results: list[dict[str, Any] | None] = [None] * total
+    ckp = _checkpoint_file(mode_dir, split, mode)
+    if not ckp.exists():
+        return results, 0
+    try:
+        prior = json.loads(ckp.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"[resume] checkpoint unreadable ({exc}); starting fresh", flush=True)
+        return results, 0
+    by_task: dict[str, dict[str, Any]] = {}
+    for row in prior.get('results') or []:
+        tid = row.get('task_id')
+        if tid is not None:
+            by_task[str(tid)] = row
+    matched = 0
+    for i, sample in enumerate(enriched_samples):
+        expected_tid = str(int(sample.get('idx', i + 1)))
+        if expected_tid in by_task:
+            results[i] = by_task[expected_tid]
+            matched += 1
+    stale = len(by_task) - matched
+    if stale:
+        print(f"[resume] {stale} prior task_id(s) not found in current sample set (ignored)", flush=True)
+    if matched:
+        print(f"[resume] loaded {matched}/{total} prior results from {ckp.name}", flush=True)
+    return results, matched
+
+
 def run_split(
     *,
     split: str,
@@ -321,10 +362,13 @@ def _run_split_inner(
         flush=True,
     )
 
-    results: list[dict[str, Any] | None] = [None] * total
-    completed = 0
+    results, completed = _load_resume_state(mode_dir, split, mode, enriched_samples)
+    if completed > 0:
+        _log_progress(mode, split, completed, total, results)
     if workers <= 1:
         for idx, sample in enumerate(enriched_samples):
+            if results[idx] is not None:
+                continue
             try:
                 results[idx] = evaluate_sample(sample, mode=mode, travelplanner_home=travelplanner_home)
             except Exception as exc:
@@ -338,6 +382,7 @@ def _run_split_inner(
             future_map = {
                 executor.submit(evaluate_sample, sample, mode=mode, travelplanner_home=travelplanner_home): idx
                 for idx, sample in enumerate(enriched_samples)
+                if results[idx] is None
             }
             for future in as_completed(future_map):
                 idx = future_map[future]
