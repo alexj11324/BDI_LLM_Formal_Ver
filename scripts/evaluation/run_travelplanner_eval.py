@@ -14,15 +14,15 @@ from src.bdi_llm.travelplanner.runner import TravelPlannerSetupError
 
 def main() -> None:
     parser = build_split_runner_parser(
-        'TravelPlanner compatibility runner',
+        "TravelPlanner compatibility runner",
         include_execution_mode=True,
-        default_execution_mode='bdi-repair',
+        default_execution_mode="bdi-repair",
     )
     args = parser.parse_args()
     run_split_from_args(args)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     try:
         main()
     except TravelPlannerSetupError as exc:

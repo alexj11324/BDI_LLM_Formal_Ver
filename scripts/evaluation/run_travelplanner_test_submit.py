@@ -8,6 +8,7 @@ This script uses the same sole-planning generation path as the validation
 runner's non-oracle inference flow. It does not use a test-only dummy repair
 heuristic.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -21,10 +22,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from dotenv import load_dotenv
-load_dotenv(PROJECT_ROOT / '.env')
+
+load_dotenv(PROJECT_ROOT / ".env")
 
 from scripts.evaluation._travelplanner_threading import iter_bounded_indexed_results
 from src.bdi_llm.planner.dspy_config import configure_dspy
+
 configure_dspy()
 
 from src.bdi_llm.travelplanner.official import load_travelplanner_split
@@ -33,23 +36,23 @@ from src.bdi_llm.travelplanner.runner import generate_submission
 
 def generate_plan(sample: dict, idx: int, mode: str) -> dict:
     enriched = dict(sample)
-    enriched['idx'] = idx
-    enriched['split'] = 'test'
+    enriched["idx"] = idx
+    enriched["split"] = "test"
     workflow = generate_submission(enriched, mode)
     return {
-        'submission': workflow['submission'],
-        'diagnostics': {
-            'prompt_version': workflow.get('prompt_version'),
-            'non_oracle_diagnostics': workflow.get('non_oracle_diagnostics', {}),
+        "submission": workflow["submission"],
+        "diagnostics": {
+            "prompt_version": workflow.get("prompt_version"),
+            "non_oracle_diagnostics": workflow.get("non_oracle_diagnostics", {}),
         },
     }
 
 
 def _failure_payload(sample: dict, idx: int) -> dict:
-    sample_idx = sample.get('idx', idx)
+    sample_idx = sample.get("idx", idx)
     return {
-        'submission': {'idx': sample_idx, 'query': sample.get('query', ''), 'plan': []},
-        'diagnostics': {'error': 'generation_failed'},
+        "submission": {"idx": sample_idx, "query": sample.get("query", ""), "plan": []},
+        "diagnostics": {"error": "generation_failed"},
     }
 
 
@@ -58,24 +61,24 @@ def _build_checkpoint_payload(
     diagnostics_rows: list[dict | None],
 ) -> list[dict]:
     return [
-        {'submission': submission, 'diagnostics': diagnostics}
-        for submission, diagnostics in zip(submissions, diagnostics_rows)
+        {"submission": submission, "diagnostics": diagnostics}
+        for submission, diagnostics in zip(submissions, diagnostics_rows, strict=False)
         if submission is not None
     ]
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Generate TravelPlanner test plans for leaderboard')
-    parser.add_argument('--mode', required=True, choices=['baseline', 'bdi', 'bdi-repair'])
-    parser.add_argument('--output_dir', default='runs/tp_test_submit')
-    parser.add_argument('--workers', type=int, default=100)
+    parser = argparse.ArgumentParser(description="Generate TravelPlanner test plans for leaderboard")
+    parser.add_argument("--mode", required=True, choices=["baseline", "bdi", "bdi-repair"])
+    parser.add_argument("--output_dir", default="runs/tp_test_submit")
+    parser.add_argument("--workers", type=int, default=100)
     args = parser.parse_args()
 
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"[{datetime.now().strftime('%H:%M:%S')}] Loading test split...", flush=True)
-    data = load_travelplanner_split('test')
+    data = load_travelplanner_split("test")
     total = len(data)
     print(
         f"[{datetime.now().strftime('%H:%M:%S')}] Loaded {total} test samples. "
@@ -98,18 +101,21 @@ def main():
         for record in saved:
             if record is None:
                 continue
-            if 'submission' in record:
-                submission = record['submission']
-                diagnostics = record.get('diagnostics', {})
+            if "submission" in record:
+                submission = record["submission"]
+                diagnostics = record.get("diagnostics", {})
             else:
                 submission = record
                 diagnostics = {}
-            idx = int(submission['idx']) - 1
+            idx = int(submission["idx"]) - 1
             submissions[idx] = submission
             diagnostics_rows[idx] = diagnostics
             done_indices.add(idx)
         completed = len(done_indices)
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] Resumed {completed}/{total} from checkpoint", flush=True)
+        print(
+            f"[{datetime.now().strftime('%H:%M:%S')}] Resumed {completed}/{total} from checkpoint",
+            flush=True,
+        )
 
     def process(i: int, sample: dict) -> dict:
         try:
@@ -124,20 +130,23 @@ def main():
         process,
         max_workers=args.workers,
     ):
-        submissions[i] = result['submission']
-        diagnostics_rows[i] = result.get('diagnostics', {})
+        submissions[i] = result["submission"]
+        diagnostics_rows[i] = result.get("diagnostics", {})
         completed += 1
         if completed % 10 == 0:
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] [{args.mode}] {completed}/{total}", flush=True)
+            print(
+                f"[{datetime.now().strftime('%H:%M:%S')}] [{args.mode}] {completed}/{total}",
+                flush=True,
+            )
             checkpoint_path.write_text(
                 json.dumps(_build_checkpoint_payload(submissions, diagnostics_rows), ensure_ascii=False)
             )
 
     for path in (submission_path, leaderboard_submission_path):
-        with path.open('w', encoding='utf-8') as f:
+        with path.open("w", encoding="utf-8") as f:
             for record in submissions:
                 if record is not None:
-                    f.write(json.dumps(record, ensure_ascii=False) + '\n')
+                    f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
     diagnostics_payload = _build_checkpoint_payload(submissions, diagnostics_rows)
     checkpoint_path.write_text(json.dumps(diagnostics_payload, indent=2, ensure_ascii=False))
@@ -148,16 +157,12 @@ def main():
         f"{leaderboard_submission_path} ({total} plans)",
         flush=True,
     )
-    plans_ok = sum(1 for r in submissions if r and len(r.get('plan', [])) > 0)
+    plans_ok = sum(1 for r in submissions if r and len(r.get("plan", [])) > 0)
     print(f"  Plans with content: {plans_ok}/{total}", flush=True)
-    if args.mode == 'bdi-repair':
-        triggered = sum(
-            1
-            for row in diagnostics_rows
-            if (row or {}).get('non_oracle_diagnostics', {}).get('triggered')
-        )
+    if args.mode == "bdi-repair":
+        triggered = sum(1 for row in diagnostics_rows if (row or {}).get("non_oracle_diagnostics", {}).get("triggered"))
         print(f"  Non-oracle repair triggered: {triggered}/{total}", flush=True)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

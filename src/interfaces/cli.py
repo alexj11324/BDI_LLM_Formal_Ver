@@ -7,6 +7,7 @@ beliefs and desires, and verifies the resulting plan structure.
 Usage:
     python src/interfaces/cli.py
 """
+
 from bdi_llm.planner import BDIPlanner
 from bdi_llm.verifier import PlanVerifier
 
@@ -58,6 +59,7 @@ def main():
 
     except ValueError as e:
         print(f"\n❌ Planning Failed: {e}")
+
 
 if __name__ == "__main__":
     main()

@@ -38,7 +38,11 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.bdi_llm.planner import BDIPlanner
-from src.bdi_llm.planner.domain_spec import DomainSpec, extract_actions_from_pddl, extract_domain_name_from_pddl
+from src.bdi_llm.planner.domain_spec import (
+    DomainSpec,
+    extract_actions_from_pddl,
+    extract_domain_name_from_pddl,
+)
 from src.bdi_llm.planning_task import PDDLPlanSerializer, PDDLTaskAdapter
 from src.bdi_llm.verifier import PlanVerifier
 
@@ -59,6 +63,7 @@ def _determine_success(
 # ---------------------------------------------------------------------------
 # Core evaluation function
 # ---------------------------------------------------------------------------
+
 
 def evaluate_single_problem(
     planner: BDIPlanner,
@@ -146,9 +151,7 @@ def evaluate_single_problem(
         if execution_mode == "GENERATE_ONLY":
             result["success"] = result["structural_valid"]
         else:
-            result["success"] = (
-                result["structural_valid"] and result.get("val_valid") is True
-            )
+            result["success"] = result["structural_valid"] and result.get("val_valid") is True
 
     except Exception as exc:
         result["errors"].append(f"[Fatal] {exc}")
@@ -167,6 +170,7 @@ def evaluate_single_problem(
 # ---------------------------------------------------------------------------
 # Batch runner (parallel)
 # ---------------------------------------------------------------------------
+
 
 def _evaluate_worker(
     problem_path: Path,
@@ -245,8 +249,8 @@ def _evaluate_worker(
         if execution_mode == "VERIFY_WITH_VAL":
             try:
                 from src.bdi_llm.symbolic_verifier import (
-                    PDDLSymbolicVerifier,
                     IntegratedVerifier,
+                    PDDLSymbolicVerifier,
                 )
 
                 verifier = PDDLSymbolicVerifier()
@@ -273,20 +277,17 @@ def _evaluate_worker(
                         result["val_repair_attempts"] = repair_attempt
 
                         # Clean errors (strip verbose VAL output)
-                        clean_errors = [
-                            e for e in val_errors
-                            if not e.lstrip().startswith("Full VAL output:")
-                        ]
-                        cumulative_history.append({
-                            "attempt": repair_attempt,
-                            "plan_actions": actions,
-                            "val_errors": clean_errors,
-                        })
+                        clean_errors = [e for e in val_errors if not e.lstrip().startswith("Full VAL output:")]
+                        cumulative_history.append(
+                            {
+                                "attempt": repair_attempt,
+                                "plan_actions": actions,
+                                "val_errors": clean_errors,
+                            }
+                        )
 
                         try:
-                            logger.info(
-                                f"[{task.task_id}] VAL repair {repair_attempt}/{max_val_repairs}"
-                            )
+                            logger.info(f"[{task.task_id}] VAL repair {repair_attempt}/{max_val_repairs}")
 
                             # Build verification feedback
                             verification_context = {
@@ -303,17 +304,12 @@ def _evaluate_worker(
                                 "overall_valid": is_valid and val_valid,
                             }
                             failed_layers = [
-                                n for n, l in verification_context["layers"].items()
-                                if not l.get("valid", False)
+                                n for n, l in verification_context["layers"].items() if not l.get("valid", False)
                             ]
                             verification_context["error_summary"] = (
-                                f"Failed layers: {', '.join(failed_layers)}"
-                                if failed_layers
-                                else "All layers passed"
+                                f"Failed layers: {', '.join(failed_layers)}" if failed_layers else "All layers passed"
                             )
-                            feedback = IntegratedVerifier.build_planner_feedback(
-                                verification_context
-                            )
+                            feedback = IntegratedVerifier.build_planner_feedback(verification_context)
 
                             repair_pred = planner.repair_from_val_errors(
                                 beliefs=task.beliefs,
@@ -328,10 +324,7 @@ def _evaluate_worker(
                             )
                             plan_obj = repair_pred.plan
                             if plan_obj is None:
-                                logger.warning(
-                                    f"[{task.task_id}] VAL repair {repair_attempt}: "
-                                    "returned None plan"
-                                )
+                                logger.warning(f"[{task.task_id}] VAL repair {repair_attempt}: returned None plan")
                                 break
 
                             actions = serializer.from_bdi_plan(plan_obj, task)
@@ -348,9 +341,7 @@ def _evaluate_worker(
 
                             if val_valid:
                                 result["val_repair_success"] = True
-                                logger.info(
-                                    f"[{task.task_id}] VAL repair {repair_attempt}: SUCCESS"
-                                )
+                                logger.info(f"[{task.task_id}] VAL repair {repair_attempt}: SUCCESS")
 
                             # Update structural info
                             G = plan_obj.to_networkx()
@@ -361,8 +352,7 @@ def _evaluate_worker(
 
                         except Exception as repair_err:
                             logger.warning(
-                                f"[{task.task_id}] VAL repair {repair_attempt} "
-                                f"error: {str(repair_err)[:100]}"
+                                f"[{task.task_id}] VAL repair {repair_attempt} error: {str(repair_err)[:100]}"
                             )
                             continue
 
@@ -380,6 +370,7 @@ def _evaluate_worker(
 
     except Exception as exc:
         import traceback
+
         tb = traceback.format_exc()
         result["errors"].append(f"[Fatal] {exc}")
         raw_pred["raw_plan_text"] = str(exc)
@@ -408,9 +399,7 @@ def run_evaluation(
 
     # Bug 2 fix: build param_order_map from domain schema for deterministic serialization
     actions_schema = extract_actions_from_pddl(domain_text)
-    param_order_map = {
-        a["name"]: [p[0] for p in a["parameters"]] for a in actions_schema
-    }
+    param_order_map = {a["name"]: [p[0] for p in a["parameters"]] for a in actions_schema}
 
     output_dir.mkdir(parents=True, exist_ok=True)
     predictions_path = output_dir / "raw_predictions.jsonl"
@@ -489,7 +478,7 @@ def run_evaluation(
     print(f"Results: {success}/{total} ({summary['success_rate']})")
     print(f"  One-shot: {one_shot} | Repaired: {repaired} | Failed: {failed}")
     print(f"Output: {output_dir}")
-    print(f"  summary.json | results.json | raw_predictions.jsonl")
+    print("  summary.json | results.json | raw_predictions.jsonl")
     print(f"{'=' * 60}")
 
     return results
@@ -499,10 +488,9 @@ def run_evaluation(
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def main():
-    parser = argparse.ArgumentParser(
-        description="Generic PDDL evaluation runner for BDI planner"
-    )
+    parser = argparse.ArgumentParser(description="Generic PDDL evaluation runner for BDI planner")
     parser.add_argument(
         "--domain_pddl",
         type=Path,
@@ -567,10 +555,7 @@ def main():
     elif args.problem_dir:
         if not args.problem_dir.is_dir():
             parser.error(f"Problem directory not found: {args.problem_dir}")
-        problems = sorted(
-            p for p in args.problem_dir.glob("*.pddl")
-            if "domain" not in p.stem.lower()
-        )
+        problems = sorted(p for p in args.problem_dir.glob("*.pddl") if "domain" not in p.stem.lower())
         if not problems:
             parser.error(f"No problem files found in: {args.problem_dir}")
     else:

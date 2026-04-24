@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-
 DOMAIN_ORDER = [
     "blocksworld",
     "logistics",
@@ -82,9 +81,7 @@ def aggregate_planbench_results(payloads: dict[str, dict[str, Any]]) -> dict[str
             },
             "bdi_repair": {
                 "success_count": total_stage_counts["bdi_repair"],
-                "success_rate": (
-                    total_stage_counts["bdi_repair"] / total_n if total_n > 0 else 0.0
-                ),
+                "success_rate": (total_stage_counts["bdi_repair"] / total_n if total_n > 0 else 0.0),
             },
         },
     }
@@ -103,20 +100,16 @@ def render_latex_tables(aggregate: dict[str, Any]) -> dict[str, str]:
 
     for record in aggregate["domains"]:
         main_lines.append(
-            (
-                f"{record['label']} & {record['n']} & "
-                f"{_percentage(record['baseline']['success_rate'])} & "
-                f"{_percentage(record['bdi']['success_rate'])} & "
-                f"\\textbf{{{_percentage(record['bdi_repair']['success_rate'])}}} \\\\"
-            )
+            f"{record['label']} & {record['n']} & "
+            f"{_percentage(record['baseline']['success_rate'])} & "
+            f"{_percentage(record['bdi']['success_rate'])} & "
+            f"\\textbf{{{_percentage(record['bdi_repair']['success_rate'])}}} \\\\"
         )
+        _ac_base = _appendix_cell(record["baseline"]["success_count"], record["baseline"]["success_rate"])
+        _ac_bdi = _appendix_cell(record["bdi"]["success_count"], record["bdi"]["success_rate"])
+        _ac_rep = _appendix_cell(record["bdi_repair"]["success_count"], record["bdi_repair"]["success_rate"])
         appendix_lines.append(
-            (
-                f"{record['label']} & {record['n']} & "
-                f"{_appendix_cell(record['baseline']['success_count'], record['baseline']['success_rate'])} & "
-                f"{_appendix_cell(record['bdi']['success_count'], record['bdi']['success_rate'])} & "
-                f"\\textbf{{{_appendix_cell(record['bdi_repair']['success_count'], record['bdi_repair']['success_rate'])}}} \\\\"
-            )
+            f"{record['label']} & {record['n']} & {_ac_base} & {_ac_bdi} & \\textbf{{{_ac_rep}}} \\\\"
         )
 
     total = aggregate["total"]
@@ -131,14 +124,17 @@ def render_latex_tables(aggregate: dict[str, Any]) -> dict[str, str]:
             ),
         ]
     )
+    _t_base = _appendix_cell(total["baseline"]["success_count"], total["baseline"]["success_rate"])
+    _t_bdi = _appendix_cell(total["bdi"]["success_count"], total["bdi"]["success_rate"])
+    _t_rep = _appendix_cell(total["bdi_repair"]["success_count"], total["bdi_repair"]["success_rate"])
     appendix_lines.extend(
         [
             "\\midrule",
             (
                 f"\\textbf{{Total}} & \\textbf{{{total['n']}}} & "
-                f"\\textbf{{{_appendix_cell(total['baseline']['success_count'], total['baseline']['success_rate'])}}} & "
-                f"\\textbf{{{_appendix_cell(total['bdi']['success_count'], total['bdi']['success_rate'])}}} & "
-                f"\\textbf{{{_appendix_cell(total['bdi_repair']['success_count'], total['bdi_repair']['success_rate'])}}} \\\\"
+                f"\\textbf{{{_t_base}}} & "
+                f"\\textbf{{{_t_bdi}}} & "
+                f"\\textbf{{{_t_rep}}} \\\\"
             ),
         ]
     )

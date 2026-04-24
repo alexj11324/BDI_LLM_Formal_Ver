@@ -8,6 +8,7 @@ class ExecutionResult:
     """
     Represents the result of executing a plan step-by-step.
     """
+
     success: bool
     executed_actions: list[str]
     failed_action: str | None
@@ -27,6 +28,7 @@ class PlanExecutor:
     - Action execution failure (precondition violated) → triggers replanning
     - Goal not yet satisfied (normal for partial plans) → not a failure
     """
+
     def __init__(self, domain_file: str, problem_file: str):
         self.verifier = PDDLSymbolicVerifier()
         self.domain_file = domain_file
@@ -53,7 +55,7 @@ class PlanExecutor:
         total = len(plan_actions)
 
         for i, action in enumerate(plan_actions):
-            is_last_step = (i == total - 1)
+            is_last_step = i == total - 1
             test_plan = executed + [action]
 
             # For intermediate steps: only check preconditions (ignore goal)

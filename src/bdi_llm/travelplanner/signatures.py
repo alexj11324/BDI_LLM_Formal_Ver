@@ -3,11 +3,11 @@ from __future__ import annotations
 import dspy
 
 from .schemas import (
-    TravelPlanCritique,
-    TravelPlanPatch,
     TravelGroundingShortlist,
+    TravelPlanCritique,
     TravelPlannerItinerary,
     TravelPlanningChecklist,
+    TravelPlanPatch,
 )
 
 
@@ -16,10 +16,8 @@ class GenerateTravelPlanBaseline(dspy.Signature):
 
     beliefs: str = dspy.InputField()
     desire: str = dspy.InputField()
-    domain_context: str = dspy.InputField(default='')
-    itinerary: TravelPlannerItinerary = dspy.OutputField(
-        desc='Structured day-by-day travel itinerary.'
-    )
+    domain_context: str = dspy.InputField(default="")
+    itinerary: TravelPlannerItinerary = dspy.OutputField(desc="Structured day-by-day travel itinerary.")
 
 
 class GenerateTravelPlanBDILegacy(dspy.Signature):
@@ -32,10 +30,8 @@ class GenerateTravelPlanBDILegacy(dspy.Signature):
 
     beliefs: str = dspy.InputField()
     desire: str = dspy.InputField()
-    domain_context: str = dspy.InputField(default='')
-    itinerary: TravelPlannerItinerary = dspy.OutputField(
-        desc='Structured day-by-day travel itinerary.'
-    )
+    domain_context: str = dspy.InputField(default="")
+    itinerary: TravelPlannerItinerary = dspy.OutputField(desc="Structured day-by-day travel itinerary.")
 
 
 class GenerateTravelPlanBDI(dspy.Signature):
@@ -59,7 +55,8 @@ class GenerateTravelPlanBDI(dspy.Signature):
     2. If `current_city` is written as `from A to B`, `transportation` must be concrete and non-`-`.
     3. If the day is not a travel-transition day, do not force an inter-city transportation string.
     4. Avoid placeholder phrases like "local transit within city" unless they are genuinely needed.
-    5. Preserve day-by-day city consistency: meals, attractions, and accommodation should match the city actually reached that day.
+    5. Preserve day-by-day city consistency: meals, attractions, and accommodation should match
+       the city actually reached that day.
     6. Stay budget-conscious and route-conscious; avoid obviously wasteful or contradictory moves.
     7. Return a structured itinerary only. No prose, no analysis, no markdown.
 
@@ -74,10 +71,8 @@ class GenerateTravelPlanBDI(dspy.Signature):
 
     beliefs: str = dspy.InputField()
     desire: str = dspy.InputField()
-    domain_context: str = dspy.InputField(default='')
-    itinerary: TravelPlannerItinerary = dspy.OutputField(
-        desc='Structured day-by-day travel itinerary.'
-    )
+    domain_context: str = dspy.InputField(default="")
+    itinerary: TravelPlannerItinerary = dspy.OutputField(desc="Structured day-by-day travel itinerary.")
 
 
 class GenerateTravelPlanBDIv3(dspy.Signature):
@@ -115,13 +110,11 @@ class GenerateTravelPlanBDIv3(dspy.Signature):
 
     beliefs: str = dspy.InputField()
     desire: str = dspy.InputField()
-    domain_context: str = dspy.InputField(default='')
+    domain_context: str = dspy.InputField(default="")
     checklist: TravelPlanningChecklist = dspy.OutputField(
-        desc='Internal structured checklist used to build the itinerary.'
+        desc="Internal structured checklist used to build the itinerary."
     )
-    itinerary: TravelPlannerItinerary = dspy.OutputField(
-        desc='Structured day-by-day travel itinerary.'
-    )
+    itinerary: TravelPlannerItinerary = dspy.OutputField(desc="Structured day-by-day travel itinerary.")
 
 
 class GenerateTravelPlanChecklistV4(dspy.Signature):
@@ -141,10 +134,8 @@ class GenerateTravelPlanChecklistV4(dspy.Signature):
 
     beliefs: str = dspy.InputField()
     desire: str = dspy.InputField()
-    domain_context: str = dspy.InputField(default='')
-    checklist: TravelPlanningChecklist = dspy.OutputField(
-        desc='Structured route and constraint checklist.'
-    )
+    domain_context: str = dspy.InputField(default="")
+    checklist: TravelPlanningChecklist = dspy.OutputField(desc="Structured route and constraint checklist.")
 
 
 class RenderTravelPlanFromChecklistV4(dspy.Signature):
@@ -164,14 +155,12 @@ class RenderTravelPlanFromChecklistV4(dspy.Signature):
 
     beliefs: str = dspy.InputField()
     desire: str = dspy.InputField()
-    domain_context: str = dspy.InputField(default='')
+    domain_context: str = dspy.InputField(default="")
     checklist_json: str = dspy.InputField()
     shortlist: TravelGroundingShortlist = dspy.OutputField(
-        desc='Grounded candidate shortlist used to render the itinerary.'
+        desc="Grounded candidate shortlist used to render the itinerary."
     )
-    itinerary: TravelPlannerItinerary = dspy.OutputField(
-        desc='Structured day-by-day travel itinerary.'
-    )
+    itinerary: TravelPlannerItinerary = dspy.OutputField(desc="Structured day-by-day travel itinerary.")
 
 
 class CritiqueTravelPlan(dspy.Signature):
@@ -182,11 +171,9 @@ class CritiqueTravelPlan(dspy.Signature):
 
     beliefs: str = dspy.InputField()
     desire: str = dspy.InputField()
-    domain_context: str = dspy.InputField(default='')
+    domain_context: str = dspy.InputField(default="")
     itinerary_json: str = dspy.InputField()
-    critique: TravelPlanCritique = dspy.OutputField(
-        desc='High-confidence critique of the itinerary.'
-    )
+    critique: TravelPlanCritique = dspy.OutputField(desc="High-confidence critique of the itinerary.")
 
 
 class RepairTravelPlan(dspy.Signature):
@@ -198,12 +185,10 @@ class RepairTravelPlan(dspy.Signature):
 
     beliefs: str = dspy.InputField()
     desire: str = dspy.InputField()
-    domain_context: str = dspy.InputField(default='')
+    domain_context: str = dspy.InputField(default="")
     previous_itinerary_json: str = dspy.InputField()
-    evaluator_feedback: str = dspy.InputField(default='')
-    itinerary: TravelPlannerItinerary = dspy.OutputField(
-        desc='Corrected structured day-by-day travel itinerary.'
-    )
+    evaluator_feedback: str = dspy.InputField(default="")
+    itinerary: TravelPlannerItinerary = dspy.OutputField(desc="Corrected structured day-by-day travel itinerary.")
 
 
 class RepairTravelPlanPatch(dspy.Signature):
@@ -228,10 +213,8 @@ class RepairTravelPlanPatch(dspy.Signature):
 
     beliefs: str = dspy.InputField()
     desire: str = dspy.InputField()
-    domain_context: str = dspy.InputField(default='')
+    domain_context: str = dspy.InputField(default="")
     previous_itinerary_json: str = dspy.InputField()
-    critique_json: str = dspy.InputField(default='')
-    oracle_feedback: str = dspy.InputField(default='')
-    patch: TravelPlanPatch = dspy.OutputField(
-        desc='A minimal day-level patch for the itinerary.'
-    )
+    critique_json: str = dspy.InputField(default="")
+    oracle_feedback: str = dspy.InputField(default="")
+    patch: TravelPlanPatch = dspy.OutputField(desc="A minimal day-level patch for the itinerary.")

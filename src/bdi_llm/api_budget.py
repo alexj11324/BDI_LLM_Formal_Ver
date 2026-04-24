@@ -35,6 +35,7 @@ def get_budget_config():
     """Get BudgetConfig from environment variables via Config class."""
     try:
         from .config import Config
+
         return BudgetConfig(
             max_requests_per_minute=Config.API_BUDGET_MAX_RPM,
             max_requests_per_hour=Config.API_BUDGET_MAX_RPH,
@@ -50,6 +51,7 @@ def get_budget_config():
 @dataclass
 class APICallRecord:
     """Record of a single API call"""
+
     timestamp: float
     endpoint: str
     prompt_hash: str
@@ -62,6 +64,7 @@ class APICallRecord:
 @dataclass
 class BudgetConfig:
     """Configuration for API budget management"""
+
     # Rate limiting
     max_requests_per_minute: int = 60
     max_requests_per_hour: int = 1000
@@ -185,8 +188,7 @@ class APIBudgetManager:
 
     def apply_backoff(self, status_code: int, endpoint: str = "default") -> None:
         """Apply backoff based on error status code"""
-        if not ((status_code == 429 and self.config.retry_on_429) or
-                (status_code == 504 and self.config.retry_on_504)):
+        if not ((status_code == 429 and self.config.retry_on_429) or (status_code == 504 and self.config.retry_on_504)):
             return
 
         with self._lock:
@@ -196,7 +198,7 @@ class APIBudgetManager:
                 _, current_backoff = self._backoff_state[endpoint]
                 new_backoff = min(
                     int(current_backoff * self.config.backoff_multiplier),
-                    self.config.max_backoff_ms
+                    self.config.max_backoff_ms,
                 )
             else:
                 new_backoff = self.config.initial_backoff_ms
@@ -204,10 +206,7 @@ class APIBudgetManager:
             next_retry = now + (new_backoff / 1000.0)
             self._backoff_state[endpoint] = (next_retry, new_backoff)
 
-            logger.warning(
-                f"Rate limit hit (HTTP {status_code}) on {endpoint}. "
-                f"Backing off for {new_backoff}ms"
-            )
+            logger.warning(f"Rate limit hit (HTTP {status_code}) on {endpoint}. Backing off for {new_backoff}ms")
 
     def get_cached_response(self, prompt_hash: str) -> Any | None:
         """Get cached response if available"""
@@ -249,8 +248,7 @@ class APIBudgetManager:
             if instance_calls >= self.config.max_calls_per_instance:
                 return (
                     False,
-                    "Instance budget exceeded "
-                    f"({instance_calls}/{self.config.max_calls_per_instance})",
+                    f"Instance budget exceeded ({instance_calls}/{self.config.max_calls_per_instance})",
                 )
 
             return True, "OK"
@@ -283,11 +281,10 @@ class APIBudgetManager:
 
             # Check if same pattern repeated
             if len(self._error_patterns[instance_id]) >= self.config.early_exit_after_failures:
-                recent = self._error_patterns[instance_id][-self.config.early_exit_after_failures:]
+                recent = self._error_patterns[instance_id][-self.config.early_exit_after_failures :]
                 if len(set(recent)) == 1:  # All same pattern
                     logger.warning(
-                        f"Early exit triggered for {instance_id}: "
-                        f"same error pattern repeated {len(recent)} times"
+                        f"Early exit triggered for {instance_id}: same error pattern repeated {len(recent)} times"
                     )
                     return True
 
@@ -344,6 +341,7 @@ def rate_limited_call(max_retries: int = 3):
         def make_api_call(...):
             ...
     """
+
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -390,5 +388,5 @@ def rate_limited_call(max_retries: int = 3):
             raise last_error or Exception("Max retries exceeded")
 
         return wrapper
-    return decorator
 
+    return decorator

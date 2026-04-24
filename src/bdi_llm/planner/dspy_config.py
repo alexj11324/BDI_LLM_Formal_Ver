@@ -8,26 +8,26 @@ from .lm_adapter import ResponsesAPILM
 # Module-level flag to ensure DSPy is configured only once
 _dspy_configured: bool = False
 _REASONING_MODEL_TAGS = (
-    'gpt-5',
-    'gpt-oss',
-    'o1',
-    'o3',
-    'glm5',
-    'glm-5',
-    'glm47flash',
-    'glm-4.7',
-    'glm-4.7-flash',
-    'z-ai/glm',
-    'zai-org/glm',
+    "gpt-5",
+    "gpt-oss",
+    "o1",
+    "o3",
+    "glm5",
+    "glm-5",
+    "glm47flash",
+    "glm-4.7",
+    "glm-4.7-flash",
+    "z-ai/glm",
+    "zai-org/glm",
 )
 _GLM_MODEL_TAGS = (
-    'glm5',
-    'glm-5',
-    'glm47flash',
-    'glm-4.7',
-    'glm-4.7-flash',
-    'z-ai/glm',
-    'zai-org/glm',
+    "glm5",
+    "glm-5",
+    "glm47flash",
+    "glm-4.7",
+    "glm-4.7-flash",
+    "z-ai/glm",
+    "zai-org/glm",
 )
 
 
@@ -58,25 +58,24 @@ def configure_dspy():
     is_reasoning_model = _model_has_any_tag(Config.MODEL_NAME, _REASONING_MODEL_TAGS)
 
     # Check if model is a Gemini model
-    is_gemini_model = 'gemini' in model_name_lower
+    is_gemini_model = "gemini" in model_name_lower
 
     # Check if model uses Vertex AI (vertex_ai/ prefix)
-    is_vertex_ai = model_name_lower.startswith('vertex_ai/')
+    is_vertex_ai = model_name_lower.startswith("vertex_ai/")
 
     # Check if model uses NVIDIA API (nvidia/ prefix or integrate.api.nvidia.com)
-    is_nvidia_api = (model_name_lower.startswith('nvidia/') or
-                     (Config.OPENAI_API_BASE and 'nvidia' in Config.OPENAI_API_BASE.lower()))
+    is_nvidia_api = model_name_lower.startswith("nvidia/") or (
+        Config.OPENAI_API_BASE and "nvidia" in Config.OPENAI_API_BASE.lower()
+    )
     is_glm_model = _model_has_any_tag(Config.MODEL_NAME, _GLM_MODEL_TAGS)
     glm_chat_template_kwargs = (
-        {'enable_thinking': True, 'clear_thinking': False}
-        if is_glm_model and Config.ENABLE_THINKING
-        else None
+        {"enable_thinking": True, "clear_thinking": False} if is_glm_model and Config.ENABLE_THINKING else None
     )
 
     # Prepare LM configuration based on model type
     lm_config = {
-        'model': Config.MODEL_NAME,
-        'seed': Config.SEED,
+        "model": Config.MODEL_NAME,
+        "seed": Config.SEED,
     }
 
     # Add API key based on model type
@@ -85,21 +84,21 @@ def configure_dspy():
         # litellm reads GOOGLE_APPLICATION_CREDENTIALS, VERTEXAI_PROJECT,
         # and VERTEXAI_LOCATION from environment variables.
         pass
-    elif is_gemini_model and credentials['google']:
-        lm_config['api_key'] = credentials['google']
-    elif credentials['openai']:
-        lm_config['api_key'] = credentials['openai']
+    elif is_gemini_model and credentials["google"]:
+        lm_config["api_key"] = credentials["google"]
+    elif credentials["openai"]:
+        lm_config["api_key"] = credentials["openai"]
         if Config.OPENAI_API_BASE:
-            lm_config['api_base'] = Config.OPENAI_API_BASE
+            lm_config["api_base"] = Config.OPENAI_API_BASE
 
     # Add model-specific parameters
     if is_reasoning_model:
         # NVIDIA API uses Chat Completions with streaming
         if is_nvidia_api:
             lm = ResponsesAPILM(
-                model=Config.MODEL_NAME.replace('nvidia/', ''),
-                api_key=credentials['openai'],
-                api_base=Config.OPENAI_API_BASE or 'https://integrate.api.nvidia.com/v1',
+                model=Config.MODEL_NAME.replace("nvidia/", ""),
+                api_key=credentials["openai"],
+                api_base=Config.OPENAI_API_BASE or "https://integrate.api.nvidia.com/v1",
                 reasoning_effort=Config.REASONING_EFFORT,
                 max_tokens=Config.MAX_TOKENS,
                 timeout=Config.TIMEOUT,
@@ -113,10 +112,10 @@ def configure_dspy():
             _dspy_configured = True
             return
         # infiniteai Responses API path
-        elif credentials['openai'] and Config.OPENAI_API_BASE:
+        elif credentials["openai"] and Config.OPENAI_API_BASE:
             lm = ResponsesAPILM(
-                model=Config.MODEL_NAME.replace('openai/', ''),
-                api_key=credentials['openai'],
+                model=Config.MODEL_NAME.replace("openai/", ""),
+                api_key=credentials["openai"],
                 api_base=Config.OPENAI_API_BASE,
                 reasoning_effort=Config.REASONING_EFFORT,
                 max_tokens=Config.MAX_TOKENS,
@@ -131,23 +130,23 @@ def configure_dspy():
             _dspy_configured = True
             return
         else:
-            lm_config['temperature'] = 1.0
-            lm_config['max_tokens'] = 16000
-            lm_config['reasoning_effort'] = 'low'
+            lm_config["temperature"] = 1.0
+            lm_config["max_tokens"] = 16000
+            lm_config["reasoning_effort"] = "low"
     else:
         # Standard models use configured temperature for deterministic output
-        lm_config['temperature'] = Config.TEMPERATURE
-        lm_config['max_tokens'] = Config.MAX_TOKENS
+        lm_config["temperature"] = Config.TEMPERATURE
+        lm_config["max_tokens"] = Config.MAX_TOKENS
 
     # Add max_tokens for gemini models
-    if 'gemini' in Config.MODEL_NAME.lower() or 'vertex_ai' in Config.MODEL_NAME.lower():
-        lm_config['max_tokens'] = 16000
+    if "gemini" in Config.MODEL_NAME.lower() or "vertex_ai" in Config.MODEL_NAME.lower():
+        lm_config["max_tokens"] = 16000
 
     # Add timeout and retry settings for rate limiting and reliability
     # Configurable timeout (default 600s for reasoning models).
-    lm_config['timeout'] = Config.TIMEOUT
-    lm_config['num_retries'] = 10
-    lm_config['extra_headers'] = {'User-Agent': 'python-httpx/0.28.1'}
+    lm_config["timeout"] = Config.TIMEOUT
+    lm_config["num_retries"] = 10
+    lm_config["extra_headers"] = {"User-Agent": "python-httpx/0.28.1"}
 
     lm = dspy.LM(**lm_config)
     dspy.configure(lm=lm)

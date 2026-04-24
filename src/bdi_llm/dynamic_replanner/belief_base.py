@@ -17,6 +17,7 @@ class BeliefBase:
     Domain-agnostic ground-truth state tracker.
     State is a set of string propositions, e.g. {"(on a b)", "(clear a)", "(handempty)"}.
     """
+
     propositions: set[str] = field(default_factory=set)
     objects: list[str] = field(default_factory=list)
     domain_name: str = ""
@@ -66,10 +67,7 @@ class BeliefBase:
 
     def query(self, predicate_name: str) -> list[str]:
         """Return all propositions matching a predicate name."""
-        return [
-            p for p in self.propositions
-            if p.startswith(f"({predicate_name} ") or p == f"({predicate_name})"
-        ]
+        return [p for p in self.propositions if p.startswith(f"({predicate_name} ") or p == f"({predicate_name})"]
 
     # ------------------------------------------------------------------ #
     # State updates

@@ -9,47 +9,52 @@ from pydantic import BaseModel, Field, field_validator
 class TravelDayPlan(BaseModel):
     day: int = Field(..., ge=1)
     current_city: str = Field(...)
-    transportation: str = Field(default='-')
-    breakfast: str = Field(default='-')
-    attraction: str = Field(default='-')
-    lunch: str = Field(default='-')
-    dinner: str = Field(default='-')
-    accommodation: str = Field(default='-')
+    transportation: str = Field(default="-")
+    breakfast: str = Field(default="-")
+    attraction: str = Field(default="-")
+    lunch: str = Field(default="-")
+    dinner: str = Field(default="-")
+    accommodation: str = Field(default="-")
 
     @field_validator(
-        'current_city', 'transportation', 'breakfast', 'attraction',
-        'lunch', 'dinner', 'accommodation',
-        mode='before'
+        "current_city",
+        "transportation",
+        "breakfast",
+        "attraction",
+        "lunch",
+        "dinner",
+        "accommodation",
+        mode="before",
     )
     @classmethod
     def _coerce_text(cls, value: Any) -> str:
         if value is None:
-            return '-'
+            return "-"
         text = str(value).strip()
-        return text or '-'
+        return text or "-"
 
     def to_submission_dict(self) -> dict[str, Any]:
         return {
-            'day': self.day,
-            'days': self.day,
-            'current_city': self.current_city,
-            'transportation': self.transportation,
-            'breakfast': self.breakfast,
-            'attraction': self.attraction,
-            'lunch': self.lunch,
-            'dinner': self.dinner,
-            'accommodation': self.accommodation,
+            "day": self.day,
+            "days": self.day,
+            "current_city": self.current_city,
+            "transportation": self.transportation,
+            "breakfast": self.breakfast,
+            "attraction": self.attraction,
+            "lunch": self.lunch,
+            "dinner": self.dinner,
+            "accommodation": self.accommodation,
         }
 
 
 class TravelPlannerItinerary(BaseModel):
-    summary: str = Field(default='')
+    summary: str = Field(default="")
     plan: list[TravelDayPlan] = Field(default_factory=list)
 
-    @field_validator('summary', mode='before')
+    @field_validator("summary", mode="before")
     @classmethod
     def _coerce_summary(cls, value: Any) -> str:
-        return '' if value is None else str(value).strip()
+        return "" if value is None else str(value).strip()
 
 
 class TravelPlanIssue(BaseModel):
@@ -58,10 +63,10 @@ class TravelPlanIssue(BaseModel):
     day: int | None = Field(default=None, ge=1)
     field: str | None = Field(default=None)
     blocking: bool = Field(default=True)
-    confidence: str = Field(default='high')
+    confidence: str = Field(default="high")
     current_value: str | None = Field(default=None)
 
-    @field_validator('code', 'message', 'field', 'current_value', 'confidence', mode='before')
+    @field_validator("code", "message", "field", "current_value", "confidence", mode="before")
     @classmethod
     def _coerce_optional_text(cls, value: Any) -> str | None:
         if value is None:
@@ -71,13 +76,13 @@ class TravelPlanIssue(BaseModel):
 
 
 class TravelPlanCritique(BaseModel):
-    summary: str = Field(default='')
+    summary: str = Field(default="")
     issues: list[TravelPlanIssue] = Field(default_factory=list)
 
-    @field_validator('summary', mode='before')
+    @field_validator("summary", mode="before")
     @classmethod
     def _coerce_summary(cls, value: Any) -> str:
-        return '' if value is None else str(value).strip()
+        return "" if value is None else str(value).strip()
 
     @property
     def blocking_issues(self) -> list[TravelPlanIssue]:
@@ -106,9 +111,14 @@ class TravelDayPatch(BaseModel):
     accommodation: str | None = Field(default=None)
 
     @field_validator(
-        'current_city', 'transportation', 'breakfast', 'attraction',
-        'lunch', 'dinner', 'accommodation',
-        mode='before'
+        "current_city",
+        "transportation",
+        "breakfast",
+        "attraction",
+        "lunch",
+        "dinner",
+        "accommodation",
+        mode="before",
     )
     @classmethod
     def _coerce_patch_text(cls, value: Any) -> str | None:
@@ -119,13 +129,13 @@ class TravelDayPatch(BaseModel):
 
 
 class TravelPlanPatch(BaseModel):
-    summary: str = Field(default='')
+    summary: str = Field(default="")
     patches: list[TravelDayPatch] = Field(default_factory=list)
 
-    @field_validator('summary', mode='before')
+    @field_validator("summary", mode="before")
     @classmethod
     def _coerce_summary(cls, value: Any) -> str:
-        return '' if value is None else str(value).strip()
+        return "" if value is None else str(value).strip()
 
 
 class TravelChecklistDay(BaseModel):
@@ -133,34 +143,39 @@ class TravelChecklistDay(BaseModel):
     day_type: str = Field(..., description="travel or stay")
     start_city: str = Field(...)
     end_city: str = Field(...)
-    transportation_family: str = Field(default='none')
-    hotel_segment: str = Field(default='')
-    restaurant_reuse_risk: str = Field(default='low')
-    missing_field_risk: str = Field(default='low')
+    transportation_family: str = Field(default="none")
+    hotel_segment: str = Field(default="")
+    restaurant_reuse_risk: str = Field(default="low")
+    missing_field_risk: str = Field(default="low")
 
     @field_validator(
-        'day_type', 'start_city', 'end_city', 'transportation_family',
-        'hotel_segment', 'restaurant_reuse_risk', 'missing_field_risk',
-        mode='before'
+        "day_type",
+        "start_city",
+        "end_city",
+        "transportation_family",
+        "hotel_segment",
+        "restaurant_reuse_risk",
+        "missing_field_risk",
+        mode="before",
     )
     @classmethod
     def _coerce_check_text(cls, value: Any) -> str:
         if value is None:
-            return ''
+            return ""
         return str(value).strip()
 
 
 class TravelPlanningChecklist(BaseModel):
-    summary: str = Field(default='')
+    summary: str = Field(default="")
     days: list[TravelChecklistDay] = Field(default_factory=list)
     final_checks: list[str] = Field(default_factory=list)
 
-    @field_validator('summary', mode='before')
+    @field_validator("summary", mode="before")
     @classmethod
     def _coerce_summary(cls, value: Any) -> str:
-        return '' if value is None else str(value).strip()
+        return "" if value is None else str(value).strip()
 
-    @field_validator('final_checks', mode='before')
+    @field_validator("final_checks", mode="before")
     @classmethod
     def _coerce_final_checks(cls, value: Any) -> list[str]:
         if value is None:
@@ -176,11 +191,11 @@ class TravelGroundingCandidate(BaseModel):
     field: str = Field(...)
     name: str = Field(...)
     city: str | None = Field(default=None)
-    category: str = Field(default='')
+    category: str = Field(default="")
     estimated_cost: float | None = Field(default=None)
-    rationale: str = Field(default='')
+    rationale: str = Field(default="")
 
-    @field_validator('field', 'name', 'city', 'category', 'rationale', mode='before')
+    @field_validator("field", "name", "city", "category", "rationale", mode="before")
     @classmethod
     def _coerce_candidate_text(cls, value: Any) -> str | None:
         if value is None:
@@ -190,10 +205,10 @@ class TravelGroundingCandidate(BaseModel):
 
 
 class TravelGroundingShortlist(BaseModel):
-    summary: str = Field(default='')
+    summary: str = Field(default="")
     candidates: list[TravelGroundingCandidate] = Field(default_factory=list)
 
-    @field_validator('summary', mode='before')
+    @field_validator("summary", mode="before")
     @classmethod
     def _coerce_summary(cls, value: Any) -> str:
-        return '' if value is None else str(value).strip()
+        return "" if value is None else str(value).strip()

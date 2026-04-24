@@ -25,10 +25,10 @@ from typing import Any
 
 from .schemas import BDIPlan
 
-
 # ---------------------------------------------------------------------------
 # Core abstractions
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class PlanningTask:
@@ -46,21 +46,20 @@ class TaskAdapter(ABC):
     """Transforms benchmark-native data into a ``PlanningTask``."""
 
     @abstractmethod
-    def to_planning_task(self, raw_input: Any) -> PlanningTask:
-        ...
+    def to_planning_task(self, raw_input: Any) -> PlanningTask: ...
 
 
 class PlanSerializer(ABC):
     """Converts planner output (``BDIPlan``) into benchmark-native format."""
 
     @abstractmethod
-    def from_bdi_plan(self, plan: BDIPlan, task: PlanningTask) -> Any:
-        ...
+    def from_bdi_plan(self, plan: BDIPlan, task: PlanningTask) -> Any: ...
 
 
 # ---------------------------------------------------------------------------
 # PDDL implementations
 # ---------------------------------------------------------------------------
+
 
 def _parse_pddl_objects(text: str) -> str:
     """Extract and format :objects block into human-readable list.
@@ -261,10 +260,7 @@ class PDDLTaskAdapter(TaskAdapter):
             init_preds = _extract_pddl_predicates(problem_text, "init")
             init_preds = decode_planbench_literals(self.domain_name, init_preds)
             init_text = _natural_predicate_list(init_preds)
-            return (
-                f"{self.domain_intro.strip()}\n\n"
-                f"As initial conditions I have that, {init_text}."
-            )
+            return f"{self.domain_intro.strip()}\n\nAs initial conditions I have that, {init_text}."
 
         parts: list[str] = []
 
@@ -406,9 +402,7 @@ class PDDLPlanSerializer(PlanSerializer):
             if node is None or node.action_type == "Virtual":
                 continue
 
-            schema = self._schema_by_action.get(
-                self._normalise_symbol(node.action_type)
-            )
+            schema = self._schema_by_action.get(self._normalise_symbol(node.action_type))
             if schema:
                 action_name, schema_order = schema
                 resolved_values = self._ordered_param_values(node.params, schema_order)
@@ -423,11 +417,7 @@ class PDDLPlanSerializer(PlanSerializer):
                 actions.append(str(action_name).strip())
                 continue
 
-            action_str = (
-                f"({action_name} {param_values})".strip()
-                if param_values
-                else f"({action_name})"
-            )
+            action_str = f"({action_name} {param_values})".strip() if param_values else f"({action_name})"
             actions.append(action_str)
 
         return actions

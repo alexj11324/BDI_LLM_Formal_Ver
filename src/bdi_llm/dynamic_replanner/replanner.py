@@ -29,12 +29,7 @@ class DynamicReplanner:
             client_kwargs["base_url"] = Config.OPENAI_API_BASE
         self.client = OpenAI(**client_kwargs)
 
-    def generate_recovery_plan(
-        self,
-        beliefs: str,
-        desire: str,
-        execution_result: ExecutionResult
-    ) -> BDIPlan | None:
+    def generate_recovery_plan(self, beliefs: str, desire: str, execution_result: ExecutionResult) -> BDIPlan | None:
         """
         Constructs a cached prompt containing the original context + the new failure
         feedback, and requests a recovery plan.
@@ -55,9 +50,7 @@ DAG plan of the REMAINING actions needed to achieve the goal."""
         # 3. Execution Feedback (Dynamic part, not cached)
         executed_str = "None"
         if execution_result.executed_actions:
-            executed_str = "\n".join(
-                f"{i + 1}. {a}" for i, a in enumerate(execution_result.executed_actions)
-            )
+            executed_str = "\n".join(f"{i + 1}. {a}" for i, a in enumerate(execution_result.executed_actions))
 
         failure_reasons_str = "None provided"
         if execution_result.failure_reason:
@@ -98,7 +91,7 @@ Do not include markdown formatting or extra text.
                 "role": "user",
                 "content": environment_context,
             },
-            {"role": "user", "content": feedback_prompt}
+            {"role": "user", "content": feedback_prompt},
         ]
 
         # In qwen3.5-plus, to use explicit cache, we actually need to mark
@@ -121,10 +114,10 @@ Do not include markdown formatting or extra text.
                 response = self.client.chat.completions.create(
                     model=self.model_name,
                     messages=messages,
-                    temperature=0.3, # Low temp for planning
+                    temperature=0.3,  # Low temp for planning
                     max_tokens=2048,
                     extra_body=extra_body,
-                    extra_headers=extra_headers
+                    extra_headers=extra_headers,
                 )
 
                 content = response.choices[0].message.content.strip()
@@ -133,9 +126,9 @@ Do not include markdown formatting or extra text.
                 plan = BDIPlan.from_llm_text(content)
                 if plan is not None:
                     return plan
-                logger.warning(f"Replanning attempt {attempt+1}: from_llm_text returned None")
+                logger.warning(f"Replanning attempt {attempt + 1}: from_llm_text returned None")
 
             except Exception as e:
-                logger.warning(f"Replanning attempt {attempt+1} failed: {e}")
+                logger.warning(f"Replanning attempt {attempt + 1} failed: {e}")
 
         return None

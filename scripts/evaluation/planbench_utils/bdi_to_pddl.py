@@ -5,12 +5,11 @@ BDI Plan to PDDL Action Conversion
 Converts BDI action nodes (from BDIPlan) into PDDL action strings
 suitable for VAL verification.
 """
-from typing import Dict, List
 
 from bdi_llm.schemas import BDIPlan
 
 
-def bdi_to_pddl_actions(plan: BDIPlan, domain: str = "blocksworld") -> List[str]:
+def bdi_to_pddl_actions(plan: BDIPlan, domain: str = "blocksworld") -> list[str]:
     """
     Convert BDI action nodes to PDDL action strings
 
@@ -31,6 +30,7 @@ def bdi_to_pddl_actions(plan: BDIPlan, domain: str = "blocksworld") -> List[str]
 
     try:
         import networkx as nx
+
         ordered_nodes = [n for n in nx.topological_sort(G) if n not in virtual_nodes]
     except:
         # If cycles, use node order as-is
@@ -52,12 +52,18 @@ def bdi_to_pddl_actions(plan: BDIPlan, domain: str = "blocksworld") -> List[str]
             return "stack"
 
         # Logistics
-        if t == "loadtruck": return "load-truck"
-        if t == "unloadtruck": return "unload-truck"
-        if t == "loadairplane": return "load-airplane"
-        if t == "unloadairplane": return "unload-airplane"
-        if t == "drivetruck": return "drive-truck"
-        if t == "flyairplane": return "fly-airplane"
+        if t == "loadtruck":
+            return "load-truck"
+        if t == "unloadtruck":
+            return "unload-truck"
+        if t == "loadairplane":
+            return "load-airplane"
+        if t == "unloadairplane":
+            return "unload-airplane"
+        if t == "drivetruck":
+            return "drive-truck"
+        if t == "flyairplane":
+            return "fly-airplane"
 
         return t
 
@@ -71,7 +77,7 @@ def bdi_to_pddl_actions(plan: BDIPlan, domain: str = "blocksworld") -> List[str]
             s = s[6:].strip()
         return s
 
-    def _pick_param(params: Dict, keys: List[str]) -> str:
+    def _pick_param(params: dict, keys: list[str]) -> str:
         for key in keys:
             value = params.get(key)
             if value:
@@ -89,10 +95,12 @@ def bdi_to_pddl_actions(plan: BDIPlan, domain: str = "blocksworld") -> List[str]
         before_len = len(pddl_actions)
 
         if domain == "blocksworld":
-            block = _pick_param(params, ["block", "object", "obj", "x"]) \
-                or _normalise_param(next(iter(params.values()), ""))
-            target = _pick_param(params, ["target", "y", "to", "on"]) \
-                or _normalise_param(next(iter(list(params.values())[1:]), ""))
+            block = _pick_param(params, ["block", "object", "obj", "x"]) or _normalise_param(
+                next(iter(params.values()), "")
+            )
+            target = _pick_param(params, ["target", "y", "to", "on"]) or _normalise_param(
+                next(iter(list(params.values())[1:]), "")
+            )
 
             if canon == "pick-up" and block:
                 pddl_actions.append(f"(pick-up {block})")
@@ -115,7 +123,7 @@ def bdi_to_pddl_actions(plan: BDIPlan, domain: str = "blocksworld") -> List[str]
             city = _pick_param(params, ["city", "c", "city_name"])
 
             # Fallback: try to extract from description if parameters are missing
-            description = action_node.description.lower() if hasattr(action_node, 'description') and action_node.description else ""
+            (action_node.description.lower() if hasattr(action_node, "description") and action_node.description else "")
 
             # Fallback: use positional parameters if named parameters fail
             param_values = list(params.values())
@@ -131,7 +139,9 @@ def bdi_to_pddl_actions(plan: BDIPlan, domain: str = "blocksworld") -> List[str]
                 if obj and truck and loc:
                     pddl_actions.append(f"(LOAD-TRUCK {obj} {truck} {loc})")
                 else:
-                    print(f"    DEBUG: load-truck missing params - obj={obj}, truck={truck}, loc={loc}, params={params}")
+                    print(
+                        f"    DEBUG: load-truck missing params - obj={obj}, truck={truck}, loc={loc}, params={params}"
+                    )
 
             elif canon == "load-airplane":
                 if not obj and len(param_values) >= 1:
@@ -144,7 +154,9 @@ def bdi_to_pddl_actions(plan: BDIPlan, domain: str = "blocksworld") -> List[str]
                 if obj and airplane and loc:
                     pddl_actions.append(f"(LOAD-AIRPLANE {obj} {airplane} {loc})")
                 else:
-                    print(f"    DEBUG: load-airplane missing params - obj={obj}, airplane={airplane}, loc={loc}, params={params}")
+                    print(
+                        f"    DEBUG: load-airplane missing params - obj={obj}, airplane={airplane}, loc={loc}, params={params}"
+                    )
 
             elif canon == "unload-truck":
                 if not obj and len(param_values) >= 1:
@@ -157,7 +169,9 @@ def bdi_to_pddl_actions(plan: BDIPlan, domain: str = "blocksworld") -> List[str]
                 if obj and truck and loc:
                     pddl_actions.append(f"(UNLOAD-TRUCK {obj} {truck} {loc})")
                 else:
-                    print(f"    DEBUG: unload-truck missing params - obj={obj}, truck={truck}, loc={loc}, params={params}")
+                    print(
+                        f"    DEBUG: unload-truck missing params - obj={obj}, truck={truck}, loc={loc}, params={params}"
+                    )
 
             elif canon == "unload-airplane":
                 if not obj and len(param_values) >= 1:
@@ -170,7 +184,9 @@ def bdi_to_pddl_actions(plan: BDIPlan, domain: str = "blocksworld") -> List[str]
                 if obj and airplane and loc:
                     pddl_actions.append(f"(UNLOAD-AIRPLANE {obj} {airplane} {loc})")
                 else:
-                    print(f"    DEBUG: unload-airplane missing params - obj={obj}, airplane={airplane}, loc={loc}, params={params}")
+                    print(
+                        f"    DEBUG: unload-airplane missing params - obj={obj}, airplane={airplane}, loc={loc}, params={params}"
+                    )
 
             elif canon == "drive-truck":
                 if not truck and len(param_values) >= 1:
@@ -185,7 +201,9 @@ def bdi_to_pddl_actions(plan: BDIPlan, domain: str = "blocksworld") -> List[str]
                 if truck and loc_from and loc_to and city:
                     pddl_actions.append(f"(DRIVE-TRUCK {truck} {loc_from} {loc_to} {city})")
                 else:
-                    print(f"    DEBUG: drive-truck missing params - truck={truck}, from={loc_from}, to={loc_to}, city={city}, params={params}")
+                    print(
+                        f"    DEBUG: drive-truck missing params - truck={truck}, from={loc_from}, to={loc_to}, city={city}, params={params}"
+                    )
 
             elif canon == "fly-airplane":
                 if not airplane and len(param_values) >= 1:
@@ -198,7 +216,9 @@ def bdi_to_pddl_actions(plan: BDIPlan, domain: str = "blocksworld") -> List[str]
                 if airplane and loc_from and loc_to:
                     pddl_actions.append(f"(FLY-AIRPLANE {airplane} {loc_from} {loc_to})")
                 else:
-                    print(f"    DEBUG: fly-airplane missing params - airplane={airplane}, from={loc_from}, to={loc_to}, params={params}")
+                    print(
+                        f"    DEBUG: fly-airplane missing params - airplane={airplane}, from={loc_from}, to={loc_to}, params={params}"
+                    )
 
         elif domain == "depots":
             # Depots combines logistics and blocksworld
@@ -209,32 +229,100 @@ def bdi_to_pddl_actions(plan: BDIPlan, domain: str = "blocksworld") -> List[str]
             #   Drop(?x - hoist ?y - crate ?z - surface ?p - place)
             #   Load(?x - hoist ?y - crate ?z - truck ?p - place)
             #   Unload(?x - hoist ?y - crate ?z - truck ?p - place)
-            hoist = _pick_param(params, [
-                "hoist", "h", "x", "hoist_name", "lifter",
-            ])
-            crate = _pick_param(params, [
-                "crate", "c", "obj", "object", "y", "item", "package",
-                "crate_name", "cargo", "box",
-            ])
-            truck = _pick_param(params, [
-                "truck", "t", "vehicle", "z", "truck_name", "veh",
-            ])
-            surface = _pick_param(params, [
-                "surface", "s", "pallet", "z", "on", "target", "dest",
-                "surface_name", "onto", "below", "under",
-            ])
-            loc = _pick_param(params, [
-                "loc", "location", "place", "p", "at", "depot",
-                "loc_name", "location_name", "position", "area",
-            ])
-            loc_from = _pick_param(params, [
-                "from", "loc_from", "from_loc", "from_location",
-                "source", "origin", "start", "y",
-            ])
-            loc_to = _pick_param(params, [
-                "to", "loc_to", "to_loc", "to_location",
-                "dest", "destination", "target", "end", "z",
-            ])
+            hoist = _pick_param(
+                params,
+                [
+                    "hoist",
+                    "h",
+                    "x",
+                    "hoist_name",
+                    "lifter",
+                ],
+            )
+            crate = _pick_param(
+                params,
+                [
+                    "crate",
+                    "c",
+                    "obj",
+                    "object",
+                    "y",
+                    "item",
+                    "package",
+                    "crate_name",
+                    "cargo",
+                    "box",
+                ],
+            )
+            truck = _pick_param(
+                params,
+                [
+                    "truck",
+                    "t",
+                    "vehicle",
+                    "z",
+                    "truck_name",
+                    "veh",
+                ],
+            )
+            surface = _pick_param(
+                params,
+                [
+                    "surface",
+                    "s",
+                    "pallet",
+                    "z",
+                    "on",
+                    "target",
+                    "dest",
+                    "surface_name",
+                    "onto",
+                    "below",
+                    "under",
+                ],
+            )
+            loc = _pick_param(
+                params,
+                [
+                    "loc",
+                    "location",
+                    "place",
+                    "p",
+                    "at",
+                    "depot",
+                    "loc_name",
+                    "location_name",
+                    "position",
+                    "area",
+                ],
+            )
+            loc_from = _pick_param(
+                params,
+                [
+                    "from",
+                    "loc_from",
+                    "from_loc",
+                    "from_location",
+                    "source",
+                    "origin",
+                    "start",
+                    "y",
+                ],
+            )
+            loc_to = _pick_param(
+                params,
+                [
+                    "to",
+                    "loc_to",
+                    "to_loc",
+                    "to_location",
+                    "dest",
+                    "destination",
+                    "target",
+                    "end",
+                    "z",
+                ],
+            )
 
             # Positional fallback using param_values
             param_values = list(params.values())
@@ -251,7 +339,9 @@ def bdi_to_pddl_actions(plan: BDIPlan, domain: str = "blocksworld") -> List[str]
                 if truck and loc_from and loc_to:
                     pddl_actions.append(f"(Drive {truck} {loc_from} {loc_to})")
                 else:
-                    print(f"    DEBUG: drive missing params - truck={truck}, from={loc_from}, to={loc_to}, params={params}")
+                    print(
+                        f"    DEBUG: drive missing params - truck={truck}, from={loc_from}, to={loc_to}, params={params}"
+                    )
 
             elif canon == "lift":
                 # Lift(?x - hoist ?y - crate ?z - surface ?p - place)
@@ -267,7 +357,9 @@ def bdi_to_pddl_actions(plan: BDIPlan, domain: str = "blocksworld") -> List[str]
                 if hoist and crate and surface and loc:
                     pddl_actions.append(f"(Lift {hoist} {crate} {surface} {loc})")
                 else:
-                    print(f"    DEBUG: lift missing params - hoist={hoist}, crate={crate}, surface={surface}, loc={loc}, params={params}")
+                    print(
+                        f"    DEBUG: lift missing params - hoist={hoist}, crate={crate}, surface={surface}, loc={loc}, params={params}"
+                    )
 
             elif canon == "drop":
                 # Drop(?x - hoist ?y - crate ?z - surface ?p - place)
@@ -283,7 +375,9 @@ def bdi_to_pddl_actions(plan: BDIPlan, domain: str = "blocksworld") -> List[str]
                 if hoist and crate and surface and loc:
                     pddl_actions.append(f"(Drop {hoist} {crate} {surface} {loc})")
                 else:
-                    print(f"    DEBUG: drop missing params - hoist={hoist}, crate={crate}, surface={surface}, loc={loc}, params={params}")
+                    print(
+                        f"    DEBUG: drop missing params - hoist={hoist}, crate={crate}, surface={surface}, loc={loc}, params={params}"
+                    )
 
             elif canon == "load":
                 # Load(?x - hoist ?y - crate ?z - truck ?p - place)
@@ -299,7 +393,9 @@ def bdi_to_pddl_actions(plan: BDIPlan, domain: str = "blocksworld") -> List[str]
                 if hoist and crate and truck and loc:
                     pddl_actions.append(f"(Load {hoist} {crate} {truck} {loc})")
                 else:
-                    print(f"    DEBUG: load missing params - hoist={hoist}, crate={crate}, truck={truck}, loc={loc}, params={params}")
+                    print(
+                        f"    DEBUG: load missing params - hoist={hoist}, crate={crate}, truck={truck}, loc={loc}, params={params}"
+                    )
 
             elif canon == "unload":
                 # Unload(?x - hoist ?y - crate ?z - truck ?p - place)
@@ -315,7 +411,9 @@ def bdi_to_pddl_actions(plan: BDIPlan, domain: str = "blocksworld") -> List[str]
                 if hoist and crate and truck and loc:
                     pddl_actions.append(f"(Unload {hoist} {crate} {truck} {loc})")
                 else:
-                    print(f"    DEBUG: unload missing params - hoist={hoist}, crate={crate}, truck={truck}, loc={loc}, params={params}")
+                    print(
+                        f"    DEBUG: unload missing params - hoist={hoist}, crate={crate}, truck={truck}, loc={loc}, params={params}"
+                    )
 
         if len(pddl_actions) == before_len:
             print(

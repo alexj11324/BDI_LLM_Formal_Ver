@@ -5,9 +5,9 @@ PDDL Parsing Utilities
 Functions for parsing PDDL problem files, resolving domain files,
 and finding PlanBench instances.
 """
+
 import re
 from pathlib import Path
-from typing import List
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 PLANBENCH_ROOT = PROJECT_ROOT / "workspaces" / "planbench_data" / "plan-bench"
@@ -15,25 +15,25 @@ PLANBENCH_ROOT = PROJECT_ROOT / "workspaces" / "planbench_data" / "plan-bench"
 
 def parse_pddl_problem(pddl_file: str) -> dict:
     """Parse PDDL problem file"""
-    with open(pddl_file, 'r') as f:
+    with open(pddl_file) as f:
         content = f.read()
 
     # Extract problem name
-    problem_match = re.search(r'\(define\s+\(problem\s+(.*?)\)', content)
+    problem_match = re.search(r"\(define\s+\(problem\s+(.*?)\)", content)
     problem_name = problem_match.group(1) if problem_match else "unknown"
 
     # Extract domain name - NEW: Critical for resolving the correct domain file
-    domain_match = re.search(r'\(:domain\s+(.*?)\)', content)
+    domain_match = re.search(r"\(:domain\s+(.*?)\)", content)
     domain_name = domain_match.group(1).strip() if domain_match else "blocksworld"
 
     # Extract objects (supports typed PDDL format: "obj1 obj2 - Type")
-    objects_match = re.search(r':objects\s+(.*?)\)', content, re.DOTALL)
+    objects_match = re.search(r":objects\s+(.*?)\)", content, re.DOTALL)
     objects = []
     typed_objects = {}  # object_name -> type_name
     if objects_match:
         objects_text = objects_match.group(1)
         # Parse typed object declarations: "obj1 obj2 - Type"
-        typed_pattern = re.findall(r'([\w\s]+?)\s*-\s*(\w+)', objects_text)
+        typed_pattern = re.findall(r"([\w\s]+?)\s*-\s*(\w+)", objects_text)
         if typed_pattern:
             for names_str, type_name in typed_pattern:
                 for name in names_str.split():
@@ -46,32 +46,27 @@ def parse_pddl_problem(pddl_file: str) -> dict:
             objects = objects_text.split()
 
     # Extract init state
-    init_match = re.search(r':init\s+(.*?)\(:goal', content, re.DOTALL)
+    init_match = re.search(r":init\s+(.*?)\(:goal", content, re.DOTALL)
     if init_match:
         init_text = init_match.group(1)
-        init_predicates = re.findall(r'\((.*?)\)', init_text)
+        init_predicates = re.findall(r"\((.*?)\)", init_text)
     else:
         init_predicates = []
 
     # Extract goal
-    goal_match = re.search(r':goal\s*\(and\s*((?:\([^)]+\)\s*)+)\)', content, re.DOTALL)
+    goal_match = re.search(r":goal\s*\(and\s*((?:\([^)]+\)\s*)+)\)", content, re.DOTALL)
     if goal_match:
         goal_content = goal_match.group(1)
-        goal_predicates = re.findall(r'\(([^)]+)\)', goal_content)
+        goal_predicates = re.findall(r"\(([^)]+)\)", goal_content)
     else:
-        single_goal_match = re.search(r':goal\s*(\([^)]+\))', content, re.DOTALL)
+        single_goal_match = re.search(r":goal\s*(\([^)]+\))", content, re.DOTALL)
         if single_goal_match:
-            goal_predicates = re.findall(r'\(([^)]+)\)', single_goal_match.group(1))
+            goal_predicates = re.findall(r"\(([^)]+)\)", single_goal_match.group(1))
         else:
             goal_predicates = []
 
     # Phase 1: Extract init_state for physics validation
-    init_state = {
-        'on_table': [],
-        'on': [],
-        'clear': [],
-        'holding': None
-    }
+    init_state = {"on_table": [], "on": [], "clear": [], "holding": None}
 
     for pred in init_predicates:
         parts = pred.split()
@@ -80,25 +75,25 @@ def parse_pddl_problem(pddl_file: str) -> dict:
 
         pred_name = parts[0]
 
-        if pred_name == 'ontable' and len(parts) >= 2:
-            init_state['on_table'].append(parts[1])
-        elif pred_name == 'clear' and len(parts) >= 2:
-            init_state['clear'].append(parts[1])
-        elif pred_name == 'on' and len(parts) >= 3:
-            init_state['on'].append((parts[1], parts[2]))
-        elif pred_name == 'holding' and len(parts) >= 2:
-            init_state['holding'] = parts[1]
-        elif pred_name == 'handempty':
-            init_state['holding'] = None
+        if pred_name == "ontable" and len(parts) >= 2:
+            init_state["on_table"].append(parts[1])
+        elif pred_name == "clear" and len(parts) >= 2:
+            init_state["clear"].append(parts[1])
+        elif pred_name == "on" and len(parts) >= 3:
+            init_state["on"].append((parts[1], parts[2]))
+        elif pred_name == "holding" and len(parts) >= 2:
+            init_state["holding"] = parts[1]
+        elif pred_name == "handempty":
+            init_state["holding"] = None
 
     return {
-        'problem_name': problem_name,
-        'domain_name': domain_name,  # NEW: For resolving domain file
-        'objects': objects,
-        'typed_objects': typed_objects,  # NEW: object_name -> type_name mapping
-        'init': init_predicates,
-        'goal': goal_predicates,
-        'init_state': init_state  # NEW: For physics validation
+        "problem_name": problem_name,
+        "domain_name": domain_name,  # NEW: For resolving domain file
+        "objects": objects,
+        "typed_objects": typed_objects,  # NEW: object_name -> type_name mapping
+        "init": init_predicates,
+        "goal": goal_predicates,
+        "init_state": init_state,  # NEW: For physics validation
     }
 
 
@@ -148,7 +143,7 @@ def resolve_domain_file(domain_name: str, base_path: str = None) -> str:
     return f"{base_path}/pddlgenerators/blocksworld/domain.pddl"
 
 
-def find_all_instances(base_path: str, domain: str) -> List[str]:
+def find_all_instances(base_path: str, domain: str) -> list[str]:
     """Find all PDDL instance files for a domain"""
     domain_path = Path(base_path) / "instances" / domain
 
@@ -156,7 +151,7 @@ def find_all_instances(base_path: str, domain: str) -> List[str]:
     for pattern in [
         "generated/instance-*.pddl",
         "generated_basic/instance-*.pddl",
-        "generated_basic_*/instance-*.pddl"
+        "generated_basic_*/instance-*.pddl",
     ]:
         instance_files.extend(domain_path.glob(pattern))
 

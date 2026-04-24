@@ -13,6 +13,7 @@ from typing import Any
 # Optional MLflow tracking
 try:
     import mlflow
+
     MLFLOW_AVAILABLE = True
 except ImportError:
     MLFLOW_AVAILABLE = False
@@ -27,93 +28,92 @@ from .official import (
 )
 from .serializer import TravelPlannerPlanSerializer
 
-
 MAX_NON_ORACLE_REPAIR_PASSES = 2
 
 
 EMPTY_METRICS = {
-    'delivery': False,
-    'commonsense_pass': False,
-    'hard_constraint_pass': False,
-    'final_pass': False,
+    "delivery": False,
+    "commonsense_pass": False,
+    "hard_constraint_pass": False,
+    "final_pass": False,
 }
 
 
 def _empty_diagnostics() -> dict[str, Any]:
     return {
-        'triggered': False,
-        'passes_used': 0,
-        'changed_days': 0,
-        'changed_fields': 0,
-        'issue_categories': {},
-        'issues': [],
+        "triggered": False,
+        "passes_used": 0,
+        "changed_days": 0,
+        "changed_fields": 0,
+        "issue_categories": {},
+        "issues": [],
     }
 
 
 def _failed_result(sample: dict[str, Any], idx: int, mode: str, error: Exception) -> dict[str, Any]:
-    task_idx = int(sample.get('idx', idx + 1))
+    task_idx = int(sample.get("idx", idx + 1))
     return {
-        'task_id': str(task_idx),
-        'query': sample.get('query', ''),
-        'mode': mode,
-        'submission': {'idx': task_idx, 'query': sample.get('query', ''), 'plan': []},
-        'metrics': dict(EMPTY_METRICS),
-        'non_oracle_metrics': dict(EMPTY_METRICS),
-        'validation_as_test_metrics': dict(EMPTY_METRICS),
-        'non_oracle_diagnostics': _empty_diagnostics(),
-        'oracle_repair_diagnostics': _empty_diagnostics(),
-        'success': False,
-        'itinerary': {},
-        'error': str(error),
+        "task_id": str(task_idx),
+        "query": sample.get("query", ""),
+        "mode": mode,
+        "submission": {"idx": task_idx, "query": sample.get("query", ""), "plan": []},
+        "metrics": dict(EMPTY_METRICS),
+        "non_oracle_metrics": dict(EMPTY_METRICS),
+        "validation_as_test_metrics": dict(EMPTY_METRICS),
+        "non_oracle_diagnostics": _empty_diagnostics(),
+        "oracle_repair_diagnostics": _empty_diagnostics(),
+        "success": False,
+        "itinerary": {},
+        "error": str(error),
     }
 
 
 def _summarize_metric_dicts(metric_dicts: list[dict[str, Any]]) -> dict[str, Any]:
-    rows = [{'metrics': metrics} for metrics in metric_dicts]
+    rows = [{"metrics": metrics} for metrics in metric_dicts]
     return summarize_travelplanner_results(rows)
 
 
 def _summarize_diagnostics(results: list[dict[str, Any]], field_name: str) -> dict[str, Any]:
-    triggered_rows = [row[field_name] for row in results if row.get(field_name, {}).get('triggered')]
+    triggered_rows = [row[field_name] for row in results if row.get(field_name, {}).get("triggered")]
     total = len(results)
     if not triggered_rows:
         return {
-            'triggered_count': 0,
-            'trigger_rate': 0.0,
-            'avg_changed_days_when_triggered': 0.0,
-            'avg_changed_fields_when_triggered': 0.0,
-            'issue_categories': {},
+            "triggered_count": 0,
+            "trigger_rate": 0.0,
+            "avg_changed_days_when_triggered": 0.0,
+            "avg_changed_fields_when_triggered": 0.0,
+            "issue_categories": {},
         }
 
     category_counter: Counter[str] = Counter()
     for diag in triggered_rows:
-        for code, count in (diag.get('issue_categories') or {}).items():
+        for code, count in (diag.get("issue_categories") or {}).items():
             category_counter[code] += int(count)
 
     return {
-        'triggered_count': len(triggered_rows),
-        'trigger_rate': len(triggered_rows) / total if total else 0.0,
-        'avg_changed_days_when_triggered': (
-            sum(diag.get('changed_days', 0) for diag in triggered_rows) / len(triggered_rows)
+        "triggered_count": len(triggered_rows),
+        "trigger_rate": len(triggered_rows) / total if total else 0.0,
+        "avg_changed_days_when_triggered": (
+            sum(diag.get("changed_days", 0) for diag in triggered_rows) / len(triggered_rows)
         ),
-        'avg_changed_fields_when_triggered': (
-            sum(diag.get('changed_fields', 0) for diag in triggered_rows) / len(triggered_rows)
+        "avg_changed_fields_when_triggered": (
+            sum(diag.get("changed_fields", 0) for diag in triggered_rows) / len(triggered_rows)
         ),
-        'issue_categories': dict(category_counter.most_common()),
+        "issue_categories": dict(category_counter.most_common()),
     }
 
 
 def build_evaluator_feedback(metrics: dict[str, Any]) -> str:
     parts: list[str] = []
-    commonsense = metrics.get('commonsense_details') or {}
-    hard = metrics.get('hard_constraint_details') or {}
-    for group_name, group in [('Commonsense', commonsense), ('HardConstraint', hard)]:
+    commonsense = metrics.get("commonsense_details") or {}
+    hard = metrics.get("hard_constraint_details") or {}
+    for group_name, group in [("Commonsense", commonsense), ("HardConstraint", hard)]:
         for key, value in group.items():
             ok, message = value
             if ok is None or ok:
                 continue
-            parts.append(f'[{group_name}] {key}: {message}')
-    return '\n'.join(parts)
+            parts.append(f"[{group_name}] {key}: {message}")
+    return "\n".join(parts)
 
 
 def generate_submission(sample: dict[str, Any], mode: str) -> dict[str, Any]:
@@ -126,15 +126,15 @@ def generate_submission(sample: dict[str, Any], mode: str) -> dict[str, Any]:
     serializer = TravelPlannerPlanSerializer()
     task = adapter.to_planning_task(sample)
 
-    if mode == 'baseline':
-        generated = generator.generate_baseline(task.beliefs, task.desire, task.domain_context or '')
+    if mode == "baseline":
+        generated = generator.generate_baseline(task.beliefs, task.desire, task.domain_context or "")
         final_itinerary = generated.itinerary
         non_oracle_diagnostics = _empty_diagnostics()
     else:
-        generated = generator.generate_bdi(task.beliefs, task.desire, task.domain_context or '')
+        generated = generator.generate_bdi(task.beliefs, task.desire, task.domain_context or "")
         final_itinerary = generated.itinerary
         non_oracle_diagnostics = _empty_diagnostics()
-        if mode == 'bdi-repair':
+        if mode == "bdi-repair":
             refinement = generator.run_non_oracle_repair(
                 task,
                 generated.itinerary,
@@ -145,33 +145,33 @@ def generate_submission(sample: dict[str, Any], mode: str) -> dict[str, Any]:
 
     submission = serializer.to_submission_record(final_itinerary, task)
     return {
-        'task': task,
-        'generator': generator,
-        'serializer': serializer,
-        'initial_itinerary': generated.itinerary,
-        'final_itinerary': final_itinerary,
-        'submission': submission,
-        'prompt_version': getattr(generator, 'prompt_version', 'baseline'),
-        'non_oracle_diagnostics': non_oracle_diagnostics,
+        "task": task,
+        "generator": generator,
+        "serializer": serializer,
+        "initial_itinerary": generated.itinerary,
+        "final_itinerary": final_itinerary,
+        "submission": submission,
+        "prompt_version": getattr(generator, "prompt_version", "baseline"),
+        "non_oracle_diagnostics": non_oracle_diagnostics,
     }
 
 
 def evaluate_sample(sample: dict[str, Any], *, mode: str, travelplanner_home: str | None) -> dict[str, Any]:
     workflow = generate_submission(sample, mode)
-    task = workflow['task']
-    generator = workflow['generator']
-    serializer = workflow['serializer']
-    final_itinerary = workflow['final_itinerary']
-    submission = workflow['submission']
+    task = workflow["task"]
+    generator = workflow["generator"]
+    serializer = workflow["serializer"]
+    final_itinerary = workflow["final_itinerary"]
+    submission = workflow["submission"]
 
-    metrics_obj = evaluate_travelplanner_plan(sample, submission['plan'], travelplanner_home=travelplanner_home)
+    metrics_obj = evaluate_travelplanner_plan(sample, submission["plan"], travelplanner_home=travelplanner_home)
     metrics = metrics_obj.to_summary_dict()
 
     oracle_feedback = None
     oracle_repair_diagnostics = _empty_diagnostics()
     oracle_metrics = None
 
-    if mode == 'bdi-repair':
+    if mode == "bdi-repair":
         oracle_metrics = metrics
         if not metrics_obj.final_pass:
             oracle_feedback = build_evaluator_feedback(metrics)
@@ -186,26 +186,26 @@ def evaluate_sample(sample: dict[str, Any], *, mode: str, travelplanner_home: st
                 submission = serializer.to_submission_record(final_itinerary, task)
                 metrics_obj = evaluate_travelplanner_plan(
                     sample,
-                    submission['plan'],
+                    submission["plan"],
                     travelplanner_home=travelplanner_home,
                 )
                 oracle_metrics = metrics_obj.to_summary_dict()
 
     return {
-        'task_id': task.task_id,
-        'query': sample.get('query', ''),
-        'mode': mode,
-        'prompt_version': workflow['prompt_version'],
-        'submission': submission,
-        'metrics': metrics_obj.to_summary_dict(),
-        'success': metrics_obj.final_pass,
-        'itinerary': final_itinerary.model_dump(),
-        'non_oracle_metrics': metrics,
-        'validation_as_test_metrics': metrics,
-        'non_oracle_diagnostics': workflow['non_oracle_diagnostics'],
-        'oracle_feedback': oracle_feedback,
-        'oracle_metrics': oracle_metrics,
-        'oracle_repair_diagnostics': oracle_repair_diagnostics,
+        "task_id": task.task_id,
+        "query": sample.get("query", ""),
+        "mode": mode,
+        "prompt_version": workflow["prompt_version"],
+        "submission": submission,
+        "metrics": metrics_obj.to_summary_dict(),
+        "success": metrics_obj.final_pass,
+        "itinerary": final_itinerary.model_dump(),
+        "non_oracle_metrics": metrics,
+        "validation_as_test_metrics": metrics,
+        "non_oracle_diagnostics": workflow["non_oracle_diagnostics"],
+        "oracle_feedback": oracle_feedback,
+        "oracle_metrics": oracle_metrics,
+        "oracle_repair_diagnostics": oracle_repair_diagnostics,
     }
 
 
@@ -216,29 +216,29 @@ def _checkpoint_file(mode_dir: Path, split: str, mode: str) -> Path:
 def _write_checkpoint(mode_dir: Path, split: str, mode: str, results: list[dict[str, Any] | None]) -> None:
     completed = [row for row in results if row is not None]
     payload = {
-        'split': split,
-        'execution_mode': mode,
-        'results': completed,
-        'summary': summarize_travelplanner_results(completed),
+        "split": split,
+        "execution_mode": mode,
+        "results": completed,
+        "summary": summarize_travelplanner_results(completed),
     }
-    if mode == 'bdi-repair' and completed:
-        payload['validation_as_test_summary'] = _summarize_metric_dicts(
-            [row.get('validation_as_test_metrics', row.get('metrics', {})) for row in completed]
+    if mode == "bdi-repair" and completed:
+        payload["validation_as_test_summary"] = _summarize_metric_dicts(
+            [row.get("validation_as_test_metrics", row.get("metrics", {})) for row in completed]
         )
-        payload['non_oracle_diagnostics_summary'] = _summarize_diagnostics(
+        payload["non_oracle_diagnostics_summary"] = _summarize_diagnostics(
             completed,
-            'non_oracle_diagnostics',
+            "non_oracle_diagnostics",
         )
-        payload['oracle_diagnostics_summary'] = _summarize_diagnostics(
+        payload["oracle_diagnostics_summary"] = _summarize_diagnostics(
             completed,
-            'oracle_repair_diagnostics',
+            "oracle_repair_diagnostics",
         )
     _checkpoint_file(mode_dir, split, mode).write_text(json.dumps(payload, indent=2, ensure_ascii=False))
 
 
 def _log_progress(mode: str, split: str, completed: int, total: int, results: list[dict[str, Any] | None]) -> None:
     done = [row for row in results if row is not None]
-    success = sum(1 for row in done if row.get('success'))
+    success = sum(1 for row in done if row.get("success"))
     print(f"[{split}/{mode}] {completed}/{total} complete, success={success}", flush=True)
 
 
@@ -265,19 +265,22 @@ def _load_resume_state(
         print(f"[resume] checkpoint unreadable ({exc}); starting fresh", flush=True)
         return results, 0
     by_task: dict[str, dict[str, Any]] = {}
-    for row in prior.get('results') or []:
-        tid = row.get('task_id')
+    for row in prior.get("results") or []:
+        tid = row.get("task_id")
         if tid is not None:
             by_task[str(tid)] = row
     matched = 0
     for i, sample in enumerate(enriched_samples):
-        expected_tid = str(int(sample.get('idx', i + 1)))
+        expected_tid = str(int(sample.get("idx", i + 1)))
         if expected_tid in by_task:
             results[i] = by_task[expected_tid]
             matched += 1
     stale = len(by_task) - matched
     if stale:
-        print(f"[resume] {stale} prior task_id(s) not found in current sample set (ignored)", flush=True)
+        print(
+            f"[resume] {stale} prior task_id(s) not found in current sample set (ignored)",
+            flush=True,
+        )
     if matched:
         print(f"[resume] loaded {matched}/{total} prior results from {ckp.name}", flush=True)
     return results, matched
@@ -319,13 +322,13 @@ def _run_split_inner(
     output_dir = output_dir.resolve()
     data = load_travelplanner_split(split)
     if max_instances is not None:
-        data = data[: max_instances]
+        data = data[:max_instances]
 
     enriched_samples = []
     for idx, sample in enumerate(data, start=1):
         enriched = dict(sample)
-        enriched['idx'] = idx
-        enriched['split'] = split
+        enriched["idx"] = idx
+        enriched["split"] = split
         enriched_samples.append(enriched)
 
     total = len(enriched_samples)
@@ -348,7 +351,7 @@ def _run_split_inner(
             mlflow.log_param("model", os.environ.get("LLM_MODEL", "unknown"))
             mlflow.log_param(
                 "travelplanner_bdi_prompt_version",
-                os.environ.get('TRAVELPLANNER_BDI_PROMPT_VERSION', 'v3'),
+                os.environ.get("TRAVELPLANNER_BDI_PROMPT_VERSION", "v3"),
             )
             mlflow.log_param("max_non_oracle_repair_passes", MAX_NON_ORACLE_REPAIR_PASSES)
             print(f"✓ MLflow tracking enabled (Run ID: {mlflow_run_id})")
@@ -398,59 +401,59 @@ def _run_split_inner(
 
     completed_results = [row for row in results if row is not None]
     summary = summarize_travelplanner_results(completed_results)
-    stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    results_path = mode_dir / f'results_travelplanner_{split}_{mode}_{stamp}.json'
-    submission_path = mode_dir / f'submission_travelplanner_{split}_{mode}_{stamp}.jsonl'
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    results_path = mode_dir / f"results_travelplanner_{split}_{mode}_{stamp}.json"
+    submission_path = mode_dir / f"submission_travelplanner_{split}_{mode}_{stamp}.jsonl"
 
     results_payload: dict[str, Any] = {
-        'split': split,
-        'execution_mode': mode,
-        'results': completed_results,
-        'summary': summary,
+        "split": split,
+        "execution_mode": mode,
+        "results": completed_results,
+        "summary": summary,
     }
-    if mode == 'bdi-repair':
-        results_payload['validation_as_test_summary'] = _summarize_metric_dicts(
-            [row.get('validation_as_test_metrics', row.get('metrics', {})) for row in completed_results]
+    if mode == "bdi-repair":
+        results_payload["validation_as_test_summary"] = _summarize_metric_dicts(
+            [row.get("validation_as_test_metrics", row.get("metrics", {})) for row in completed_results]
         )
-        results_payload['non_oracle_diagnostics_summary'] = _summarize_diagnostics(
+        results_payload["non_oracle_diagnostics_summary"] = _summarize_diagnostics(
             completed_results,
-            'non_oracle_diagnostics',
+            "non_oracle_diagnostics",
         )
-        results_payload['oracle_diagnostics_summary'] = _summarize_diagnostics(
+        results_payload["oracle_diagnostics_summary"] = _summarize_diagnostics(
             completed_results,
-            'oracle_repair_diagnostics',
+            "oracle_repair_diagnostics",
         )
 
     results_path.write_text(json.dumps(results_payload, indent=2, ensure_ascii=False))
-    with submission_path.open('w', encoding='utf-8') as f:
+    with submission_path.open("w", encoding="utf-8") as f:
         for row in completed_results:
-            f.write(json.dumps(row['submission'], ensure_ascii=False) + '\n')
+            f.write(json.dumps(row["submission"], ensure_ascii=False) + "\n")
 
     if MLFLOW_AVAILABLE and mlflow_run_id:
         try:
-            mlflow.log_metric("delivery_rate", summary.get('delivery_rate', 0))
-            mlflow.log_metric("commonsense_pass_rate", summary.get('commonsense_pass_rate', 0))
-            mlflow.log_metric("hard_constraint_pass_rate", summary.get('hard_constraint_pass_rate', 0))
-            mlflow.log_metric("final_pass_rate", summary.get('final_pass_rate', 0))
-            mlflow.log_metric("success_count", summary.get('success_count', 0))
-            mlflow.log_metric("total_evaluated", summary.get('total_evaluated', 0))
-            if mode == 'bdi-repair':
-                validation_as_test = results_payload['validation_as_test_summary']
+            mlflow.log_metric("delivery_rate", summary.get("delivery_rate", 0))
+            mlflow.log_metric("commonsense_pass_rate", summary.get("commonsense_pass_rate", 0))
+            mlflow.log_metric("hard_constraint_pass_rate", summary.get("hard_constraint_pass_rate", 0))
+            mlflow.log_metric("final_pass_rate", summary.get("final_pass_rate", 0))
+            mlflow.log_metric("success_count", summary.get("success_count", 0))
+            mlflow.log_metric("total_evaluated", summary.get("total_evaluated", 0))
+            if mode == "bdi-repair":
+                validation_as_test = results_payload["validation_as_test_summary"]
                 mlflow.log_metric(
                     "validation_as_test_final_pass_rate",
-                    validation_as_test.get('final_pass_rate', 0),
+                    validation_as_test.get("final_pass_rate", 0),
                 )
                 mlflow.log_metric(
                     "non_oracle_trigger_rate",
-                    results_payload['non_oracle_diagnostics_summary'].get('trigger_rate', 0),
+                    results_payload["non_oracle_diagnostics_summary"].get("trigger_rate", 0),
                 )
                 mlflow.log_metric(
                     "avg_changed_days_when_triggered",
-                    results_payload['non_oracle_diagnostics_summary'].get('avg_changed_days_when_triggered', 0),
+                    results_payload["non_oracle_diagnostics_summary"].get("avg_changed_days_when_triggered", 0),
                 )
                 mlflow.log_metric(
                     "avg_changed_fields_when_triggered",
-                    results_payload['non_oracle_diagnostics_summary'].get('avg_changed_fields_when_triggered', 0),
+                    results_payload["non_oracle_diagnostics_summary"].get("avg_changed_fields_when_triggered", 0),
                 )
             mlflow.log_artifact(str(results_path))
             mlflow.log_artifact(str(submission_path))
@@ -465,16 +468,16 @@ def _run_split_inner(
             mlflow.end_run()
 
     return {
-        'results_path': str(results_path),
-        'submission_path': str(submission_path),
-        'summary': summary,
+        "results_path": str(results_path),
+        "submission_path": str(submission_path),
+        "summary": summary,
         **(
             {
-                'validation_as_test_summary': results_payload['validation_as_test_summary'],
-                'non_oracle_diagnostics_summary': results_payload['non_oracle_diagnostics_summary'],
-                'oracle_diagnostics_summary': results_payload['oracle_diagnostics_summary'],
+                "validation_as_test_summary": results_payload["validation_as_test_summary"],
+                "non_oracle_diagnostics_summary": results_payload["non_oracle_diagnostics_summary"],
+                "oracle_diagnostics_summary": results_payload["oracle_diagnostics_summary"],
             }
-            if mode == 'bdi-repair'
+            if mode == "bdi-repair"
             else {}
         ),
     }
@@ -485,10 +488,10 @@ def print_run_result(result: dict[str, Any]) -> None:
 
 
 __all__ = [
-    'TravelPlannerSetupError',
-    'build_evaluator_feedback',
-    'generate_submission',
-    'evaluate_sample',
-    'run_split',
-    'print_run_result',
+    "TravelPlannerSetupError",
+    "build_evaluator_feedback",
+    "generate_submission",
+    "evaluate_sample",
+    "run_split",
+    "print_run_result",
 ]

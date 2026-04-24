@@ -9,7 +9,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from bdi_llm.planbench_eval_runtime import write_json_atomic
-from bdi_llm.planbench_reporting import DOMAIN_ORDER, aggregate_planbench_results, render_latex_tables
+from bdi_llm.planbench_reporting import (
+    DOMAIN_ORDER,
+    aggregate_planbench_results,
+    render_latex_tables,
+)
 
 
 def _latest_result_file(results_root: Path, domain: str) -> Path:

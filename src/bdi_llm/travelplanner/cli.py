@@ -10,20 +10,20 @@ def build_split_runner_parser(
     description: str,
     *,
     include_execution_mode: bool = False,
-    default_execution_mode: str = 'bdi-repair',
+    default_execution_mode: str = "bdi-repair",
 ) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=description)
-    parser.add_argument('--split', choices=['train', 'validation', 'test'], default='validation')
+    parser.add_argument("--split", choices=["train", "validation", "test"], default="validation")
     if include_execution_mode:
         parser.add_argument(
-            '--execution_mode',
-            choices=['baseline', 'bdi', 'bdi-repair'],
+            "--execution_mode",
+            choices=["baseline", "bdi", "bdi-repair"],
             default=default_execution_mode,
         )
-    parser.add_argument('--max_instances', type=int, default=None)
-    parser.add_argument('--output_dir', type=Path, default=Path('runs/travelplanner'))
-    parser.add_argument('--travelplanner_home', type=str, default=None)
-    parser.add_argument('--workers', type=int, default=1)
+    parser.add_argument("--max_instances", type=int, default=None)
+    parser.add_argument("--output_dir", type=Path, default=Path("runs/travelplanner"))
+    parser.add_argument("--travelplanner_home", type=str, default=None)
+    parser.add_argument("--workers", type=int, default=1)
     return parser
 
 

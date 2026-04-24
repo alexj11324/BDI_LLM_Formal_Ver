@@ -12,15 +12,19 @@ Usage (on server):
     --workers 4 \
     --output_dir runs/tp_results
 """
+
 from __future__ import annotations
 
-import json, sys, traceback, os
+import json
+import os
+import sys
+import traceback
 from datetime import datetime
 from multiprocessing import Pool
 from pathlib import Path
 
 # -- bootstrap project --
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'src'))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 
 def _init_evaluator(tp_home: str | None):
@@ -34,8 +38,8 @@ def _init_evaluator(tp_home: str | None):
 
 def _resolve_plan_sample_index(raw_plan: dict, input_order: int) -> int:
     for candidate in (
-        raw_plan.get('task_id'),
-        (raw_plan.get('submission') or {}).get('idx'),
+        raw_plan.get("task_id"),
+        (raw_plan.get("submission") or {}).get("idx"),
     ):
         try:
             return int(candidate) - 1
@@ -49,13 +53,12 @@ def _eval_one(args: tuple[int, dict, dict]) -> tuple[int, dict]:
     input_order, raw_plan, sample_data = args
     from bdi_llm.travelplanner.official import TravelPlannerEvalResult, evaluate_travelplanner_plan
 
-    plan_rows = raw_plan.get('submission', {}).get('plan', [])
+    plan_rows = raw_plan.get("submission", {}).get("plan", [])
     try:
-        metrics = evaluate_travelplanner_plan(
-            sample_data, plan_rows, travelplanner_home=_g_tp_home)
+        metrics = evaluate_travelplanner_plan(sample_data, plan_rows, travelplanner_home=_g_tp_home)
         result = dict(raw_plan)
-        result['metrics'] = metrics.to_summary_dict()
-        result['success'] = metrics.final_pass
+        result["metrics"] = metrics.to_summary_dict()
+        result["success"] = metrics.final_pass
         return input_order, result
     except Exception as exc:
         fallback_metrics = TravelPlannerEvalResult(
@@ -67,9 +70,9 @@ def _eval_one(args: tuple[int, dict, dict]) -> tuple[int, dict]:
             hard_constraint_details=None,
         )
         result = dict(raw_plan)
-        result['metrics'] = fallback_metrics.to_summary_dict()
-        result['success'] = False
-        result['error'] = str(exc)
+        result["metrics"] = fallback_metrics.to_summary_dict()
+        result["success"] = False
+        result["error"] = str(exc)
         return input_order, result
 
 
@@ -77,14 +80,16 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--raw_plans', type=Path, required=True,
-                        help='Path to raw_plans JSON from Phase 1')
-    parser.add_argument('--split', default='test')
-    parser.add_argument('--travelplanner_home', type=str, default=None,
-                        help='Path to TravelPlanner repo (with database/)')
-    parser.add_argument('--workers', type=int, default=None,
-                        help='Number of worker processes (default: cpu_count)')
-    parser.add_argument('--output_dir', type=Path, required=True)
+    parser.add_argument("--raw_plans", type=Path, required=True, help="Path to raw_plans JSON from Phase 1")
+    parser.add_argument("--split", default="test")
+    parser.add_argument(
+        "--travelplanner_home",
+        type=str,
+        default=None,
+        help="Path to TravelPlanner repo (with database/)",
+    )
+    parser.add_argument("--workers", type=int, default=None, help="Number of worker processes (default: cpu_count)")
+    parser.add_argument("--output_dir", type=Path, required=True)
     args = parser.parse_args()
 
     if args.workers is None:
@@ -94,8 +99,8 @@ def main():
     with open(args.raw_plans) as f:
         raw_data = json.load(f)
 
-    raw_plans = raw_data['raw_plans']
-    mode = raw_data['mode']
+    raw_plans = raw_data["raw_plans"]
+    mode = raw_data["mode"]
     total = len(raw_plans)
 
     # Load dataset for evaluation context
@@ -113,10 +118,12 @@ def main():
             sample = {}
         eval_args.append((input_order, plan, sample))
 
-    tp_home = args.travelplanner_home or os.environ.get('TRAVELPLANNER_HOME', '')
+    tp_home = args.travelplanner_home or os.environ.get("TRAVELPLANNER_HOME", "")
 
-    print(f"[{datetime.now():%H:%M:%S}] EVAL-ONLY split={args.split} mode={mode} "
-          f"total={total} workers={args.workers}", flush=True)
+    print(
+        f"[{datetime.now():%H:%M:%S}] EVAL-ONLY split={args.split} mode={mode} total={total} workers={args.workers}",
+        flush=True,
+    )
 
     # Run evaluation with multiprocessing
     results: list[dict | None] = [None] * total
@@ -125,48 +132,49 @@ def main():
     succeeded = 0
     report_every = max(1, total // 20)
 
-    with Pool(processes=args.workers,
-              initializer=_init_evaluator,
-              initargs=(tp_home,)) as pool:
+    with Pool(processes=args.workers, initializer=_init_evaluator, initargs=(tp_home,)) as pool:
         for input_order, result in pool.imap_unordered(_eval_one, eval_args, chunksize=4):
             results[input_order] = result
             completed += 1
-            delivered += int(bool(result.get('metrics', {}).get('delivery')))
-            succeeded += int(bool(result.get('success')))
+            delivered += int(bool(result.get("metrics", {}).get("delivery")))
+            succeeded += int(bool(result.get("success")))
             if completed % report_every == 0 or completed == total:
-                print(f"  [{args.split}/{mode}] eval {completed}/{total} "
-                      f"delivery={delivered} success={succeeded}", flush=True)
+                print(
+                    f"  [{args.split}/{mode}] eval {completed}/{total} delivery={delivered} success={succeeded}",
+                    flush=True,
+                )
 
     ordered_results = [row for row in results if row is not None]
 
     # Build summary
     from bdi_llm.travelplanner.official import summarize_travelplanner_results
+
     summary = summarize_travelplanner_results(ordered_results)
 
     out_dir = args.output_dir.resolve()
     mode_dir = out_dir / args.split / mode
     mode_dir.mkdir(parents=True, exist_ok=True)
 
-    stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    results_path = mode_dir / f'results_travelplanner_{args.split}_{mode}_{stamp}.json'
-    submission_path = mode_dir / f'submission_travelplanner_{args.split}_{mode}_{stamp}.jsonl'
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    results_path = mode_dir / f"results_travelplanner_{args.split}_{mode}_{stamp}.json"
+    submission_path = mode_dir / f"submission_travelplanner_{args.split}_{mode}_{stamp}.jsonl"
 
     results_payload = {
-        'split': args.split,
-        'execution_mode': mode,
-        'results': ordered_results,
-        'summary': summary,
+        "split": args.split,
+        "execution_mode": mode,
+        "results": ordered_results,
+        "summary": summary,
     }
     results_path.write_text(json.dumps(results_payload, indent=2, ensure_ascii=False))
-    with submission_path.open('w', encoding='utf-8') as f:
+    with submission_path.open("w", encoding="utf-8") as f:
         for row in ordered_results:
-            f.write(json.dumps(row.get('submission', {}), ensure_ascii=False) + '\n')
+            f.write(json.dumps(row.get("submission", {}), ensure_ascii=False) + "\n")
 
     print(f"\n✅ Saved {len(ordered_results)} evaluated results → {results_path}")
     print(f"   Summary: {json.dumps(summary, indent=2)}", flush=True)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     try:
         main()
     except Exception:

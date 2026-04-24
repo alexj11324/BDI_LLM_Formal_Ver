@@ -13,16 +13,17 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import yaml
-
 
 # ---------------------------------------------------------------------------
 # PDDL parsing helpers
 # ---------------------------------------------------------------------------
+
 
 def extract_domain_name_from_pddl(pddl_text: str) -> str | None:
     """Extract the domain name from a PDDL ``(define (domain ...))`` header.
@@ -64,7 +65,7 @@ def _extract_parenthesized_expr(block_text: str, keyword: str) -> str:
     close_idx = _find_matching_paren(block_text, open_idx)
     if close_idx is None:
         return ""
-    return block_text[open_idx:close_idx + 1]
+    return block_text[open_idx : close_idx + 1]
 
 
 def _parse_typed_parameters(raw_params: str) -> list[tuple[str, str]]:
@@ -105,10 +106,7 @@ def _extract_literals(expr: str) -> list[str]:
     if not expr:
         return []
 
-    literals = [
-        _normalise_literal(lit)
-        for lit in re.findall(r"\(([^()]+)\)", expr)
-    ]
+    literals = [_normalise_literal(lit) for lit in re.findall(r"\(([^()]+)\)", expr)]
     return [lit for lit in literals if lit and lit.lower() != "and"]
 
 
@@ -117,13 +115,11 @@ def _extract_effect_literals(expr: str) -> tuple[list[str], list[str]]:
     if not expr:
         return [], []
 
-    delete_literals = [
-        _normalise_literal(lit)
-        for lit in re.findall(r"\(not\s+\(([^()]+)\)\)", expr, re.IGNORECASE)
-    ]
+    delete_literals = [_normalise_literal(lit) for lit in re.findall(r"\(not\s+\(([^()]+)\)\)", expr, re.IGNORECASE)]
     positive_expr = re.sub(r"\(not\s+\([^()]+\)\)", "", expr, flags=re.IGNORECASE)
     add_literals = _extract_literals(positive_expr)
     return add_literals, delete_literals
+
 
 def extract_actions_from_pddl(pddl_text: str) -> list[dict[str, Any]]:
     """Extract action schema details from raw PDDL domain text.
@@ -152,7 +148,7 @@ def extract_actions_from_pddl(pddl_text: str) -> list[dict[str, Any]]:
         if block_end is None:
             continue
 
-        block_text = pddl_text[block_start:block_end + 1]
+        block_text = pddl_text[block_start : block_end + 1]
         params_expr = _extract_parenthesized_expr(block_text, "parameters")
         precond_expr = _extract_parenthesized_expr(block_text, "precondition")
         effect_expr = _extract_parenthesized_expr(block_text, "effect")
@@ -353,7 +349,7 @@ def _build_sequential_demo_plan(
     nodes: list[ActionNode] = []
     edges: list[DependencyEdge] = []
 
-    for idx, raw_line in enumerate(plan_text.splitlines(), start=1):
+    for _, raw_line in enumerate(plan_text.splitlines(), start=1):
         line = raw_line.strip()
         if not line:
             continue
@@ -366,8 +362,7 @@ def _build_sequential_demo_plan(
         args = [_decode_planbench_symbol(arg, config) for arg in parts[1:]]
         param_names = schema_by_action.get(action_name.lower(), [])
         params = {
-            param_names[pos] if pos < len(param_names) else f"arg{pos + 1}": value
-            for pos, value in enumerate(args)
+            param_names[pos] if pos < len(param_names) else f"arg{pos + 1}": value for pos, value in enumerate(args)
         }
         node_id = f"s{len(nodes) + 1}"
         nodes.append(
@@ -416,8 +411,7 @@ def _build_planbench_obfuscated_demos(
         return []
 
     action_param_order = {
-        action["name"]: [param_name for param_name, _ptype in action["parameters"]]
-        for action in actions
+        action["name"]: [param_name for param_name, _ptype in action["parameters"]] for action in actions
     }
 
     demos = []
@@ -458,6 +452,7 @@ def _build_planbench_obfuscated_demos(
 # DomainSpec
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class DomainSpec:
     """Immutable specification for a planning domain.
@@ -494,8 +489,7 @@ class DomainSpec:
         if factory is not None:
             return factory()
         raise ValueError(
-            f"Unknown built-in domain '{domain}'. "
-            f"Use one of {sorted(factories)} or DomainSpec.from_pddl()."
+            f"Unknown built-in domain '{domain}'. Use one of {sorted(factories)} or DomainSpec.from_pddl()."
         )
 
     @classmethod
@@ -520,10 +514,16 @@ class DomainSpec:
 
         return cls(
             name="logistics",
-            valid_action_types=frozenset({
-                "load-truck", "unload-truck", "load-airplane",
-                "unload-airplane", "drive-truck", "fly-airplane",
-            }),
+            valid_action_types=frozenset(
+                {
+                    "load-truck",
+                    "unload-truck",
+                    "load-airplane",
+                    "unload-airplane",
+                    "drive-truck",
+                    "fly-airplane",
+                }
+            ),
             required_params={
                 "load-truck": frozenset({"obj", "truck", "loc"}),
                 "unload-truck": frozenset({"obj", "truck", "loc"}),
@@ -585,11 +585,13 @@ class DomainSpec:
 
         demos_loader = None
         if domain_name.startswith("obfuscated_") and _resolve_planbench_prompt_file(domain_name):
-            demos_loader = lambda: _build_planbench_obfuscated_demos(
-                domain_name=domain_name,
-                actions=actions,
-                domain_context=context,
-            )
+
+            def demos_loader():
+                return _build_planbench_obfuscated_demos(
+                    domain_name=domain_name,
+                    actions=actions,
+                    domain_context=context,
+                )
 
         return cls(
             name=domain_name,
@@ -605,6 +607,7 @@ class DomainSpec:
 # ---------------------------------------------------------------------------
 # Demo loader (extracted from BDIPlanner._build_logistics_demos)
 # ---------------------------------------------------------------------------
+
 
 def _build_logistics_demos() -> list:
     """Build few-shot demonstrations for the Logistics domain.

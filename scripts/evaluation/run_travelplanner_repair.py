@@ -13,12 +13,12 @@ from src.bdi_llm.travelplanner.runner import TravelPlannerSetupError
 
 
 def main() -> None:
-    parser = build_split_runner_parser('TravelPlanner BDI-repair runner')
+    parser = build_split_runner_parser("TravelPlanner BDI-repair runner")
     args = parser.parse_args()
-    run_split_from_args(args, fixed_mode='bdi-repair')
+    run_split_from_args(args, fixed_mode="bdi-repair")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     try:
         main()
     except TravelPlannerSetupError as exc:

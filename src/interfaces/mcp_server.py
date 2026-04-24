@@ -170,16 +170,9 @@ def execute_verified_plan(
 
     try:
         result = _execute_command(command_to_execute)
-        return (
-            "Verification PASSED. Command Executed Successfully.\n"
-            f"Output:\n{result.stdout}\n"
-            f"Rationale: {rationale}"
-        )
+        return f"Verification PASSED. Command Executed Successfully.\nOutput:\n{result.stdout}\nRationale: {rationale}"
     except subprocess.CalledProcessError as e:
-        return (
-            "Verification PASSED, but Command Execution Failed.\n"
-            f"Error:\n{e.stderr}"
-        )
+        return f"Verification PASSED, but Command Execution Failed.\nError:\n{e.stderr}"
     except Exception as e:
         return f"Verification PASSED, but Command Execution Error: {str(e)}"
 

@@ -19,6 +19,7 @@ Reducer contract (v1):
 
     Pass rates are in [0,1] scale, 3 decimal places, NOT percentages.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -36,6 +37,7 @@ try:
         HARD_KEYS,
         OFFICIAL_DENOMINATORS,
     )
+
     _HAS_METRICS_MODULE = True
 except ImportError:
     COMMONSENSE_KEYS = [
@@ -68,6 +70,7 @@ MODES = ("baseline", "bdi", "bdi-repair")
 # File discovery
 # ---------------------------------------------------------------------------
 
+
 def _locate_latest_results(results_root: Path, mode: str) -> Path:
     """Return the most-recently-modified results JSON for the given mode."""
     mode_dir = results_root / "validation" / mode
@@ -83,6 +86,7 @@ def _locate_latest_results(results_root: Path, mode: str) -> Path:
 # ---------------------------------------------------------------------------
 # Reducer (v1)
 # ---------------------------------------------------------------------------
+
 
 def _reduce_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
     """Compute macro pass rates from a list of per-instance metric dicts.
@@ -201,6 +205,7 @@ def _assert_expected_samples(all_rows: dict[str, list[dict[str, Any]]]) -> None:
 # LaTeX rendering
 # ---------------------------------------------------------------------------
 
+
 def _fmt(value: float) -> str:
     """Format a [0,1] pass rate to 3 decimal places."""
     return f"{value:.3f}"
@@ -212,6 +217,7 @@ def _render_latex(
     sample_count: int,
 ) -> str:
     """Render the two-section Table 3 LaTeX fragment."""
+
     def _fmt_boldmax(values: list[float], value: float) -> str:
         max_v = max(values)
         return f"\\textbf{{{_fmt(value)}}}" if value == max_v else _fmt(value)
@@ -237,9 +243,9 @@ def _render_latex(
         r"Metric & Baseline & BDI & BDI-Repair \\",
         r"\midrule",
         f"Commonsense Pass & "
-        f"{_fmt_boldmax([b_no['commonsense_pass_rate'], d_no['commonsense_pass_rate'], r_no['commonsense_pass_rate']] , b_no['commonsense_pass_rate'])} & "
-        f"{_fmt_boldmax([b_no['commonsense_pass_rate'], d_no['commonsense_pass_rate'], r_no['commonsense_pass_rate']] , d_no['commonsense_pass_rate'])} & "
-        f"{_fmt_boldmax([b_no['commonsense_pass_rate'], d_no['commonsense_pass_rate'], r_no['commonsense_pass_rate']] , r_no['commonsense_pass_rate'])} \\\\",
+        f"{_fmt_boldmax([b_no['commonsense_pass_rate'], d_no['commonsense_pass_rate'], r_no['commonsense_pass_rate']], b_no['commonsense_pass_rate'])} & "
+        f"{_fmt_boldmax([b_no['commonsense_pass_rate'], d_no['commonsense_pass_rate'], r_no['commonsense_pass_rate']], d_no['commonsense_pass_rate'])} & "
+        f"{_fmt_boldmax([b_no['commonsense_pass_rate'], d_no['commonsense_pass_rate'], r_no['commonsense_pass_rate']], r_no['commonsense_pass_rate'])} \\\\",
         f"Hard Constr.\\ Pass & "
         f"{_fmt_boldmax([b_no['hard_constraint_pass_rate'], d_no['hard_constraint_pass_rate'], r_no['hard_constraint_pass_rate']], b_no['hard_constraint_pass_rate'])} & "
         f"{_fmt_boldmax([b_no['hard_constraint_pass_rate'], d_no['hard_constraint_pass_rate'], r_no['hard_constraint_pass_rate']], d_no['hard_constraint_pass_rate'])} & "
@@ -276,6 +282,7 @@ def _render_latex(
 # Main aggregation logic
 # ---------------------------------------------------------------------------
 
+
 def aggregate(results_root: Path, output_dir: Path, run_tag: str | None) -> None:
     """Discover result files, compute stats, and write all three output files."""
     # 1. Discover and load
@@ -293,9 +300,7 @@ def aggregate(results_root: Path, output_dir: Path, run_tag: str | None) -> None
             {
                 "mode": mode,
                 "path": str(path),
-                "mtime": datetime.fromtimestamp(
-                    path.stat().st_mtime, tz=timezone.utc
-                ).isoformat(),
+                "mtime": datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).isoformat(),
             }
         )
         print(f"[{mode}] Loaded {len(result_rows)} rows from {path.name}")
@@ -308,12 +313,12 @@ def aggregate(results_root: Path, output_dir: Path, run_tag: str | None) -> None
     #    Oracle:     baseline/bdi reuse "metrics"; bdi-repair uses "metrics" (post-oracle)
     non_oracle: dict[str, dict[str, Any]] = {
         "baseline": _build_mode_stats(all_rows["baseline"], "metrics"),
-        "bdi":      _build_mode_stats(all_rows["bdi"],      "metrics"),
+        "bdi": _build_mode_stats(all_rows["bdi"], "metrics"),
         "bdi-repair": _build_mode_stats(all_rows["bdi-repair"], "non_oracle_metrics"),
     }
     oracle: dict[str, dict[str, Any]] = {
         "baseline": _build_mode_stats(all_rows["baseline"], "metrics"),
-        "bdi":      _build_mode_stats(all_rows["bdi"],      "metrics"),
+        "bdi": _build_mode_stats(all_rows["bdi"], "metrics"),
         "bdi-repair": _build_mode_stats(all_rows["bdi-repair"], "metrics"),
     }
 
@@ -352,10 +357,9 @@ def aggregate(results_root: Path, output_dir: Path, run_tag: str | None) -> None
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def _build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        description="Aggregate TravelPlanner validation results into paper-ready tables."
-    )
+    parser = argparse.ArgumentParser(description="Aggregate TravelPlanner validation results into paper-ready tables.")
     parser.add_argument(
         "--results_root",
         required=True,

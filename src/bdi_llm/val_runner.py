@@ -35,6 +35,7 @@ _RE_TYPE_ERROR = re.compile(r"Type error: (.+)")
 # Temporary plan-file helpers
 # ---------------------------------------------------------------------------
 
+
 def create_plan_file(actions: list[str]) -> str:
     """Create a temporary PDDL plan file and return its path.
 
@@ -62,6 +63,7 @@ def create_plan_file(actions: list[str]) -> str:
 # ---------------------------------------------------------------------------
 # VAL execution
 # ---------------------------------------------------------------------------
+
 
 def run_val(
     val_path: str,
@@ -113,9 +115,7 @@ def run_val(
         # "executed but goal not satisfied" as success.
         if not check_goal and not is_valid:
             goal_only_errors = all(
-                "goal not satisfied" in e.lower()
-                or "plan executed but goal" in e.lower()
-                for e in errors
+                "goal not satisfied" in e.lower() or "plan executed but goal" in e.lower() for e in errors
             )
             if goal_only_errors and "Plan executed successfully" in output:
                 return True, []
@@ -130,9 +130,7 @@ def run_val(
 
     except OSError as e:
         if e.errno == 8:
-            return False, [
-                f"VAL executable incompatible with current OS (Exec format error): {val_path}"
-            ]
+            return False, [f"VAL executable incompatible with current OS (Exec format error): {val_path}"]
         return False, [f"VAL execution error (OSError): {str(e)}"]
 
     except Exception as e:
@@ -147,6 +145,7 @@ def run_val(
 # VAL output parsing
 # ---------------------------------------------------------------------------
 
+
 def parse_val_output(output: str, verbose: bool) -> tuple[bool, list[str]]:
     """Parse VAL validator output (with ``-v`` verbose flag).
 
@@ -160,11 +159,7 @@ def parse_val_output(output: str, verbose: bool) -> tuple[bool, list[str]]:
     """
     errors: list[str] = []
 
-    if (
-        "Plan executed successfully" in output
-        and "Goal not satisfied" not in output
-        and "Plan invalid" not in output
-    ):
+    if "Plan executed successfully" in output and "Goal not satisfied" not in output and "Plan invalid" not in output:
         return True, []
 
     if "Goal not satisfied" in output or "Plan invalid" in output:

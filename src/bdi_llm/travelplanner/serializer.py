@@ -2,9 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..planning_task import PlanSerializer, PlanningTask
+from ..planning_task import PlanningTask, PlanSerializer
 from .schemas import TravelDayPlan, TravelPlannerItinerary
-
 
 PLACEHOLDER_CITY = "You don't need to fill in the information for this or later days."
 _PLACEHOLDER_CITY = PLACEHOLDER_CITY
@@ -14,7 +13,7 @@ class TravelPlannerPlanSerializer(PlanSerializer):
     """Convert internal itinerary schema into official TravelPlanner submission rows."""
 
     def from_bdi_plan(self, plan: TravelPlannerItinerary, task: PlanningTask) -> list[dict[str, Any]]:
-        expected_days = int(task.metadata.get('days') or len(plan.plan) or 0)
+        expected_days = int(task.metadata.get("days") or len(plan.plan) or 0)
         rows = sorted(plan.plan, key=lambda day: day.day)
         if expected_days <= 0:
             expected_days = len(rows)
@@ -24,26 +23,26 @@ class TravelPlannerPlanSerializer(PlanSerializer):
             if index <= len(rows):
                 current = rows[index - 1]
                 if current.day != index:
-                    current = current.model_copy(update={'day': index})
+                    current = current.model_copy(update={"day": index})
             else:
                 current = TravelDayPlan(
                     day=index,
                     current_city=_PLACEHOLDER_CITY,
-                    transportation='-',
-                    breakfast='-',
-                    attraction='-',
-                    lunch='-',
-                    dinner='-',
-                    accommodation='-',
+                    transportation="-",
+                    breakfast="-",
+                    attraction="-",
+                    lunch="-",
+                    dinner="-",
+                    accommodation="-",
                 )
             normalized.append(current)
 
         return [day.to_submission_dict() for day in normalized]
 
     def to_submission_record(self, plan: TravelPlannerItinerary, task: PlanningTask) -> dict[str, Any]:
-        raw_sample = task.metadata.get('raw_sample') or {}
+        raw_sample = task.metadata.get("raw_sample") or {}
         return {
-            'idx': int(raw_sample.get('idx') or task.task_id),
-            'query': raw_sample.get('query') or task.metadata.get('query') or '',
-            'plan': self.from_bdi_plan(plan, task),
+            "idx": int(raw_sample.get("idx") or task.task_id),
+            "query": raw_sample.get("query") or task.metadata.get("query") or "",
+            "plan": self.from_bdi_plan(plan, task),
         }

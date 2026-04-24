@@ -11,6 +11,7 @@ class VerificationResult:
     Separates hard errors (must fix) from warnings (potential issues).
     Hard errors block further verification; warnings pass through to Layer 2 (VAL).
     """
+
     is_valid: bool
     hard_errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
@@ -85,20 +86,13 @@ class PlanVerifier:
         # Check 1: Empty Graph (HARD)
         if graph.number_of_nodes() == 0:
             hard_errors.append("Plan is empty (no actions generated).")
-            return VerificationResult(
-                is_valid=False,
-                hard_errors=hard_errors,
-                warnings=warnings
-            )
+            return VerificationResult(is_valid=False, hard_errors=hard_errors, warnings=warnings)
 
         # Check 2: Connectivity (SOFT → warning only)
         # Disconnected components may be valid parallel/independent subplans.
         # Layer 2 (VAL) will validate actual executability.
         if not nx.is_weakly_connected(graph):
-            warnings.append(
-                "Plan graph has disconnected components - "
-                "may indicate parallel independent subplans"
-            )
+            warnings.append("Plan graph has disconnected components - may indicate parallel independent subplans")
 
         # Check 3: Cycles (HARD)
         # A plan must be a Directed Acyclic Graph (DAG) to have valid execution order.
@@ -117,11 +111,7 @@ class PlanVerifier:
         # guarantees node existence.
 
         is_valid = len(hard_errors) == 0
-        return VerificationResult(
-            is_valid=is_valid,
-            hard_errors=hard_errors,
-            warnings=warnings
-        )
+        return VerificationResult(is_valid=is_valid, hard_errors=hard_errors, warnings=warnings)
 
     @staticmethod
     def topological_sort(graph: nx.DiGraph) -> list[str]:

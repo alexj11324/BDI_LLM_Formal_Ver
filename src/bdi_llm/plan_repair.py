@@ -25,6 +25,7 @@ from .schemas import ActionNode, BDIPlan, DependencyEdge
 @dataclass
 class RepairResult:
     """Result of plan repair attempt"""
+
     success: bool
     repaired_plan: BDIPlan | None
     original_valid: bool
@@ -56,12 +57,14 @@ class PlanRepairer:
         """Append a virtual node only when the ID does not already exist."""
         if any(node.id == node_id for node in nodes):
             return
-        nodes.append(ActionNode(
-            id=node_id,
-            action_type="Virtual",
-            params={},
-            description=description,
-        ))
+        nodes.append(
+            ActionNode(
+                id=node_id,
+                action_type="Virtual",
+                params={},
+                description=description,
+            )
+        )
 
     @classmethod
     def repair(cls, plan: BDIPlan) -> RepairResult:
@@ -81,23 +84,16 @@ class PlanRepairer:
 
         # Check if already valid
         from .verifier import PlanVerifier
+
         result = PlanVerifier.verify(G)
         is_valid = result.is_valid
         verify_errors = result.hard_errors
-        has_disconnected_components = (
-            G.number_of_nodes() > 0 and not nx.is_weakly_connected(G)
-        )
+        has_disconnected_components = G.number_of_nodes() > 0 and not nx.is_weakly_connected(G)
 
         # Even when structurally valid, we still repair disconnected components to
         # preserve the historical auto-connect behavior of this module.
         if is_valid and not has_disconnected_components:
-            return RepairResult(
-                success=True,
-                repaired_plan=plan,
-                original_valid=True,
-                repairs_applied=[],
-                errors=[]
-            )
+            return RepairResult(success=True, repaired_plan=plan, original_valid=True, repairs_applied=[], errors=[])
 
         # Attempt repairs
         try:
@@ -137,7 +133,7 @@ class PlanRepairer:
                 repaired_plan=plan if is_valid else None,
                 original_valid=False,
                 repairs_applied=repairs,
-                errors=verify_errors if not is_valid else []
+                errors=verify_errors if not is_valid else [],
             )
 
         except Exception as e:
@@ -146,7 +142,7 @@ class PlanRepairer:
                 repaired_plan=None,
                 original_valid=False,
                 repairs_applied=repairs,
-                errors=[f"Repair failed: {str(e)}"]
+                errors=[f"Repair failed: {str(e)}"],
             )
 
     @classmethod
@@ -197,10 +193,7 @@ class PlanRepairer:
             for root_id in roots_in_component:
                 if root_id == cls.VIRTUAL_START:
                     continue
-                new_edges.append(DependencyEdge(
-                    source=cls.VIRTUAL_START,
-                    target=root_id
-                ))
+                new_edges.append(DependencyEdge(source=cls.VIRTUAL_START, target=root_id))
 
             # Find terminal nodes in this component (no outgoing edges)
             terminals_in_component = []
@@ -212,16 +205,9 @@ class PlanRepairer:
             for terminal_id in terminals_in_component:
                 if terminal_id == cls.VIRTUAL_END:
                     continue
-                new_edges.append(DependencyEdge(
-                    source=terminal_id,
-                    target=cls.VIRTUAL_END
-                ))
+                new_edges.append(DependencyEdge(source=terminal_id, target=cls.VIRTUAL_END))
 
-        return BDIPlan(
-            goal_description=plan.goal_description,
-            nodes=new_nodes,
-            edges=new_edges
-        )
+        return BDIPlan(goal_description=plan.goal_description, nodes=new_nodes, edges=new_edges)
 
     @classmethod
     def _break_cycles(cls, plan: BDIPlan) -> BDIPlan:
@@ -304,16 +290,9 @@ class PlanRepairer:
 
         # Remove the back edges from the plan
         if edges_to_remove:
-            new_edges = [
-                edge for edge in plan.edges
-                if (edge.source, edge.target) not in edges_to_remove
-            ]
+            new_edges = [edge for edge in plan.edges if (edge.source, edge.target) not in edges_to_remove]
 
-            return BDIPlan(
-                goal_description=plan.goal_description,
-                nodes=list(plan.nodes),
-                edges=new_edges
-            )
+            return BDIPlan(goal_description=plan.goal_description, nodes=list(plan.nodes), edges=new_edges)
 
         return plan
 
@@ -343,16 +322,9 @@ class PlanRepairer:
         # Connect START to each root
         for root_id in roots:
             if root_id != cls.VIRTUAL_START:
-                new_edges.append(DependencyEdge(
-                    source=cls.VIRTUAL_START,
-                    target=root_id
-                ))
+                new_edges.append(DependencyEdge(source=cls.VIRTUAL_START, target=root_id))
 
-        return BDIPlan(
-            goal_description=plan.goal_description,
-            nodes=new_nodes,
-            edges=new_edges
-        )
+        return BDIPlan(goal_description=plan.goal_description, nodes=new_nodes, edges=new_edges)
 
     @classmethod
     def _unify_terminals(cls, plan: BDIPlan, terminals: list[str]) -> BDIPlan:
@@ -370,16 +342,9 @@ class PlanRepairer:
         # Connect each terminal to END
         for terminal_id in terminals:
             if terminal_id != cls.VIRTUAL_END:
-                new_edges.append(DependencyEdge(
-                    source=terminal_id,
-                    target=cls.VIRTUAL_END
-                ))
+                new_edges.append(DependencyEdge(source=terminal_id, target=cls.VIRTUAL_END))
 
-        return BDIPlan(
-            goal_description=plan.goal_description,
-            nodes=new_nodes,
-            edges=new_edges
-        )
+        return BDIPlan(goal_description=plan.goal_description, nodes=new_nodes, edges=new_edges)
 
 
 class PlanCanonicalizer:
@@ -416,7 +381,7 @@ class PlanCanonicalizer:
             topo_order = [n.id for n in plan.nodes]
 
         # Create ID mapping
-        id_mapping = {old_id: f"action_{i+1}" for i, old_id in enumerate(topo_order)}
+        id_mapping = {old_id: f"action_{i + 1}" for i, old_id in enumerate(topo_order)}
 
         # Create new nodes with canonical IDs
         node_map = {n.id: n for n in plan.nodes}
@@ -425,12 +390,14 @@ class PlanCanonicalizer:
         for old_id in topo_order:
             if old_id in node_map:
                 old_node = node_map[old_id]
-                new_nodes.append(ActionNode(
-                    id=id_mapping[old_id],
-                    action_type=old_node.action_type,
-                    params=old_node.params,
-                    description=old_node.description
-                ))
+                new_nodes.append(
+                    ActionNode(
+                        id=id_mapping[old_id],
+                        action_type=old_node.action_type,
+                        params=old_node.params,
+                        description=old_node.description,
+                    )
+                )
 
         # Create new edges with canonical IDs
         new_edges = []
@@ -443,17 +410,10 @@ class PlanCanonicalizer:
 
                 edge_key = (new_source, new_target)
                 if edge_key not in seen_edges and new_source != new_target:
-                    new_edges.append(DependencyEdge(
-                        source=new_source,
-                        target=new_target
-                    ))
+                    new_edges.append(DependencyEdge(source=new_source, target=new_target))
                     seen_edges.add(edge_key)
 
-        return BDIPlan(
-            goal_description=plan.goal_description,
-            nodes=new_nodes,
-            edges=new_edges
-        )
+        return BDIPlan(goal_description=plan.goal_description, nodes=new_nodes, edges=new_edges)
 
 
 def repair_and_verify(plan: BDIPlan) -> tuple[BDIPlan, bool, list[str]]:

@@ -4,6 +4,7 @@ Unified tqdm compatibility module.
 Provides a transparent tqdm wrapper that falls back to a lightweight
 dummy implementation when stdout is not a TTY (e.g., nohup, systemd, CI).
 """
+
 import sys
 
 IS_TTY = sys.stdout.isatty()
@@ -11,6 +12,7 @@ IS_TTY = sys.stdout.isatty()
 if IS_TTY:
     from tqdm import tqdm  # noqa: F401
 else:
+
     class tqdm:
         """Minimal tqdm replacement for non-TTY environments."""
 

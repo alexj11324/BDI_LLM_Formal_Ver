@@ -38,12 +38,18 @@ class Config:
     TEMPERATURE = float(os.environ.get("LLM_TEMPERATURE", "0.2"))
     SEED = int(os.environ.get("LLM_SEED", "42"))
     ENABLE_THINKING = os.environ.get("LLM_ENABLE_THINKING", "true").lower() in {
-        "1", "true", "yes", "on"
+        "1",
+        "true",
+        "yes",
+        "on",
     }
     REASONING_EFFORT = os.environ.get("REASONING_EFFORT", "medium")
     TIMEOUT = int(os.environ.get("LLM_TIMEOUT", "600"))
     SAVE_REASONING_TRACE = os.environ.get("SAVE_REASONING_TRACE", "false").lower() in {
-        "1", "true", "yes", "on"
+        "1",
+        "true",
+        "yes",
+        "on",
     }
     REASONING_TRACE_MAX_CHARS = int(os.environ.get("REASONING_TRACE_MAX_CHARS", "8000"))
 
@@ -52,15 +58,11 @@ class Config:
     VERTEXAI_LOCATION = os.environ.get("VERTEXAI_LOCATION", "us-central1")
 
     # API Budget Configuration (for rate limiting and caching)
-    API_BUDGET_MAX_CALLS_PER_INSTANCE = int(
-        os.environ.get("API_BUDGET_MAX_CALLS_PER_INSTANCE", "5")
-    )
+    API_BUDGET_MAX_CALLS_PER_INSTANCE = int(os.environ.get("API_BUDGET_MAX_CALLS_PER_INSTANCE", "5"))
     API_BUDGET_MAX_RPM = int(os.environ.get("API_BUDGET_MAX_RPM", "60"))
     API_BUDGET_MAX_RPH = int(os.environ.get("API_BUDGET_MAX_RPH", "1000"))
     API_BUDGET_CACHE_ENABLED = os.environ.get("API_BUDGET_CACHE_ENABLED", "true").lower() == "true"
-    API_BUDGET_EARLY_EXIT_ENABLED = (
-        os.environ.get("API_BUDGET_EARLY_EXIT_ENABLED", "true").lower() == "true"
-    )
+    API_BUDGET_EARLY_EXIT_ENABLED = os.environ.get("API_BUDGET_EARLY_EXIT_ENABLED", "true").lower() == "true"
 
     # Tools Configuration
     # Auto-detect VAL in PlanBench if not provided in env
@@ -68,11 +70,7 @@ class Config:
     _base_dir = Path(__file__).parent.parent.parent
     _default_val_path = _base_dir / "workspaces/planbench_data/planner_tools/VAL/validate"
 
-    VAL_VALIDATOR_PATH = (
-        os.environ.get("VAL_VALIDATOR_PATH")
-        or os.environ.get("VAL")
-        or str(_default_val_path)
-    )
+    VAL_VALIDATOR_PATH = os.environ.get("VAL_VALIDATOR_PATH") or os.environ.get("VAL") or str(_default_val_path)
 
     @classmethod
     def get_credentials(cls):
@@ -82,8 +80,7 @@ class Config:
             "anthropic": _resolve_key("ANTHROPIC_API_KEY") or cls.ANTHROPIC_API_KEY,
             "google": _resolve_key("GOOGLE_API_KEY") or cls.GOOGLE_API_KEY,
             "google_application_credentials": (
-                os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
-                or cls.GOOGLE_APPLICATION_CREDENTIALS
+                os.environ.get("GOOGLE_APPLICATION_CREDENTIALS") or cls.GOOGLE_APPLICATION_CREDENTIALS
             ),
         }
 

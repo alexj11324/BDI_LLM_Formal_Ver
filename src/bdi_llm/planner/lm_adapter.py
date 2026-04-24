@@ -41,12 +41,21 @@ class ResponsesAPILM(dspy.BaseLM):
     - infiniteai Responses API (streaming SSE)
     - NVIDIA NIM Chat Completions API (with reasoning_content capture)
     """
-    def __init__(self, model, api_key, api_base, reasoning_effort='low',
-                 max_tokens=16000, timeout=600, num_retries=10,
-                 use_chat_completions=False,
-                 chat_template_kwargs: dict[str, Any] | None = None,
-                 seed: int | None = None,
-                 temperature: float = 1.0):
+
+    def __init__(
+        self,
+        model,
+        api_key,
+        api_base,
+        reasoning_effort="low",
+        max_tokens=16000,
+        timeout=600,
+        num_retries=10,
+        use_chat_completions=False,
+        chat_template_kwargs: dict[str, Any] | None = None,
+        seed: int | None = None,
+        temperature: float = 1.0,
+    ):
         """
         Args:
             use_chat_completions: If True, use /v1/chat/completions endpoint (NVIDIA).
@@ -54,12 +63,12 @@ class ResponsesAPILM(dspy.BaseLM):
         """
         super().__init__(
             model=model,
-            model_type='chat',
+            model_type="chat",
             temperature=temperature,
             max_tokens=max_tokens,
         )
         self.api_key = api_key
-        self.api_base = api_base.rstrip('/')
+        self.api_base = api_base.rstrip("/")
         self.reasoning_effort = reasoning_effort
         self.timeout = timeout
         self.num_retries = num_retries
@@ -88,20 +97,20 @@ class ResponsesAPILM(dspy.BaseLM):
         input_items = []
         system_parts = []
         for m in messages:
-            role = m.get('role', 'user')
-            content = m.get('content', '')
+            role = m.get("role", "user")
+            content = m.get("content", "")
             if isinstance(content, str):
-                content_list = [{'type': 'input_text', 'text': content}]
+                content_list = [{"type": "input_text", "text": content}]
             else:
                 content_list = content
-            if role == 'system':
+            if role == "system":
                 for part in content_list:
-                    text = part.get('text', '') if isinstance(part, dict) else str(part)
+                    text = part.get("text", "") if isinstance(part, dict) else str(part)
                     if text:
                         system_parts.append(text)
             else:
-                input_items.append({'type': 'message', 'role': role, 'content': content_list})
-        instructions = '\n\n'.join(system_parts) if system_parts else None
+                input_items.append({"type": "message", "role": role, "content": content_list})
+        instructions = "\n\n".join(system_parts) if system_parts else None
         return input_items, instructions
 
     @staticmethod
@@ -111,7 +120,7 @@ class ResponsesAPILM(dspy.BaseLM):
             return [content]
         if not isinstance(content, list):
             return []
-        return [part['text'] for part in content if isinstance(part, dict) and 'text' in part]
+        return [part["text"] for part in content if isinstance(part, dict) and "text" in part]
 
     def _build_chat_messages(self, messages):
         """Build chat-completions messages and fold system text into first user turn."""
@@ -119,59 +128,59 @@ class ResponsesAPILM(dspy.BaseLM):
         system_content = []
 
         for message in messages:
-            role = message.get('role', 'user')
-            content = message.get('content', '')
-            if role == 'system':
+            role = message.get("role", "user")
+            content = message.get("content", "")
+            if role == "system":
                 system_content.extend(self._extract_system_parts(content))
             else:
-                chat_messages.append({'role': role, 'content': content})
+                chat_messages.append({"role": role, "content": content})
 
         if system_content:
-            system_prefix = '\n\n'.join(system_content)
+            system_prefix = "\n\n".join(system_content)
             if chat_messages:
-                first_content = str(chat_messages[0]['content'])
-                chat_messages[0]['content'] = f"{system_prefix}\n\n{first_content}"
+                first_content = str(chat_messages[0]["content"])
+                chat_messages[0]["content"] = f"{system_prefix}\n\n{first_content}"
             else:
-                chat_messages.append({'role': 'user', 'content': system_prefix})
+                chat_messages.append({"role": "user", "content": system_prefix})
         return chat_messages
 
     @staticmethod
     def _raise_response_error(data):
         """Raise normalized RuntimeError for Responses API failure payload."""
-        error = data.get('error') or {}
+        error = data.get("error") or {}
         if isinstance(error, str):
             raise RuntimeError(f"ResponsesAPI error: {error}")
-        code = error.get('code', 'unknown') if isinstance(error, dict) else 'unknown'
-        message = error.get('message', 'unknown error') if isinstance(error, dict) else str(error)
+        code = error.get("code", "unknown") if isinstance(error, dict) else "unknown"
+        message = error.get("message", "unknown error") if isinstance(error, dict) else str(error)
         raise RuntimeError(f"ResponsesAPI error: {code} - {message}")
 
     def _call_once_chat_completions(self, messages):
         """Call Chat Completions API (NVIDIA style) with streaming."""
-        url = f'{self.api_base}/chat/completions'
+        url = f"{self.api_base}/chat/completions"
         headers = {
-            'Authorization': f'Bearer {self.api_key}',
-            'Content-Type': 'application/json',
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
         }
 
         chat_messages = self._build_chat_messages(messages)
 
         payload = {
-            'model': self.model,
-            'messages': chat_messages,
-            'max_tokens': self.kwargs.get('max_tokens', 16000),
-            'temperature': self.kwargs.get('temperature', 1.0),
-            'top_p': 1.0,
-            'stream': True,
+            "model": self.model,
+            "messages": chat_messages,
+            "max_tokens": self.kwargs.get("max_tokens", 16000),
+            "temperature": self.kwargs.get("temperature", 1.0),
+            "top_p": 1.0,
+            "stream": True,
         }
         if self.chat_template_kwargs:
-            payload['chat_template_kwargs'] = self.chat_template_kwargs
+            payload["chat_template_kwargs"] = self.chat_template_kwargs
         if self.seed is not None:
-            payload['seed'] = self.seed
+            payload["seed"] = self.seed
 
         # For reasoning models, add reasoning_effort if supported
         if self.reasoning_effort:
             # NVIDIA uses reasoning_effort parameter
-            payload['reasoning_effort'] = self.reasoning_effort
+            payload["reasoning_effort"] = self.reasoning_effort
 
         resp = self._session.post(url, json=payload, headers=headers, stream=True, timeout=self.timeout)
         resp.raise_for_status()
@@ -184,10 +193,10 @@ class ResponsesAPILM(dspy.BaseLM):
         for line in resp.iter_lines():
             if not line:
                 continue
-            line = line.decode('utf-8') if isinstance(line, bytes) else line
-            if not line.startswith('data: '):
+            line = line.decode("utf-8") if isinstance(line, bytes) else line
+            if not line.startswith("data: "):
                 continue
-            if line == 'data: [DONE]':
+            if line == "data: [DONE]":
                 break
 
             try:
@@ -195,81 +204,80 @@ class ResponsesAPILM(dspy.BaseLM):
             except json.JSONDecodeError:
                 continue
 
-            choices = data.get('choices', [])
+            choices = data.get("choices", [])
             if not choices:
                 continue
 
-            delta = choices[0].get('delta', {})
+            delta = choices[0].get("delta", {})
 
             # Capture reasoning_content (NVIDIA format)
-            if delta.get('reasoning_content') is not None:
-                reasoning_parts.append(delta['reasoning_content'])
+            if delta.get("reasoning_content") is not None:
+                reasoning_parts.append(delta["reasoning_content"])
 
             # Capture content
-            if delta.get('content'):
-                content_parts.append(delta['content'])
+            if delta.get("content"):
+                content_parts.append(delta["content"])
 
-        self._last_reasoning_content = ''.join(reasoning_parts)
-        self._last_output_text = ''.join(content_parts)
+        self._last_reasoning_content = "".join(reasoning_parts)
+        self._last_output_text = "".join(content_parts)
         return self._last_output_text
 
     def _call_once(self, input_items, instructions=None):
         """Call Responses API (infiniteai style)."""
-        url = f'{self.api_base}/responses'
+        url = f"{self.api_base}/responses"
         headers = {
-            'Authorization': f'Bearer {self.api_key}',
-            'Content-Type': 'application/json',
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
         }
         payload = {
-            'model': self.model,
-            'input': input_items,
-            'reasoning': {'effort': self.reasoning_effort},
-            'max_output_tokens': self.kwargs.get('max_tokens', 16000),
-            'store': False,
-            'stream': False,
+            "model": self.model,
+            "input": input_items,
+            "reasoning": {"effort": self.reasoning_effort},
+            "max_output_tokens": self.kwargs.get("max_tokens", 16000),
+            "store": False,
+            "stream": False,
         }
         if instructions:
-            payload['instructions'] = instructions
+            payload["instructions"] = instructions
         if self.seed is not None:
-            payload['seed'] = self.seed
+            payload["seed"] = self.seed
         self._last_reasoning_content = None
         self._last_output_text = None
-        resp = self._session.post(url, json=payload, headers=headers,
-                                  stream=False, timeout=self.timeout)
+        resp = self._session.post(url, json=payload, headers=headers, stream=False, timeout=self.timeout)
         resp.raise_for_status()
         data = resp.json()
 
         # Check for error in response
-        error_val = data.get('error')
-        if data.get('status') == 'failed' or (error_val is not None and error_val is not False):
+        error_val = data.get("error")
+        if data.get("status") == "failed" or (error_val is not None and error_val is not False):
             self._raise_response_error(data)
 
         # Extract text from response
-        output = data.get('output', [])
+        output = data.get("output", [])
         for item in reversed(output):
-            if item.get('type') == 'message':
-                for part in item.get('content', []):
-                    if part.get('type') == 'output_text':
+            if item.get("type") == "message":
+                for part in item.get("content", []):
+                    if part.get("type") == "output_text":
                         # Responses API doesn't return reasoning separately.
                         self._last_reasoning_content = None
-                        self._last_output_text = part['text']
-                        return part['text']
+                        self._last_output_text = part["text"]
+                        return part["text"]
 
-        if 'response' in data:
-            output = data['response'].get('output', [])
+        if "response" in data:
+            output = data["response"].get("output", [])
             for item in reversed(output):
-                if item.get('type') == 'message':
-                    for part in item.get('content', []):
-                        if part.get('type') == 'output_text':
+                if item.get("type") == "message":
+                    for part in item.get("content", []):
+                        if part.get("type") == "output_text":
                             self._last_reasoning_content = None
-                            self._last_output_text = part['text']
-                            return part['text']
+                            self._last_output_text = part["text"]
+                            return part["text"]
 
-        raise RuntimeError('ResponsesAPILM: no output_text found in response')
+        raise RuntimeError("ResponsesAPILM: no output_text found in response")
 
     def forward(self, prompt=None, messages=None, **kwargs):
         if prompt is not None:
-            messages = [{'role': 'user', 'content': prompt}]
+            messages = [{"role": "user", "content": prompt}]
 
         if self.use_chat_completions:
             # Use Chat Completions API (NVIDIA style)
@@ -280,7 +288,7 @@ class ResponsesAPILM(dspy.BaseLM):
                     return _MockChatCompletion(text, self.model)
                 except Exception as e:
                     last_err = e
-                    time.sleep(2 ** attempt)
+                    time.sleep(2**attempt)
             raise last_err
         else:
             # Use Responses API (infiniteai style)
@@ -292,5 +300,5 @@ class ResponsesAPILM(dspy.BaseLM):
                     return _MockChatCompletion(text, self.model)
                 except Exception as e:
                     last_err = e
-                    time.sleep(2 ** attempt)
+                    time.sleep(2**attempt)
             raise last_err

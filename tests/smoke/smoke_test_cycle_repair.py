@@ -37,8 +37,9 @@ def create_simple_cycle():
         edges=[
             DependencyEdge(source="A", target="B"),
             DependencyEdge(source="B", target="A"),
-        ]
+        ],
     )
+
 
 def create_three_node_cycle():
     """A -> B -> C -> A"""
@@ -53,8 +54,9 @@ def create_three_node_cycle():
             DependencyEdge(source="A", target="B"),
             DependencyEdge(source="B", target="C"),
             DependencyEdge(source="C", target="A"),
-        ]
+        ],
     )
+
 
 def create_four_node_cycle():
     """A -> B -> C -> D -> A"""
@@ -71,8 +73,9 @@ def create_four_node_cycle():
             DependencyEdge(source="B", target="C"),
             DependencyEdge(source="C", target="D"),
             DependencyEdge(source="D", target="A"),
-        ]
+        ],
     )
+
 
 def create_complex_cycle_with_parallel_chain():
     """A -> B -> C -> A with parallel D -> E"""
@@ -90,8 +93,9 @@ def create_complex_cycle_with_parallel_chain():
             DependencyEdge(source="B", target="C"),
             DependencyEdge(source="C", target="A"),
             DependencyEdge(source="D", target="E"),
-        ]
+        ],
     )
+
 
 def create_nested_cycles():
     """A -> B -> C -> A and B -> D -> B (two interlocking cycles)"""
@@ -109,8 +113,9 @@ def create_nested_cycles():
             DependencyEdge(source="C", target="A"),
             DependencyEdge(source="B", target="D"),
             DependencyEdge(source="D", target="B"),
-        ]
+        ],
     )
+
 
 def create_self_loop():
     """A -> A (self-loop)"""
@@ -121,8 +126,9 @@ def create_self_loop():
         ],
         edges=[
             DependencyEdge(source="A", target="A"),
-        ]
+        ],
     )
+
 
 def create_double_self_loop():
     """A -> A and B -> B"""
@@ -135,8 +141,9 @@ def create_double_self_loop():
         edges=[
             DependencyEdge(source="A", target="A"),
             DependencyEdge(source="B", target="B"),
-        ]
+        ],
     )
+
 
 def create_cycle_with_disconnected_component():
     """A -> B -> A (cycle) + C -> D (disconnected)"""
@@ -152,8 +159,9 @@ def create_cycle_with_disconnected_component():
             DependencyEdge(source="A", target="B"),
             DependencyEdge(source="B", target="A"),
             DependencyEdge(source="C", target="D"),
-        ]
+        ],
     )
+
 
 def create_long_cycle():
     """A -> B -> C -> D -> E -> A (5-node cycle)"""
@@ -172,8 +180,9 @@ def create_long_cycle():
             DependencyEdge(source="C", target="D"),
             DependencyEdge(source="D", target="E"),
             DependencyEdge(source="E", target="A"),
-        ]
+        ],
     )
+
 
 def create_multiple_disjoint_cycles():
     """A -> B -> A (cycle 1) + C -> D -> C (cycle 2)"""
@@ -190,8 +199,9 @@ def create_multiple_disjoint_cycles():
             DependencyEdge(source="B", target="A"),
             DependencyEdge(source="C", target="D"),
             DependencyEdge(source="D", target="C"),
-        ]
+        ],
     )
+
 
 def run_smoke_test():
     """
@@ -269,21 +279,16 @@ def run_smoke_test():
     # Improvement target (after cycle repair implementation)
     improvement_target = 50
     if success_rate >= improvement_target:
-        print(
-            f"  [PASS] Improvement target ({improvement_target}%): "
-            f"{success_rate:.1f}% >= {improvement_target}%"
-        )
+        print(f"  [PASS] Improvement target ({improvement_target}%): {success_rate:.1f}% >= {improvement_target}%")
         print("\n  Cycle repair is working effectively!")
     else:
-        print(
-            f"  [INFO] Improvement target ({improvement_target}%): "
-            f"{success_rate:.1f}% < {improvement_target}%"
-        )
+        print(f"  [INFO] Improvement target ({improvement_target}%): {success_rate:.1f}% < {improvement_target}%")
         print("  Cycle repair implementation needed to achieve >50% success rate")
 
     print()
 
     return success_count, total, success_rate
+
 
 if __name__ == "__main__":
     success_count, total, success_rate = run_smoke_test()

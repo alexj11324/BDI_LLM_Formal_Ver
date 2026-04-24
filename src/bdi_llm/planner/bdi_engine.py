@@ -17,10 +17,7 @@ from ..schemas import ActionNode, BDIPlan, DependencyEdge
 from ..verifier import PlanVerifier
 from .dspy_config import configure_dspy
 from .signatures import (
-    GeneratePlan,
-    GeneratePlanDepots,
     GeneratePlanGeneric,
-    GeneratePlanLogistics,
     RepairPlan,
 )
 
@@ -61,6 +58,7 @@ class BDIPlanner(dspy.Module):
             self._domain_spec = domain_spec
         else:
             from .domain_spec import DomainSpec as DS
+
             self._domain_spec = DS.from_name(domain)
 
         self.domain = self._domain_spec.name
@@ -104,11 +102,7 @@ class BDIPlanner(dspy.Module):
             nodes = [ActionNode(**n) for n in nodes_data]
             edges = [DependencyEdge(**e) for e in edges_data]
 
-            plan = BDIPlan(
-                goal_description=demo_data["plan"]["goal_description"],
-                nodes=nodes,
-                edges=edges
-            )
+            plan = BDIPlan(goal_description=demo_data["plan"]["goal_description"], nodes=nodes, edges=edges)
 
             demos.append(
                 dspy.Example(
@@ -126,6 +120,7 @@ class BDIPlanner(dspy.Module):
         Returns:
             (all_valid, error_message) — error_message is empty when valid.
         """
+
         def _normalise_symbol(value: str) -> str:
             return str(value).strip().lower().lstrip("?").replace("_", "-")
 
@@ -156,11 +151,7 @@ class BDIPlanner(dspy.Module):
                 )
 
             elif at in required_params:
-                present = (
-                    {_normalise_symbol(k) for k in node.params.keys()}
-                    if node.params
-                    else set()
-                )
+                present = {_normalise_symbol(k) for k in node.params.keys()} if node.params else set()
                 missing = required_params[at] - present
                 if missing:
                     missing_params.append(
@@ -288,7 +279,9 @@ class BDIPlanner(dspy.Module):
                     "Pass domain_context= explicitly or use DomainSpec.from_pddl()."
                 )
             pred = self._generate_program(
-                beliefs=beliefs, desire=desire, domain_context=ctx,
+                beliefs=beliefs,
+                desire=desire,
+                domain_context=ctx,
             )
         else:
             pred = self._generate_program(beliefs=beliefs, desire=desire)
@@ -307,7 +300,9 @@ class BDIPlanner(dspy.Module):
     ) -> dspy.Prediction:
         # Generate the plan via unified wrapper
         pred = self.generate_plan(
-            beliefs=beliefs, desire=desire, domain_context=domain_context,
+            beliefs=beliefs,
+            desire=desire,
+            domain_context=domain_context,
         )
         self.record_generation_trace(pred)
 
@@ -333,6 +328,7 @@ class BDIPlanner(dspy.Module):
             # Try auto-repair if enabled and plan is invalid
             if not is_valid and self.auto_repair:
                 from ..plan_repair import repair_and_verify
+
                 repaired_plan, repaired_valid, messages = repair_and_verify(plan_obj)
 
                 if repaired_valid:
@@ -355,9 +351,7 @@ class BDIPlanner(dspy.Module):
                 pred.plan = plan_obj
         except Exception as e:
             # Handle potential pydantic validation errors or parsing issues
-            raise ValueError(
-                f"Failed to generate a valid plan object. Error: {str(e)}"
-            ) from e
+            raise ValueError(f"Failed to generate a valid plan object. Error: {str(e)}") from e
 
         return pred
 
@@ -471,7 +465,7 @@ class BDIPlanner(dspy.Module):
         error_types = []
         for err in val_errors[:5]:  # Limit to first 5 errors
             # Normalize: remove specific object names, keep error type
-            normalized = err.lower().split(':')[0][:50]  # First 50 chars of error type
+            normalized = err.lower().split(":")[0][:50]  # First 50 chars of error type
             error_types.append(normalized)
 
         # Create signature
@@ -519,9 +513,7 @@ class BDIPlanner(dspy.Module):
 
         # Compute signatures for caching and early exit
         error_signature = self._compute_error_signature(val_errors)
-        plan_hash = hashlib.sha256(
-            json.dumps(previous_plan_actions, sort_keys=True).encode()
-        ).hexdigest()[:16]
+        plan_hash = hashlib.sha256(json.dumps(previous_plan_actions, sort_keys=True).encode()).hexdigest()[:16]
 
         # EARLY EXIT CHECK: Detect repeated failure patterns
         if instance_id and allow_early_exit and budget.config.early_exit_enabled:
@@ -550,6 +542,7 @@ class BDIPlanner(dspy.Module):
         if not allowed:
             logger.info(f"Rate limited, waiting {wait_time:.1f}s before repair")
             import time as time_module
+
             time_module.sleep(wait_time + 0.1)
 
         # CHECK BACKOFF: Wait if endpoint in backoff
@@ -557,6 +550,7 @@ class BDIPlanner(dspy.Module):
         if in_backoff:
             logger.info(f"Backoff active, waiting {backoff_time:.1f}s")
             import time as time_module
+
             time_module.sleep(backoff_time + 0.1)
 
         # RECORD REQUEST for rate limiting
@@ -587,6 +581,7 @@ class BDIPlanner(dspy.Module):
             constraints_ok, constraint_msg = self._validate_action_constraints(plan_obj)
             if not constraints_ok:
                 import logging as _log
+
                 _log.getLogger(__name__).warning(
                     "Repaired plan has action constraint warnings (proceeding): %s",
                     constraint_msg[:200],
@@ -606,18 +601,14 @@ class BDIPlanner(dspy.Module):
                     errors = []
 
             if not is_valid:
-                raise ValueError(
-                    f"Repaired plan is structurally invalid. Errors: {'; '.join(errors)}"
-                )
+                raise ValueError(f"Repaired plan is structurally invalid. Errors: {'; '.join(errors)}")
 
             # CACHE SUCCESSFUL RESULT
             cache.put(cache_key_domain, error_signature, plan_hash, pred)
 
         except Exception as e:
             # Don't cache failures
-            raise ValueError(
-                f"Failed to generate repaired plan. Error: {str(e)}"
-            ) from e
+            raise ValueError(f"Failed to generate repaired plan. Error: {str(e)}") from e
 
         return pred
 
@@ -670,6 +661,7 @@ def main():
 
     except ValueError as e:
         print(f"\n❌ Planning Failed: {e}")
+
 
 if __name__ == "__main__":
     main()

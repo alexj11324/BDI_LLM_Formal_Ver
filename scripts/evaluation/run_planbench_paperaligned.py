@@ -20,41 +20,39 @@ Author: BDI-LLM Research
 Date: 2026-02-03
 """
 
-import sys
-import os
-import json
-import re
-import time
 import argparse
-from pathlib import Path
-from typing import Any, Dict, List, Tuple, Optional
-from datetime import datetime
-from tqdm import tqdm
+import json
+import os
+import re
+import sys
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
+from pathlib import Path
 from threading import Lock
 
 import dspy
+from tqdm import tqdm
 
-from bdi_llm.planner import BDIPlanner, configure_dspy
-from bdi_llm.planner.domain_spec import (
-    DomainSpec,
-    decode_planbench_literals,
-    extract_actions_from_pddl,
-    load_planbench_domain_intro,
-    encode_planbench_symbol,
-)
 from bdi_llm.config import Config
+from bdi_llm.plan_repair import repair_and_verify
 from bdi_llm.planbench_eval_runtime import (
     EvalRuntimeConfig,
     build_run_manifest,
     normalize_eval_runtime,
     write_json_atomic,
 )
-from bdi_llm.schemas import BDIPlan
+from bdi_llm.planner import BDIPlanner, configure_dspy
+from bdi_llm.planner.domain_spec import (
+    DomainSpec,
+    decode_planbench_literals,
+    encode_planbench_symbol,
+    extract_actions_from_pddl,
+    load_planbench_domain_intro,
+)
 from bdi_llm.planning_task import PDDLPlanSerializer, PlanningTask
+from bdi_llm.schemas import BDIPlan
 from bdi_llm.verifier import PlanVerifier
-from bdi_llm.plan_repair import repair_and_verify, PlanRepairer
-import networkx as nx
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PLANBENCH_ROOT = PROJECT_ROOT / "workspaces" / "planbench_data" / "plan-bench"
@@ -102,7 +100,7 @@ class GenerateBaselineActionSequence(dspy.Signature):
 
 def resolve_execution_mode(execution_mode: str | None = None) -> str:
     """Resolve execution stage from explicit arg or environment."""
-    mode = (execution_mode or os.environ.get("AGENT_EXECUTION_MODE") or "bdi-repair")
+    mode = execution_mode or os.environ.get("AGENT_EXECUTION_MODE") or "bdi-repair"
     mode = str(mode).strip().lower()
     if mode not in EXECUTION_STAGES:
         raise ValueError(f"Unsupported execution mode: {mode}")
@@ -135,50 +133,80 @@ def stage_result_key(execution_mode: str) -> str:
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="PlanBench Full Benchmark Evaluation")
-    parser.add_argument("--domain", type=str,
-                       choices=[
-                           "blocksworld",
-                           "logistics",
-                           "depots",
-                           "obfuscated_deceptive_logistics",
-                           "obfuscated_randomized_logistics",
-                       ],
-                       help="Domain to evaluate")
-    parser.add_argument("--all_domains", action="store_true",
-                       help="Evaluate all domains")
-    parser.add_argument("--max_instances", type=int, default=None,
-                       help="Maximum number of instances per domain (default: all)")
-    parser.add_argument("--resume", type=str, default=None,
-                       help="Resume from checkpoint file")
-    parser.add_argument("--output_dir", type=str, default="runs/planbench_results",
-                       help="Output directory for results")
-    parser.add_argument("--parallel", action="store_true",
-                       help="Enable parallel execution")
-    parser.add_argument("--workers", type=int, default=200,
-                       help="Number of parallel workers (default: 200)")
-    parser.add_argument("--instances", type=str, default=None,
-                       help="File containing list of instance paths to evaluate (one per line)")
-    parser.add_argument("--checkpoint_every", type=int, default=1,
-                       help="Save checkpoint every N completed instances (default: 1)")
-    parser.add_argument("--execution_mode", type=str, default="bdi-repair",
-                       choices=["baseline", "bdi", "bdi-repair"],
-                       help="Run pipeline up to this checkpoint (default: bdi-repair)")
-    parser.add_argument("--disable_repair_cache", action="store_true",
-                       help="Disable the process-global repair cache for this run")
-    parser.add_argument("--disable_early_exit", action="store_true",
-                       help="Disable early-exit heuristics for this run")
-    parser.add_argument("--deterministic", action="store_true",
-                       help="Force a deterministic single-worker run with caches disabled")
-    parser.add_argument("--manifest_out", type=str, default=None,
-                       help="Optional path for a per-domain run manifest JSON")
+    parser.add_argument(
+        "--domain",
+        type=str,
+        choices=[
+            "blocksworld",
+            "logistics",
+            "depots",
+            "obfuscated_deceptive_logistics",
+            "obfuscated_randomized_logistics",
+        ],
+        help="Domain to evaluate",
+    )
+    parser.add_argument("--all_domains", action="store_true", help="Evaluate all domains")
+    parser.add_argument(
+        "--max_instances",
+        type=int,
+        default=None,
+        help="Maximum number of instances per domain (default: all)",
+    )
+    parser.add_argument("--resume", type=str, default=None, help="Resume from checkpoint file")
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        default="runs/planbench_results",
+        help="Output directory for results",
+    )
+    parser.add_argument("--parallel", action="store_true", help="Enable parallel execution")
+    parser.add_argument("--workers", type=int, default=200, help="Number of parallel workers (default: 200)")
+    parser.add_argument(
+        "--instances",
+        type=str,
+        default=None,
+        help="File containing list of instance paths to evaluate (one per line)",
+    )
+    parser.add_argument(
+        "--checkpoint_every",
+        type=int,
+        default=1,
+        help="Save checkpoint every N completed instances (default: 1)",
+    )
+    parser.add_argument(
+        "--execution_mode",
+        type=str,
+        default="bdi-repair",
+        choices=["baseline", "bdi", "bdi-repair"],
+        help="Run pipeline up to this checkpoint (default: bdi-repair)",
+    )
+    parser.add_argument(
+        "--disable_repair_cache",
+        action="store_true",
+        help="Disable the process-global repair cache for this run",
+    )
+    parser.add_argument(
+        "--disable_early_exit",
+        action="store_true",
+        help="Disable early-exit heuristics for this run",
+    )
+    parser.add_argument(
+        "--deterministic",
+        action="store_true",
+        help="Force a deterministic single-worker run with caches disabled",
+    )
+    parser.add_argument(
+        "--manifest_out",
+        type=str,
+        default=None,
+        help="Optional path for a per-domain run manifest JSON",
+    )
     return parser
 
 
 def apply_runtime_controls(runtime_config: EvalRuntimeConfig) -> None:
     os.environ["BDI_REPAIR_CACHE_ENABLED"] = "false" if runtime_config.disable_repair_cache else "true"
-    os.environ["API_BUDGET_EARLY_EXIT_ENABLED"] = (
-        "false" if runtime_config.disable_early_exit else "true"
-    )
+    os.environ["API_BUDGET_EARLY_EXIT_ENABLED"] = "false" if runtime_config.disable_early_exit else "true"
 
     Config.API_BUDGET_EARLY_EXIT_ENABLED = not runtime_config.disable_early_exit
     if runtime_config.deterministic:
@@ -199,13 +227,15 @@ def resolve_manifest_path(
     target = Path(manifest_out)
     suffix = "".join(target.suffixes)
     if suffix:
-        stem = target.name[:-len(suffix)]
+        stem = target.name[: -len(suffix)]
         return str(target.with_name(f"{stem}_{domain}{suffix}"))
     return str(target.with_name(f"{target.name}_{domain}"))
+
 
 # MLflow integration for experiment tracking
 try:
     import mlflow
+
     MLFLOW_AVAILABLE = True
 except ImportError:
     MLFLOW_AVAILABLE = False
@@ -216,27 +246,28 @@ except ImportError:
 # PDDL PARSING
 # ============================================================================
 
+
 def parse_pddl_problem(pddl_file: str) -> dict:
     """Parse PDDL problem file"""
-    with open(pddl_file, 'r') as f:
+    with open(pddl_file) as f:
         content = f.read()
 
     # Extract problem name
-    problem_match = re.search(r'\(define\s+\(problem\s+(.*?)\)', content)
+    problem_match = re.search(r"\(define\s+\(problem\s+(.*?)\)", content)
     problem_name = problem_match.group(1) if problem_match else "unknown"
 
     # Extract domain name - NEW: Critical for resolving the correct domain file
-    domain_match = re.search(r'\(:domain\s+(.*?)\)', content)
+    domain_match = re.search(r"\(:domain\s+(.*?)\)", content)
     domain_name = domain_match.group(1).strip() if domain_match else "blocksworld"
 
     # Extract objects (supports typed PDDL format: "obj1 obj2 - Type")
-    objects_match = re.search(r':objects\s+(.*?)\)', content, re.DOTALL)
+    objects_match = re.search(r":objects\s+(.*?)\)", content, re.DOTALL)
     objects = []
     typed_objects = {}  # object_name -> type_name
     if objects_match:
         objects_text = objects_match.group(1)
         # Parse typed object declarations: "obj1 obj2 - Type"
-        typed_pattern = re.findall(r'([\w\s]+?)\s*-\s*(\w+)', objects_text)
+        typed_pattern = re.findall(r"([\w\s]+?)\s*-\s*(\w+)", objects_text)
         if typed_pattern:
             for names_str, type_name in typed_pattern:
                 for name in names_str.split():
@@ -249,32 +280,27 @@ def parse_pddl_problem(pddl_file: str) -> dict:
             objects = objects_text.split()
 
     # Extract init state
-    init_match = re.search(r':init\s+(.*?)\(:goal', content, re.DOTALL)
+    init_match = re.search(r":init\s+(.*?)\(:goal", content, re.DOTALL)
     if init_match:
         init_text = init_match.group(1)
-        init_predicates = re.findall(r'\((.*?)\)', init_text)
+        init_predicates = re.findall(r"\((.*?)\)", init_text)
     else:
         init_predicates = []
 
     # Extract goal
-    goal_match = re.search(r':goal\s*\(and\s*((?:\([^)]+\)\s*)+)\)', content, re.DOTALL)
+    goal_match = re.search(r":goal\s*\(and\s*((?:\([^)]+\)\s*)+)\)", content, re.DOTALL)
     if goal_match:
         goal_content = goal_match.group(1)
-        goal_predicates = re.findall(r'\(([^)]+)\)', goal_content)
+        goal_predicates = re.findall(r"\(([^)]+)\)", goal_content)
     else:
-        single_goal_match = re.search(r':goal\s*(\([^)]+\))', content, re.DOTALL)
+        single_goal_match = re.search(r":goal\s*(\([^)]+\))", content, re.DOTALL)
         if single_goal_match:
-            goal_predicates = re.findall(r'\(([^)]+)\)', single_goal_match.group(1))
+            goal_predicates = re.findall(r"\(([^)]+)\)", single_goal_match.group(1))
         else:
             goal_predicates = []
 
     # Phase 1: Extract init_state for physics validation
-    init_state = {
-        'on_table': [],
-        'on': [],
-        'clear': [],
-        'holding': None
-    }
+    init_state = {"on_table": [], "on": [], "clear": [], "holding": None}
 
     for pred in init_predicates:
         parts = pred.split()
@@ -283,26 +309,27 @@ def parse_pddl_problem(pddl_file: str) -> dict:
 
         pred_name = parts[0]
 
-        if pred_name == 'ontable' and len(parts) >= 2:
-            init_state['on_table'].append(parts[1])
-        elif pred_name == 'clear' and len(parts) >= 2:
-            init_state['clear'].append(parts[1])
-        elif pred_name == 'on' and len(parts) >= 3:
-            init_state['on'].append((parts[1], parts[2]))
-        elif pred_name == 'holding' and len(parts) >= 2:
-            init_state['holding'] = parts[1]
-        elif pred_name == 'handempty':
-            init_state['holding'] = None
+        if pred_name == "ontable" and len(parts) >= 2:
+            init_state["on_table"].append(parts[1])
+        elif pred_name == "clear" and len(parts) >= 2:
+            init_state["clear"].append(parts[1])
+        elif pred_name == "on" and len(parts) >= 3:
+            init_state["on"].append((parts[1], parts[2]))
+        elif pred_name == "holding" and len(parts) >= 2:
+            init_state["holding"] = parts[1]
+        elif pred_name == "handempty":
+            init_state["holding"] = None
 
     return {
-        'problem_name': problem_name,
-        'domain_name': domain_name,  # NEW: For resolving domain file
-        'objects': objects,
-        'typed_objects': typed_objects,  # NEW: object_name -> type_name mapping
-        'init': init_predicates,
-        'goal': goal_predicates,
-        'init_state': init_state  # NEW: For physics validation
+        "problem_name": problem_name,
+        "domain_name": domain_name,  # NEW: For resolving domain file
+        "objects": objects,
+        "typed_objects": typed_objects,  # NEW: object_name -> type_name mapping
+        "init": init_predicates,
+        "goal": goal_predicates,
+        "init_state": init_state,  # NEW: For physics validation
     }
+
 
 def resolve_domain_file(domain_name: str, base_path: str = None) -> str:
     """Resolve the correct PDDL domain file path based on domain name.
@@ -349,7 +376,8 @@ def resolve_domain_file(domain_name: str, base_path: str = None) -> str:
 
     return f"{base_path}/pddlgenerators/blocksworld/domain.pddl"
 
-def pddl_to_natural_language(pddl_data: dict, domain: str = "blocksworld") -> Tuple[str, str]:
+
+def pddl_to_natural_language(pddl_data: dict, domain: str = "blocksworld") -> tuple[str, str]:
     """Convert PDDL to natural language (domain-specific)"""
 
     domain_intro = load_planbench_domain_intro(domain)
@@ -367,7 +395,7 @@ def pddl_to_natural_language(pddl_data: dict, domain: str = "blocksworld") -> Tu
         return pddl_to_nl_generic(pddl_data)
 
 
-def _natural_predicate_list(predicates: List[str]) -> str:
+def _natural_predicate_list(predicates: list[str]) -> str:
     if not predicates:
         return "nothing"
     if len(predicates) == 1:
@@ -377,29 +405,27 @@ def _natural_predicate_list(predicates: List[str]) -> str:
     return ", ".join(predicates[:-1]) + f" and {predicates[-1]}"
 
 
-def pddl_to_nl_planbench_style(pddl_data: dict, domain_intro: str) -> Tuple[str, str]:
+def pddl_to_nl_planbench_style(pddl_data: dict, domain_intro: str) -> tuple[str, str]:
     """Use the same domain-intro framing style as PlanBench prompt generation."""
-    domain_name = str(pddl_data.get('domain_name', '')).strip()
-    init_preds = decode_planbench_literals(domain_name, pddl_data.get('init', []))
-    goal_preds = decode_planbench_literals(domain_name, pddl_data.get('goal', []))
+    domain_name = str(pddl_data.get("domain_name", "")).strip()
+    init_preds = decode_planbench_literals(domain_name, pddl_data.get("init", []))
+    goal_preds = decode_planbench_literals(domain_name, pddl_data.get("goal", []))
     init_text = _natural_predicate_list(init_preds)
     goal_text = _natural_predicate_list(goal_preds)
 
-    beliefs = (
-        f"{domain_intro.strip()}\n\n"
-        f"As initial conditions I have that, {init_text}."
-    )
+    beliefs = f"{domain_intro.strip()}\n\nAs initial conditions I have that, {init_text}."
     desire = (
         f"My goal is to have that {goal_text}.\n\n"
         "Generate a sequential connected plan using only the available actions."
     )
     return beliefs, desire
 
-def pddl_to_nl_blocksworld(pddl_data: dict) -> Tuple[str, str]:
+
+def pddl_to_nl_blocksworld(pddl_data: dict) -> tuple[str, str]:
     """Enhanced Blocksworld-specific conversion with clearer state description"""
-    objects = pddl_data['objects']
-    init = pddl_data['init']
-    goal = pddl_data['goal']
+    objects = pddl_data["objects"]
+    init = pddl_data["init"]
+    goal = pddl_data["goal"]
 
     # Parse init state in detail
     on_table = []
@@ -411,30 +437,30 @@ def pddl_to_nl_blocksworld(pddl_data: dict) -> Tuple[str, str]:
     goal_pairs = set()
     for pred in goal:
         parts = pred.split()
-        if parts[0] == 'on' and len(parts) >= 3:
+        if parts[0] == "on" and len(parts) >= 3:
             goal_pairs.add((parts[1], parts[2]))
 
     # Identify goal tops (any block that is a 'top' in a goal pair)
     # If a block is NOT in this set, it should be on the table in the goal state.
-    goal_tops = {t for t, b in goal_pairs}
+    {t for t, b in goal_pairs}
 
     for pred in init:
         parts = pred.split()
-        if parts[0] == 'ontable':
+        if parts[0] == "ontable":
             on_table.append(parts[1])
-        elif parts[0] == 'clear':
+        elif parts[0] == "clear":
             clear_blocks.append(parts[1])
-        elif parts[0] == 'on' and len(parts) >= 3:
+        elif parts[0] == "on" and len(parts) >= 3:
             stacks[parts[1]] = parts[2]
-        elif parts[0] == 'handempty':
+        elif parts[0] == "handempty":
             hand_empty = True
-        elif parts[0] == 'holding':
+        elif parts[0] == "holding":
             hand_empty = False
 
     # Build beliefs with detailed state description
     beliefs_parts = []
-    beliefs_parts.append(f"BLOCKSWORLD DOMAIN")
-    beliefs_parts.append(f"\n=== CURRENT STATE ===")
+    beliefs_parts.append("BLOCKSWORLD DOMAIN")
+    beliefs_parts.append("\n=== CURRENT STATE ===")
     beliefs_parts.append(f"Available blocks ({len(objects)}): {', '.join(sorted(objects))}")
 
     # Describe stacks (what's on what) - ENHANCED
@@ -443,9 +469,9 @@ def pddl_to_nl_blocksworld(pddl_data: dict) -> Tuple[str, str]:
         for top, bottom in sorted(stacks.items()):
             stack_descs.append(f"{top} is on top of {bottom}")
         beliefs_parts.append(f"Current stacks: {'; '.join(stack_descs)}")
-        beliefs_parts.append(f"⚠️  IMPORTANT: These blocks are STACKED. To move them, you MUST unstack first!")
+        beliefs_parts.append("⚠️  IMPORTANT: These blocks are STACKED. To move them, you MUST unstack first!")
     else:
-        beliefs_parts.append(f"Current stacks: None (all blocks are on table)")
+        beliefs_parts.append("Current stacks: None (all blocks are on table)")
 
     # Describe blocks on table
     if on_table:
@@ -457,7 +483,7 @@ def pddl_to_nl_blocksworld(pddl_data: dict) -> Tuple[str, str]:
     # Hand state
     beliefs_parts.append(f"Hand: {'empty' if hand_empty else 'holding something'}")
 
-    beliefs_parts.append(f"\n=== CRITICAL RULES FOR INITIAL STACKS ===")
+    beliefs_parts.append("\n=== CRITICAL RULES FOR INITIAL STACKS ===")
     beliefs_parts.append("⚠️  If a block is ON another block in the initial state:")
     beliefs_parts.append("   1. You CANNOT pick-up that block directly")
     beliefs_parts.append("   2. You MUST use 'unstack X Y' to remove X from Y first")
@@ -468,20 +494,20 @@ def pddl_to_nl_blocksworld(pddl_data: dict) -> Tuple[str, str]:
     beliefs_parts.append("   ✓ Correct: unstack B A → put-down B (or stack B somewhere)")
     beliefs_parts.append("   ✗ Wrong: pick-up B (this will FAIL - B is not on table!)")
 
-    beliefs_parts.append(f"\n=== PHYSICS CONSTRAINTS ===")
+    beliefs_parts.append("\n=== PHYSICS CONSTRAINTS ===")
     beliefs_parts.append("1. You can only hold ONE block at a time")
     beliefs_parts.append("2. You can only pick up blocks that are CLEAR (nothing on top)")
     beliefs_parts.append("3. You can only stack on blocks that are CLEAR")
     beliefs_parts.append("4. pick-up ONLY works for blocks ON TABLE")
     beliefs_parts.append("5. unstack ONLY works for blocks ON OTHER BLOCKS")
 
-    beliefs_parts.append(f"\n=== AVAILABLE ACTIONS ===")
+    beliefs_parts.append("\n=== AVAILABLE ACTIONS ===")
     beliefs_parts.append("- pick-up X: Pick up block X from TABLE (X must be clear and ON TABLE)")
     beliefs_parts.append("- put-down X: Put block X on table (you must be holding X)")
     beliefs_parts.append("- stack X Y: Put block X on top of block Y (you hold X, Y must be clear)")
     beliefs_parts.append("- unstack X Y: Take block X off block Y (X must be clear, hand empty)")
 
-    beliefs_parts.append(f"\n=== PLANNING REQUIREMENTS ===")
+    beliefs_parts.append("\n=== PLANNING REQUIREMENTS ===")
     beliefs_parts.append("Generate a SEQUENTIAL plan where each action depends on the previous one.")
     beliefs_parts.append("The plan graph must be CONNECTED - all actions form one chain/path.")
 
@@ -493,11 +519,7 @@ def pddl_to_nl_blocksworld(pddl_data: dict) -> Tuple[str, str]:
     teardown_text = ""
 
     # Identify initial on-pairs that are NOT in the goal
-    initial_pairs = [
-        (top, bottom)
-        for top, bottom in stacks.items()
-        if (top, bottom) not in goal_pairs
-    ]
+    initial_pairs = [(top, bottom) for top, bottom in stacks.items() if (top, bottom) not in goal_pairs]
 
     if initial_pairs:
         # Order by height (top-first) for safer unstacking
@@ -519,9 +541,7 @@ def pddl_to_nl_blocksworld(pddl_data: dict) -> Tuple[str, str]:
 
         teardown_text += "Teardown steps (clearing mismatches):\n"
         for top, bottom in initial_pairs:
-            teardown_text += (
-                f"    Step {step_num}: unstack {top} from {bottom}, then put-down {top}\n"
-            )
+            teardown_text += f"    Step {step_num}: unstack {top} from {bottom}, then put-down {top}\n"
             step_num += 1
         teardown_text += "\n  "
 
@@ -559,7 +579,7 @@ def pddl_to_nl_blocksworld(pddl_data: dict) -> Tuple[str, str]:
 
     for tower in towers:
         goal_desc += f"\n  Tower (base={tower[0]}): {' -> '.join(tower)}  (bottom to top)\n"
-        goal_desc += f"  Construction steps:\n"
+        goal_desc += "  Construction steps:\n"
         for i in range(1, len(tower)):
             blk = tower[i]
             tgt = tower[i - 1]
@@ -593,11 +613,12 @@ def pddl_to_nl_blocksworld(pddl_data: dict) -> Tuple[str, str]:
 
     return beliefs, desire
 
-def pddl_to_nl_generic(pddl_data: dict) -> Tuple[str, str]:
+
+def pddl_to_nl_generic(pddl_data: dict) -> tuple[str, str]:
     """Generic PDDL to NL conversion with complete state/goal preservation."""
-    objects = pddl_data['objects']
-    init = pddl_data['init']
-    goal = pddl_data['goal']
+    objects = pddl_data["objects"]
+    init = pddl_data["init"]
+    goal = pddl_data["goal"]
     domain_name = pddl_data.get("domain_name", "unknown")
 
     beliefs_parts = [f"Domain: {domain_name}", "", "Objects:"]
@@ -626,23 +647,24 @@ def pddl_to_nl_generic(pddl_data: dict) -> Tuple[str, str]:
     desire = "\n".join(desire_parts)
     return beliefs, desire
 
-def pddl_to_nl_logistics(pddl_data: dict) -> Tuple[str, str]:
+
+def pddl_to_nl_logistics(pddl_data: dict) -> tuple[str, str]:
     """Logistics domain conversion with enhanced airport/city awareness"""
-    objects = pddl_data['objects']
-    init = pddl_data['init']
-    goal = pddl_data['goal']
+    pddl_data["objects"]
+    init = pddl_data["init"]
+    goal = pddl_data["goal"]
 
     # Parse logistics state comprehensively
     packages = []
     trucks = []
     airplanes = []
-    airports = set()       # locations that are airports
+    airports = set()  # locations that are airports
     cities = []
-    city_locations = {}    # city -> [locations]
-    location_city = {}     # location -> city
+    city_locations = {}  # city -> [locations]
+    location_city = {}  # location -> city
 
     at_locations = {}  # object -> location
-    in_vehicle = {}    # package -> vehicle
+    in_vehicle = {}  # package -> vehicle
 
     for pred in init:
         parts = pred.split()
@@ -650,23 +672,23 @@ def pddl_to_nl_logistics(pddl_data: dict) -> Tuple[str, str]:
             continue
         pred_name = parts[0].lower()
 
-        if pred_name == 'at' and len(parts) >= 3:
+        if pred_name == "at" and len(parts) >= 3:
             at_locations[parts[1]] = parts[2]
-        elif pred_name == 'in' and len(parts) >= 3:
+        elif pred_name == "in" and len(parts) >= 3:
             in_vehicle[parts[1]] = parts[2]
-        elif pred_name == 'airport' and len(parts) >= 2:
+        elif pred_name == "airport" and len(parts) >= 2:
             airports.add(parts[1])
-        elif pred_name == 'in-city' and len(parts) >= 3:
+        elif pred_name == "in-city" and len(parts) >= 3:
             loc, city = parts[1], parts[2]
             city_locations.setdefault(city, []).append(loc)
             location_city[loc] = city
-        elif pred_name == 'obj' and len(parts) >= 2:
+        elif pred_name == "obj" and len(parts) >= 2:
             packages.append(parts[1])
-        elif pred_name == 'truck' and len(parts) >= 2:
+        elif pred_name == "truck" and len(parts) >= 2:
             trucks.append(parts[1])
-        elif pred_name == 'airplane' and len(parts) >= 2:
+        elif pred_name == "airplane" and len(parts) >= 2:
             airplanes.append(parts[1])
-        elif pred_name == 'city' and len(parts) >= 2:
+        elif pred_name == "city" and len(parts) >= 2:
             cities.append(parts[1])
 
     # Build beliefs
@@ -751,7 +773,7 @@ def pddl_to_nl_logistics(pddl_data: dict) -> Tuple[str, str]:
     goal_descs = []
     for pred in goal:
         parts = pred.split()
-        if parts[0] == 'at' and len(parts) >= 3:
+        if parts[0] == "at" and len(parts) >= 3:
             pkg, loc = parts[1], parts[2]
             city = location_city.get(loc, "?")
             # Determine if inter-city transport is needed
@@ -775,12 +797,15 @@ def pddl_to_nl_logistics(pddl_data: dict) -> Tuple[str, str]:
 
     return beliefs, desire
 
-def pddl_to_nl_depots(pddl_data: dict) -> Tuple[str, str]:
+
+def pddl_to_nl_depots(pddl_data: dict) -> tuple[str, str]:
     """Enhanced Depots domain conversion with clear action specifications"""
-    objects = pddl_data['objects']
-    typed_objects = pddl_data.get('typed_objects', )
-    init = pddl_data['init']
-    goal = pddl_data['goal']
+    objects = pddl_data["objects"]
+    typed_objects = pddl_data.get(
+        "typed_objects",
+    )
+    init = pddl_data["init"]
+    goal = pddl_data["goal"]
 
     # Parse depots state
     crates = []
@@ -790,11 +815,11 @@ def pddl_to_nl_depots(pddl_data: dict) -> Tuple[str, str]:
     locations = []
 
     at_locations = {}  # object -> location
-    on_surface = {}    # crate -> surface (pallet or crate)
-    in_truck = {}      # crate -> truck
-    lifting = {}       # hoist -> crate (if any)
+    on_surface = {}  # crate -> surface (pallet or crate)
+    in_truck = {}  # crate -> truck
+    lifting = {}  # hoist -> crate (if any)
     available = set()  # available hoists
-    clear = set()      # clear surfaces
+    clear = set()  # clear surfaces
 
     for pred in init:
         parts = pred.split()
@@ -803,31 +828,31 @@ def pddl_to_nl_depots(pddl_data: dict) -> Tuple[str, str]:
 
         pred_name = parts[0]
 
-        if pred_name == 'at' and len(parts) >= 3:
+        if pred_name == "at" and len(parts) >= 3:
             at_locations[parts[1]] = parts[2]
-        elif pred_name == 'on' and len(parts) >= 3:
+        elif pred_name == "on" and len(parts) >= 3:
             on_surface[parts[1]] = parts[2]
-        elif pred_name == 'in' and len(parts) >= 3:
+        elif pred_name == "in" and len(parts) >= 3:
             in_truck[parts[1]] = parts[2]
-        elif pred_name == 'lifting' and len(parts) >= 3:
+        elif pred_name == "lifting" and len(parts) >= 3:
             lifting[parts[1]] = parts[2]
-        elif pred_name == 'available' and len(parts) >= 2:
+        elif pred_name == "available" and len(parts) >= 2:
             available.add(parts[1])
-        elif pred_name == 'clear' and len(parts) >= 2:
+        elif pred_name == "clear" and len(parts) >= 2:
             clear.add(parts[1])
 
     # Classify objects by type using typed_objects mapping
     for obj in objects:
-        obj_type = typed_objects.get(obj, '').lower()
-        if 'crate' in obj or obj_type == 'crate':
+        obj_type = typed_objects.get(obj, "").lower()
+        if "crate" in obj or obj_type == "crate":
             crates.append(obj)
-        elif 'truck' in obj or obj_type == 'truck':
+        elif "truck" in obj or obj_type == "truck":
             trucks.append(obj)
-        elif 'hoist' in obj or obj_type == 'hoist':
+        elif "hoist" in obj or obj_type == "hoist":
             hoists.append(obj)
-        elif 'pallet' in obj or obj_type == 'pallet':
+        elif "pallet" in obj or obj_type == "pallet":
             pallets.append(obj)
-        elif 'depot' in obj or 'distributor' in obj or obj_type in ('depot', 'distributor', 'place'):
+        elif "depot" in obj or "distributor" in obj or obj_type in ("depot", "distributor", "place"):
             locations.append(obj)
 
     # Build beliefs with detailed state description
@@ -867,7 +892,9 @@ def pddl_to_nl_depots(pddl_data: dict) -> Tuple[str, str]:
 
     beliefs_parts.append("\n=== AVAILABLE ACTIONS ===")
     beliefs_parts.append("⚠️  CRITICAL: Use ONLY these Depots actions. DO NOT use blocksworld actions!")
-    beliefs_parts.append("⚠️  Parameter names MUST use the EXACT object names listed above (e.g., hoist0, crate0, pallet0, depot0)")
+    beliefs_parts.append(
+        "⚠️  Parameter names MUST use the EXACT object names listed above (e.g., hoist0, crate0, pallet0, depot0)"
+    )
     beliefs_parts.append("")
     beliefs_parts.append("1. Lift <hoist> <crate> <surface> <place>")
     beliefs_parts.append("   - hoist: a Hoist object (e.g., hoist0)")
@@ -923,7 +950,9 @@ def pddl_to_nl_depots(pddl_data: dict) -> Tuple[str, str]:
     beliefs_parts.append("❌ WRONG: (Lift hoist0 crate1 ...) then (Lift hoist0 crate2 ...)")
     beliefs_parts.append("   → hoist0 is LIFTING crate1, cannot lift crate2!")
     beliefs_parts.append("")
-    beliefs_parts.append("✓ RIGHT: (Lift hoist0 crate1 ...) then (Drop hoist0 crate1 ...) then (Lift hoist0 crate2 ...)")
+    beliefs_parts.append(
+        "✓ RIGHT: (Lift hoist0 crate1 ...) then (Drop hoist0 crate1 ...) then (Lift hoist0 crate2 ...)"
+    )
     beliefs_parts.append("   → hoist0 becomes available after Drop")
     beliefs_parts.append("")
     beliefs_parts.append("✓ ALSO RIGHT: (Lift hoist0 crate1 ...) then (Load hoist0 crate1 truck0 ...)")
@@ -1001,20 +1030,22 @@ def pddl_to_nl_depots(pddl_data: dict) -> Tuple[str, str]:
     goal_descs = []
     for pred in goal[:15]:
         parts = pred.split()
-        if parts[0] == 'at' and len(parts) >= 3:
+        if parts[0] == "at" and len(parts) >= 3:
             goal_descs.append(f"{parts[1]} should be at {parts[2]}")
-        elif parts[0] == 'on' and len(parts) >= 3:
+        elif parts[0] == "on" and len(parts) >= 3:
             goal_descs.append(f"{parts[1]} should be on {parts[2]}")
 
     desire = f"Goal: {'; '.join(goal_descs)}. Use Depots actions (Lift/Drop/Load/Unload/Drive) to achieve this goal."
 
     return beliefs, desire
 
+
 # ============================================================================
 # BDI PLANNING
 # ============================================================================
 
-def _serialize_plan_nodes(plan: BDIPlan | None) -> List[Dict[str, object]]:
+
+def _serialize_plan_nodes(plan: BDIPlan | None) -> list[dict[str, object]]:
     """Serialize plan nodes into JSON-safe dicts."""
     if plan is None:
         return []
@@ -1079,7 +1110,7 @@ def load_domain_pddl_for_prompt(pddl_domain_path: str) -> str:
     return spec.domain_context or domain_text
 
 
-def _plan_to_pddl_actions(plan: BDIPlan, domain: str, runtime: dict) -> List[str]:
+def _plan_to_pddl_actions(plan: BDIPlan, domain: str, runtime: dict) -> list[str]:
     """Convert a BDI plan to PDDL actions using the best available serializer."""
     serializer = runtime.get("generic_serializer")
     task = runtime.get("generic_task")
@@ -1098,14 +1129,14 @@ def _normalise_baseline_action_lines(
     domain: str,
     allowed_action_names: set[str] | None = None,
     allowed_objects: set[str] | None = None,
-) -> List[str]:
+) -> list[str]:
     """Extract grounded PDDL action lines from raw model output."""
     content = str(raw_text or "").strip()
     if content.startswith("```"):
         content = re.sub(r"^```(?:[a-zA-Z0-9_-]+)?\s*", "", content)
         content = re.sub(r"\s*```$", "", content)
     candidates = [line.strip() for line in content.splitlines() if line.strip()]
-    actions: List[str] = []
+    actions: list[str] = []
     for line in candidates:
         if line[0].isdigit() and "." in line:
             line = line.split(".", 1)[1].strip()
@@ -1117,7 +1148,7 @@ def _normalise_baseline_action_lines(
     if not actions:
         actions = [match.group(0).strip() for match in re.finditer(r"\([^()\n]+\)", content)]
 
-    normalised: List[str] = []
+    normalised: list[str] = []
     for action in actions:
         inner = action.strip()[1:-1].strip()
         if not inner:
@@ -1203,12 +1234,12 @@ def _make_checkpoint_result(label: str) -> dict:
 
 
 def _evaluate_plan_actions(
-    plan_actions: List[str],
+    plan_actions: list[str],
     *,
     domain: str,
     pddl_problem_path: str | None,
     pddl_domain_path: str | None,
-    init_state: Dict | None,
+    init_state: dict | None,
     structural: dict | None = None,
 ) -> dict:
     """Evaluate one checkpoint and return verifier outputs with success=VAL."""
@@ -1219,7 +1250,7 @@ def _evaluate_plan_actions(
         layers["structural"] = structural
 
     symbolic_valid = False
-    symbolic_errors: List[str] = []
+    symbolic_errors: list[str] = []
     if pddl_problem_path and pddl_domain_path:
         verifier = PDDLSymbolicVerifier()
         symbolic_valid, symbolic_errors = verifier.verify_plan(
@@ -1233,7 +1264,7 @@ def _evaluate_plan_actions(
     layers["symbolic"] = {"valid": symbolic_valid, "errors": symbolic_errors}
 
     physics_valid = None
-    physics_errors: List[str] = []
+    physics_errors: list[str] = []
     if init_state is not None and domain == "blocksworld":
         physics_validator = BlocksworldPhysicsValidator()
         physics_valid, physics_errors = physics_validator.validate_plan(plan_actions, init_state)
@@ -1258,7 +1289,7 @@ def _evaluate_bdi_plan_checkpoint(
     domain: str,
     pddl_problem_path: str | None,
     pddl_domain_path: str | None,
-    init_state: Dict | None,
+    init_state: dict | None,
     runtime: dict,
     instance_id: str | None,
     allow_structural_auto_repair: bool,
@@ -1313,25 +1344,30 @@ def _evaluate_bdi_plan_checkpoint(
     if allow_val_repair and not result["symbolic_valid"]:
         verifier = PDDLSymbolicVerifier()
         val_errors = result["verification_layers"]["symbolic"]["errors"]
-        cumulative_history: List[dict] = []
+        cumulative_history: list[dict] = []
         max_val_repairs = 5
         for repair_attempt in range(1, max_val_repairs + 1):
             clean_errors = [
-                err for err in val_errors
+                err
+                for err in val_errors
                 if not str(err).lstrip().startswith("Full VAL output:")
                 and not str(err).lstrip().startswith("\nFull VAL output:")
             ]
             result["val_repair"]["attempts"] = repair_attempt
-            result["val_repair"]["history"].append({
-                "attempt": repair_attempt,
-                "errors": clean_errors[:5],
-                "repaired": False,
-            })
-            cumulative_history.append({
-                "attempt": repair_attempt,
-                "plan_actions": plan_actions,
-                "val_errors": clean_errors,
-            })
+            result["val_repair"]["history"].append(
+                {
+                    "attempt": repair_attempt,
+                    "errors": clean_errors[:5],
+                    "repaired": False,
+                }
+            )
+            cumulative_history.append(
+                {
+                    "attempt": repair_attempt,
+                    "plan_actions": plan_actions,
+                    "val_errors": clean_errors,
+                }
+            )
 
             verification_context = {
                 "layers": {
@@ -1347,8 +1383,7 @@ def _evaluate_bdi_plan_checkpoint(
                 "overall_valid": False,
             }
             failed_layers = [
-                name for name, layer in verification_context["layers"].items()
-                if not layer.get("valid", False)
+                name for name, layer in verification_context["layers"].items() if not layer.get("valid", False)
             ]
             verification_context["error_summary"] = (
                 f"Failed layers: {', '.join(failed_layers)}" if failed_layers else "All layers passed"
@@ -1406,7 +1441,7 @@ def run_planbench_pipeline_for_instance(
     domain: str,
     pddl_problem_path: str | None,
     pddl_domain_path: str | None,
-    init_state: Dict | None,
+    init_state: dict | None,
     objects: list[str] | None,
     typed_objects: dict[str, str] | None,
     execution_mode: str,
@@ -1520,12 +1555,13 @@ def run_planbench_pipeline_for_instance(
     pipeline["bdi_repair_result"] = repair_result
     return pipeline
 
+
 def bdi_to_pddl_actions(
     plan: BDIPlan,
     domain: str = "blocksworld",
     allowed_objects: set[str] | None = None,
     typed_objects: dict[str, str] | None = None,
-) -> List[str]:
+) -> list[str]:
     """
     Convert BDI action nodes to PDDL action strings
 
@@ -1546,6 +1582,7 @@ def bdi_to_pddl_actions(
 
     try:
         import networkx as nx
+
         ordered_nodes = [n for n in nx.topological_sort(G) if n not in virtual_nodes]
     except:
         # If cycles, use node order as-is
@@ -1567,12 +1604,18 @@ def bdi_to_pddl_actions(
             return "stack"
 
         # Logistics
-        if t == "loadtruck": return "load-truck"
-        if t == "unloadtruck": return "unload-truck"
-        if t == "loadairplane": return "load-airplane"
-        if t == "unloadairplane": return "unload-airplane"
-        if t == "drivetruck": return "drive-truck"
-        if t == "flyairplane": return "fly-airplane"
+        if t == "loadtruck":
+            return "load-truck"
+        if t == "unloadtruck":
+            return "unload-truck"
+        if t == "loadairplane":
+            return "load-airplane"
+        if t == "unloadairplane":
+            return "unload-airplane"
+        if t == "drivetruck":
+            return "drive-truck"
+        if t == "flyairplane":
+            return "fly-airplane"
 
         return t
 
@@ -1587,11 +1630,11 @@ def bdi_to_pddl_actions(
         # Remove "block " prefix if present (common LLM artifact)
         if s.startswith("block "):
             s = s[6:].strip()
-        s = s.replace('"', '').replace("'", "")
-        s = re.sub(r'\.replace\(.*$', '', s)
-        s = re.sub(r'_fixme$', '', s)
-        s = re.sub(r'[^a-z0-9_\-\s]', '', s)
-        s = re.sub(r'\s+', ' ', s).strip()
+        s = s.replace('"', "").replace("'", "")
+        s = re.sub(r"\.replace\(.*$", "", s)
+        s = re.sub(r"_fixme$", "", s)
+        s = re.sub(r"[^a-z0-9_\-\s]", "", s)
+        s = re.sub(r"\s+", " ", s).strip()
         return s
 
     def _candidate_pool(expected_types: set[str] | None = None) -> list[str]:
@@ -1611,7 +1654,7 @@ def bdi_to_pddl_actions(
         if token in allowed_objects_set:
             return token
 
-        compact = token.replace(' ', '')
+        compact = token.replace(" ", "")
         if compact in allowed_objects_set:
             return compact
 
@@ -1628,6 +1671,7 @@ def bdi_to_pddl_actions(
 
         try:
             import difflib
+
             match = difflib.get_close_matches(compact, pool, n=1, cutoff=0.75)
             if match:
                 return match[0]
@@ -1636,7 +1680,7 @@ def bdi_to_pddl_actions(
 
         return ""
 
-    def _pick_param(params: Dict, keys: List[str]) -> str:
+    def _pick_param(params: dict, keys: list[str]) -> str:
         for key in keys:
             value = params.get(key)
             if value:
@@ -1663,10 +1707,12 @@ def bdi_to_pddl_actions(
         before_len = len(pddl_actions)
 
         if domain == "blocksworld":
-            block = _pick_param(params, ["block", "object", "obj", "x"]) \
-                or _normalise_param(next(iter(params.values()), ""))
-            target = _pick_param(params, ["target", "y", "to", "on"]) \
-                or _normalise_param(next(iter(list(params.values())[1:]), ""))
+            block = _pick_param(params, ["block", "object", "obj", "x"]) or _normalise_param(
+                next(iter(params.values()), "")
+            )
+            target = _pick_param(params, ["target", "y", "to", "on"]) or _normalise_param(
+                next(iter(list(params.values())[1:]), "")
+            )
 
             if canon == "pick-up" and block:
                 pddl_actions.append(f"(pick-up {block})")
@@ -1689,7 +1735,11 @@ def bdi_to_pddl_actions(
             city = _pick_param(params, ["city", "c", "city_name"])
 
             # Fallback: try to extract from description if parameters are missing
-            description = action_node.description.lower() if hasattr(action_node, 'description') and action_node.description else ""
+            description = (
+                action_node.description.lower()
+                if hasattr(action_node, "description") and action_node.description
+                else ""
+            )
 
             # Fallback: use positional parameters if named parameters fail
             param_values = list(params.values())
@@ -1705,7 +1755,9 @@ def bdi_to_pddl_actions(
                 if obj and truck and loc:
                     pddl_actions.append(f"(LOAD-TRUCK {obj} {truck} {loc})")
                 else:
-                    print(f"    DEBUG: load-truck missing params - obj={obj}, truck={truck}, loc={loc}, params={params}")
+                    print(
+                        f"    DEBUG: load-truck missing params - obj={obj}, truck={truck}, loc={loc}, params={params}"
+                    )
 
             elif canon == "load-airplane":
                 if not obj and len(param_values) >= 1:
@@ -1718,7 +1770,9 @@ def bdi_to_pddl_actions(
                 if obj and airplane and loc:
                     pddl_actions.append(f"(LOAD-AIRPLANE {obj} {airplane} {loc})")
                 else:
-                    print(f"    DEBUG: load-airplane missing params - obj={obj}, airplane={airplane}, loc={loc}, params={params}")
+                    print(
+                        f"    DEBUG: load-airplane missing params - obj={obj}, airplane={airplane}, loc={loc}, params={params}"
+                    )
 
             elif canon == "unload-truck":
                 if not obj and len(param_values) >= 1:
@@ -1731,7 +1785,9 @@ def bdi_to_pddl_actions(
                 if obj and truck and loc:
                     pddl_actions.append(f"(UNLOAD-TRUCK {obj} {truck} {loc})")
                 else:
-                    print(f"    DEBUG: unload-truck missing params - obj={obj}, truck={truck}, loc={loc}, params={params}")
+                    print(
+                        f"    DEBUG: unload-truck missing params - obj={obj}, truck={truck}, loc={loc}, params={params}"
+                    )
 
             elif canon == "unload-airplane":
                 if not obj and len(param_values) >= 1:
@@ -1744,7 +1800,9 @@ def bdi_to_pddl_actions(
                 if obj and airplane and loc:
                     pddl_actions.append(f"(UNLOAD-AIRPLANE {obj} {airplane} {loc})")
                 else:
-                    print(f"    DEBUG: unload-airplane missing params - obj={obj}, airplane={airplane}, loc={loc}, params={params}")
+                    print(
+                        f"    DEBUG: unload-airplane missing params - obj={obj}, airplane={airplane}, loc={loc}, params={params}"
+                    )
 
             elif canon == "drive-truck":
                 if not truck and len(param_values) >= 1:
@@ -1759,7 +1817,9 @@ def bdi_to_pddl_actions(
                 if truck and loc_from and loc_to and city:
                     pddl_actions.append(f"(DRIVE-TRUCK {truck} {loc_from} {loc_to} {city})")
                 else:
-                    print(f"    DEBUG: drive-truck missing params - truck={truck}, from={loc_from}, to={loc_to}, city={city}, params={params}")
+                    print(
+                        f"    DEBUG: drive-truck missing params - truck={truck}, from={loc_from}, to={loc_to}, city={city}, params={params}"
+                    )
 
             elif canon == "fly-airplane":
                 if not airplane and len(param_values) >= 1:
@@ -1772,7 +1832,9 @@ def bdi_to_pddl_actions(
                 if airplane and loc_from and loc_to:
                     pddl_actions.append(f"(FLY-AIRPLANE {airplane} {loc_from} {loc_to})")
                 else:
-                    print(f"    DEBUG: fly-airplane missing params - airplane={airplane}, from={loc_from}, to={loc_to}, params={params}")
+                    print(
+                        f"    DEBUG: fly-airplane missing params - airplane={airplane}, from={loc_from}, to={loc_to}, params={params}"
+                    )
 
         elif domain == "depots":
             # Depots combines logistics and blocksworld
@@ -1783,36 +1845,104 @@ def bdi_to_pddl_actions(
             #   Drop(?x - hoist ?y - crate ?z - surface ?p - place)
             #   Load(?x - hoist ?y - crate ?z - truck ?p - place)
             #   Unload(?x - hoist ?y - crate ?z - truck ?p - place)
-            hoist = _pick_param(params, [
-                "hoist", "h", "x", "hoist_name", "lifter",
-            ])
-            crate = _pick_param(params, [
-                "crate", "c", "obj", "object", "y", "item", "package",
-                "crate_name", "cargo", "box",
-            ])
-            truck = _pick_param(params, [
-                "truck", "t", "vehicle", "z", "truck_name", "veh",
-            ])
-            surface = _pick_param(params, [
-                "surface", "s", "pallet", "z", "on", "target", "dest",
-                "surface_name", "onto", "below", "under",
-            ])
-            loc = _pick_param(params, [
-                "loc", "location", "place", "p", "at", "depot",
-                "loc_name", "location_name", "position", "area",
-            ])
-            loc_from = _pick_param(params, [
-                "from", "loc_from", "from_loc", "from_location",
-                "source", "origin", "start", "y",
-            ])
-            loc_to = _pick_param(params, [
-                "to", "loc_to", "to_loc", "to_location",
-                "dest", "destination", "target", "end", "z",
-            ])
+            hoist = _pick_param(
+                params,
+                [
+                    "hoist",
+                    "h",
+                    "x",
+                    "hoist_name",
+                    "lifter",
+                ],
+            )
+            crate = _pick_param(
+                params,
+                [
+                    "crate",
+                    "c",
+                    "obj",
+                    "object",
+                    "y",
+                    "item",
+                    "package",
+                    "crate_name",
+                    "cargo",
+                    "box",
+                ],
+            )
+            truck = _pick_param(
+                params,
+                [
+                    "truck",
+                    "t",
+                    "vehicle",
+                    "z",
+                    "truck_name",
+                    "veh",
+                ],
+            )
+            surface = _pick_param(
+                params,
+                [
+                    "surface",
+                    "s",
+                    "pallet",
+                    "z",
+                    "on",
+                    "target",
+                    "dest",
+                    "surface_name",
+                    "onto",
+                    "below",
+                    "under",
+                ],
+            )
+            loc = _pick_param(
+                params,
+                [
+                    "loc",
+                    "location",
+                    "place",
+                    "p",
+                    "at",
+                    "depot",
+                    "loc_name",
+                    "location_name",
+                    "position",
+                    "area",
+                ],
+            )
+            loc_from = _pick_param(
+                params,
+                [
+                    "from",
+                    "loc_from",
+                    "from_loc",
+                    "from_location",
+                    "source",
+                    "origin",
+                    "start",
+                    "y",
+                ],
+            )
+            loc_to = _pick_param(
+                params,
+                [
+                    "to",
+                    "loc_to",
+                    "to_loc",
+                    "to_location",
+                    "dest",
+                    "destination",
+                    "target",
+                    "end",
+                    "z",
+                ],
+            )
 
             # Positional fallback using param_values
             param_values = list(params.values())
-            description = action_node.description.lower() if getattr(action_node, 'description', None) else ""
+            description = action_node.description.lower() if getattr(action_node, "description", None) else ""
 
             if canon == "drive":
                 # Drive(?x - truck ?y - place ?z - place)
@@ -1830,7 +1960,9 @@ def bdi_to_pddl_actions(
                 if truck and loc_from and loc_to:
                     pddl_actions.append(f"(Drive {truck} {loc_from} {loc_to})")
                 else:
-                    print(f"    DEBUG: drive missing params - truck={truck}, from={loc_from}, to={loc_to}, params={params}")
+                    print(
+                        f"    DEBUG: drive missing params - truck={truck}, from={loc_from}, to={loc_to}, params={params}"
+                    )
 
             elif canon == "lift":
                 # Lift(?x - hoist ?y - crate ?z - surface ?p - place)
@@ -1851,7 +1983,9 @@ def bdi_to_pddl_actions(
                 if hoist and crate and surface and loc:
                     pddl_actions.append(f"(Lift {hoist} {crate} {surface} {loc})")
                 else:
-                    print(f"    DEBUG: lift missing params - hoist={hoist}, crate={crate}, surface={surface}, loc={loc}, params={params}")
+                    print(
+                        f"    DEBUG: lift missing params - hoist={hoist}, crate={crate}, surface={surface}, loc={loc}, params={params}"
+                    )
 
             elif canon == "drop":
                 # Drop(?x - hoist ?y - crate ?z - surface ?p - place)
@@ -1872,7 +2006,9 @@ def bdi_to_pddl_actions(
                 if hoist and crate and surface and loc:
                     pddl_actions.append(f"(Drop {hoist} {crate} {surface} {loc})")
                 else:
-                    print(f"    DEBUG: drop missing params - hoist={hoist}, crate={crate}, surface={surface}, loc={loc}, params={params}")
+                    print(
+                        f"    DEBUG: drop missing params - hoist={hoist}, crate={crate}, surface={surface}, loc={loc}, params={params}"
+                    )
 
             elif canon == "load":
                 # Load(?x - hoist ?y - crate ?z - truck ?p - place)
@@ -1893,7 +2029,9 @@ def bdi_to_pddl_actions(
                 if hoist and crate and truck and loc:
                     pddl_actions.append(f"(Load {hoist} {crate} {truck} {loc})")
                 else:
-                    print(f"    DEBUG: load missing params - hoist={hoist}, crate={crate}, truck={truck}, loc={loc}, params={params}")
+                    print(
+                        f"    DEBUG: load missing params - hoist={hoist}, crate={crate}, truck={truck}, loc={loc}, params={params}"
+                    )
 
             elif canon == "unload":
                 # Unload(?x - hoist ?y - crate ?z - truck ?p - place)
@@ -1914,7 +2052,9 @@ def bdi_to_pddl_actions(
                 if hoist and crate and truck and loc:
                     pddl_actions.append(f"(Unload {hoist} {crate} {truck} {loc})")
                 else:
-                    print(f"    DEBUG: unload missing params - hoist={hoist}, crate={crate}, truck={truck}, loc={loc}, params={params}")
+                    print(
+                        f"    DEBUG: unload missing params - hoist={hoist}, crate={crate}, truck={truck}, loc={loc}, params={params}"
+                    )
 
         if len(pddl_actions) == before_len:
             print(
@@ -1923,19 +2063,20 @@ def bdi_to_pddl_actions(
 
     return pddl_actions
 
+
 def generate_bdi_plan(
     beliefs: str,
     desire: str,
     pddl_problem_path: str = None,  # NEW: Path to problem file for VAL
-    pddl_domain_path: str = None,   # NEW: Path to domain file for VAL
-    init_state: Dict = None,
+    pddl_domain_path: str = None,  # NEW: Path to domain file for VAL
+    init_state: dict = None,
     domain: str = "blocksworld",
     timeout: int = 60,
     auto_repair: bool = True,
     max_retries: int = 3,
     execution_mode: str | None = None,
-    instance_id: Optional[str] = None,  # NEW: Unique instance identifier for budget tracking
-) -> Tuple[BDIPlan, bool, dict]:
+    instance_id: str | None = None,  # NEW: Unique instance identifier for budget tracking
+) -> tuple[BDIPlan, bool, dict]:
     """
     Generate plan with BDI-LLM and multi-layer verification
 
@@ -1963,36 +2104,32 @@ def generate_bdi_plan(
     resolved_mode = resolve_execution_mode(execution_mode)
     mode_flags = execution_mode_flags(resolved_mode)
     metrics = {
-        'execution_mode': resolved_mode,
-        'generation_time': 0,
-        'verification_layers': {
-            'structural': {'valid': False, 'errors': [], 'hard_errors': [], 'warnings': []},
-            'symbolic': {'valid': False, 'errors': []},  # VAL verification
-            'physics': {'valid': False, 'errors': []}
+        "execution_mode": resolved_mode,
+        "generation_time": 0,
+        "verification_layers": {
+            "structural": {"valid": False, "errors": [], "hard_errors": [], "warnings": []},
+            "symbolic": {"valid": False, "errors": []},  # VAL verification
+            "physics": {"valid": False, "errors": []},
         },
-        'auto_repair': {
-            'triggered': False,
-            'success': False,
-            'repairs_applied': []
+        "auto_repair": {"triggered": False, "success": False, "repairs_applied": []},
+        "val_repair": {
+            "attempts": 0,
+            "success": False,
+            "history": [],  # List of {attempt, errors, repaired}
         },
-        'val_repair': {
-            'attempts': 0,
-            'success': False,
-            'history': []  # List of {attempt, errors, repaired}
-        },
-        'overall_valid': False,
-        'num_nodes': 0,
-        'num_edges': 0,
-        'retries': 0,
-        'pddl_actions': [],
-        'plan_nodes': [],
+        "overall_valid": False,
+        "num_nodes": 0,
+        "num_edges": 0,
+        "retries": 0,
+        "pddl_actions": [],
+        "plan_nodes": [],
     }
     if Config.SAVE_REASONING_TRACE:
-        metrics['reasoning_trace'] = {
-            'enabled': True,
-            'max_chars': Config.REASONING_TRACE_MAX_CHARS,
-            'generation': None,
-            'repairs': [],
+        metrics["reasoning_trace"] = {
+            "enabled": True,
+            "max_chars": Config.REASONING_TRACE_MAX_CHARS,
+            "generation": None,
+            "repairs": [],
         }
 
     last_error = None
@@ -2005,9 +2142,7 @@ def generate_bdi_plan(
 
             if generic_domain:
                 if not pddl_domain_path:
-                    raise ValueError(
-                        "Generic PDDL planning requires pddl_domain_path for action schema extraction."
-                    )
+                    raise ValueError("Generic PDDL planning requires pddl_domain_path for action schema extraction.")
                 domain_text = Path(pddl_domain_path).read_text()
                 domain_spec = DomainSpec.from_pddl(domain, domain_text)
                 param_order_map = {
@@ -2027,9 +2162,13 @@ def generate_bdi_plan(
             else:
                 planner = BDIPlanner(auto_repair=auto_repair, domain=domain)
 
-            def plan_to_pddl_actions(plan_obj: BDIPlan) -> List[str]:
-                if generic_serializer is not None and generic_task is not None:
-                    return generic_serializer.from_bdi_plan(plan_obj, generic_task)
+            def plan_to_pddl_actions(
+                plan_obj: BDIPlan,
+                _serializer=generic_serializer,
+                _task=generic_task,
+            ) -> list[str]:
+                if _serializer is not None and _task is not None:
+                    return _serializer.from_bdi_plan(plan_obj, _task)
                 return bdi_to_pddl_actions(plan_obj, domain=domain)
 
             result = planner.generate_plan(
@@ -2039,13 +2178,13 @@ def generate_bdi_plan(
             )
             planner.record_generation_trace(result)
             plan = result.plan
-            metrics['plan_nodes'] = _serialize_plan_nodes(plan)
-            metrics['pddl_actions'] = plan_to_pddl_actions(plan)
-            metrics['retries'] = attempt
+            metrics["plan_nodes"] = _serialize_plan_nodes(plan)
+            metrics["pddl_actions"] = plan_to_pddl_actions(plan)
+            metrics["retries"] = attempt
             if Config.SAVE_REASONING_TRACE:
-                metrics['reasoning_trace']['generation'] = planner.get_last_generation_trace()
+                metrics["reasoning_trace"]["generation"] = planner.get_last_generation_trace()
 
-            metrics['generation_time'] = time.time() - start_time
+            metrics["generation_time"] = time.time() - start_time
 
             # Layer 1: Structural verification
             G = plan.to_networkx()
@@ -2056,8 +2195,8 @@ def generate_bdi_plan(
             struct_warnings = struct_result.warnings
 
             # If structural verification fails and auto_repair is enabled at this level too
-            if not struct_valid and auto_repair and mode_flags['structural_auto_repair']:
-                metrics['auto_repair']['triggered'] = True
+            if not struct_valid and auto_repair and mode_flags["structural_auto_repair"]:
+                metrics["auto_repair"]["triggered"] = True
                 repaired_plan, repaired_valid, messages = repair_and_verify(plan)
                 if repaired_valid:
                     plan = repaired_plan
@@ -2067,22 +2206,22 @@ def generate_bdi_plan(
                     struct_errors = struct_result.errors
                     struct_hard_errors = struct_result.hard_errors
                     struct_warnings = struct_result.warnings
-                    metrics['auto_repair']['success'] = True
-                    metrics['auto_repair']['repairs_applied'] = messages
+                    metrics["auto_repair"]["success"] = True
+                    metrics["auto_repair"]["repairs_applied"] = messages
 
-            metrics['verification_layers']['structural']['valid'] = struct_valid
-            metrics['verification_layers']['structural']['errors'] = struct_errors
-            metrics['verification_layers']['structural']['hard_errors'] = struct_hard_errors
-            metrics['verification_layers']['structural']['warnings'] = struct_warnings
-            metrics['num_nodes'] = len(plan.nodes)
-            metrics['num_edges'] = len(plan.edges)
+            metrics["verification_layers"]["structural"]["valid"] = struct_valid
+            metrics["verification_layers"]["structural"]["errors"] = struct_errors
+            metrics["verification_layers"]["structural"]["hard_errors"] = struct_hard_errors
+            metrics["verification_layers"]["structural"]["warnings"] = struct_warnings
+            metrics["num_nodes"] = len(plan.nodes)
+            metrics["num_edges"] = len(plan.edges)
 
             # Layer 2: Symbolic Verification (PDDL/VAL) with repair loop
             symbolic_valid = True
             symbolic_errors = [f"Skipped - execution mode: {resolved_mode}"]
             max_val_repairs = 5
 
-            if mode_flags['symbolic_check']:
+            if mode_flags["symbolic_check"]:
                 symbolic_valid = False
                 symbolic_errors = ["Skipped - Structural failure"]
 
@@ -2091,15 +2230,20 @@ def generate_bdi_plan(
                 # Set still_try_val to True to let VAL check even structurally failed plans.
                 still_try_val = not struct_valid  # Key fix: try VAL even if structural fails
                 if still_try_val:
-                    print(f"    Structural verification failed, but still attempting VAL verification")
+                    print("    Structural verification failed, but still attempting VAL verification")
             else:
                 still_try_val = False
 
-            if mode_flags['symbolic_check'] and (struct_valid or still_try_val) and pddl_problem_path and pddl_domain_path:
+            if (
+                mode_flags["symbolic_check"]
+                and (struct_valid or still_try_val)
+                and pddl_problem_path
+                and pddl_domain_path
+            ):
                 try:
                     # Convert BDI plan to PDDL actions
                     pddl_actions = plan_to_pddl_actions(plan)
-                    metrics['pddl_actions'] = pddl_actions
+                    metrics["pddl_actions"] = pddl_actions
 
                     # Initialize VAL verifier
                     val_verifier = PDDLSymbolicVerifier()
@@ -2107,66 +2251,69 @@ def generate_bdi_plan(
                         domain_file=pddl_domain_path,
                         problem_file=pddl_problem_path,
                         plan_actions=pddl_actions,
-                        verbose=True
+                        verbose=True,
                     )
 
                     # VAL error-driven repair loop (with cumulative history)
                     val_repair_attempt = 0
                     cumulative_repair_history = []  # Accumulate all previous attempts
-                    while mode_flags['val_repair'] and not symbolic_valid and val_repair_attempt < max_val_repairs:
+                    while mode_flags["val_repair"] and not symbolic_valid and val_repair_attempt < max_val_repairs:
                         val_repair_attempt += 1
-                        metrics['val_repair']['attempts'] = val_repair_attempt
+                        metrics["val_repair"]["attempts"] = val_repair_attempt
 
                         # Filter out verbose full VAL output — only keep
                         # specific error messages and repair advice for the LLM
                         clean_errors = [
-                            e for e in symbolic_errors
+                            e
+                            for e in symbolic_errors
                             if not e.lstrip().startswith("Full VAL output:")
                             and not e.lstrip().startswith("\nFull VAL output:")
                         ]
 
-                        metrics['val_repair']['history'].append({
-                            'attempt': val_repair_attempt,
-                            'errors': clean_errors[:5],  # Limit stored errors
-                            'repaired': False
-                        })
+                        metrics["val_repair"]["history"].append(
+                            {
+                                "attempt": val_repair_attempt,
+                                "errors": clean_errors[:5],  # Limit stored errors
+                                "repaired": False,
+                            }
+                        )
 
                         # Record current failed attempt before repair (clean errors only)
-                        cumulative_repair_history.append({
-                            'attempt': val_repair_attempt,
-                            'plan_actions': pddl_actions,
-                            'val_errors': clean_errors,
-                        })
+                        cumulative_repair_history.append(
+                            {
+                                "attempt": val_repair_attempt,
+                                "plan_actions": pddl_actions,
+                                "val_errors": clean_errors,
+                            }
+                        )
 
                         try:
-                            print(f"    VAL repair attempt {val_repair_attempt}/{max_val_repairs} - errors: {clean_errors[:2]}")
+                            print(
+                                f"    VAL repair attempt {val_repair_attempt}/{max_val_repairs} - errors: {clean_errors[:2]}"
+                            )
 
                             verification_context = {
-                                'layers': {
-                                    'structural': {
-                                        'valid': struct_valid,
-                                        'errors': struct_errors,
+                                "layers": {
+                                    "structural": {
+                                        "valid": struct_valid,
+                                        "errors": struct_errors,
                                     },
-                                    'symbolic': {
-                                        'valid': symbolic_valid,
-                                        'errors': clean_errors,
+                                    "symbolic": {
+                                        "valid": symbolic_valid,
+                                        "errors": clean_errors,
                                     },
                                 },
-                                'overall_valid': struct_valid and symbolic_valid,
+                                "overall_valid": struct_valid and symbolic_valid,
                             }
                             failed_layers = [
                                 name
-                                for name, layer in verification_context['layers'].items()
-                                if not layer.get('valid', False)
+                                for name, layer in verification_context["layers"].items()
+                                if not layer.get("valid", False)
                             ]
-                            verification_context['error_summary'] = (
-                                f"Failed layers: {', '.join(failed_layers)}"
-                                if failed_layers
-                                else "All layers passed"
+                            verification_context["error_summary"] = (
+                                f"Failed layers: {', '.join(failed_layers)}" if failed_layers else "All layers passed"
                             )
-                            verification_feedback = IntegratedVerifier.build_planner_feedback(
-                                verification_context
-                            )
+                            verification_feedback = IntegratedVerifier.build_planner_feedback(verification_context)
 
                             # Call LLM to repair based on VAL errors + full history
                             repair_result = planner.repair_from_val_errors(
@@ -2184,8 +2331,8 @@ def generate_bdi_plan(
                             if Config.SAVE_REASONING_TRACE:
                                 repair_trace = planner.get_last_repair_trace()
                                 if repair_trace:
-                                    repair_trace['attempt'] = val_repair_attempt
-                                    metrics['reasoning_trace']['repairs'].append(repair_trace)
+                                    repair_trace["attempt"] = val_repair_attempt
+                                    metrics["reasoning_trace"]["repairs"].append(repair_trace)
                             plan = repair_result.plan
 
                             # Re-verify structure after repair
@@ -2198,7 +2345,9 @@ def generate_bdi_plan(
                             # If structural check fails but VAL passes, the plan works.
                             # Don't break - let VAL verify anyway.
                             if not struct_valid_r:
-                                print(f"    VAL repair {val_repair_attempt}: structural failure after repair, but still trying VAL")
+                                print(
+                                    f"    VAL repair {val_repair_attempt}: structural failure after repair, but still trying VAL"
+                                )
                                 struct_valid = struct_valid_r  # Update for outer scope
                             else:
                                 struct_valid = struct_valid_r  # Update for outer scope
@@ -2210,15 +2359,15 @@ def generate_bdi_plan(
                                 domain_file=pddl_domain_path,
                                 problem_file=pddl_problem_path,
                                 plan_actions=pddl_actions,
-                                verbose=True
+                                verbose=True,
                             )
 
                             if symbolic_valid:
-                                metrics['val_repair']['success'] = True
-                                metrics['val_repair']['history'][-1]['repaired'] = True
+                                metrics["val_repair"]["success"] = True
+                                metrics["val_repair"]["history"][-1]["repaired"] = True
                                 # Update structural metrics with repaired plan
-                                metrics['num_nodes'] = len(plan.nodes)
-                                metrics['num_edges'] = len(plan.edges)
+                                metrics["num_nodes"] = len(plan.nodes)
+                                metrics["num_edges"] = len(plan.edges)
                                 print(f"    VAL repair {val_repair_attempt}: SUCCESS")
 
                         except Exception as repair_err:
@@ -2229,7 +2378,7 @@ def generate_bdi_plan(
                     symbolic_valid = False
                     symbolic_errors = [f"Symbolic verification error: {str(e)}"]
             else:
-                if mode_flags['symbolic_check']:
+                if mode_flags["symbolic_check"]:
                     # No VAL verification because PDDL files are missing
                     symbolic_errors = ["Skipped - Missing PDDL files"]
                     # If no PDDL files provided, we consider symbolic layer 'passed' (or skipped)
@@ -2237,93 +2386,102 @@ def generate_bdi_plan(
                     if pddl_problem_path is None:
                         symbolic_valid = True
 
-            metrics['verification_layers']['symbolic']['valid'] = symbolic_valid
-            metrics['verification_layers']['symbolic']['errors'] = symbolic_errors
+            metrics["verification_layers"]["symbolic"]["valid"] = symbolic_valid
+            metrics["verification_layers"]["symbolic"]["errors"] = symbolic_errors
 
             # Layer 3: Physics validation (if init_state provided)
             # This is now a "fallback" or "double-check" layer
             physics_valid = True
             physics_errors = [f"Skipped - execution mode: {resolved_mode}"]
 
-            if mode_flags['physics_check'] and init_state is not None and struct_valid:
+            if mode_flags["physics_check"] and init_state is not None and struct_valid:
                 # Validate physics (only for blocksworld domain)
                 if domain == "blocksworld":
                     pddl_actions = plan_to_pddl_actions(plan)
-                    metrics['pddl_actions'] = pddl_actions
+                    metrics["pddl_actions"] = pddl_actions
                     physics_validator = BlocksworldPhysicsValidator()
-                    physics_valid, physics_errors = physics_validator.validate_plan(
-                        pddl_actions, init_state
-                    )
+                    physics_valid, physics_errors = physics_validator.validate_plan(pddl_actions, init_state)
                 elif domain != "blocksworld":
                     # Skip physics validation for non-blocksworld domains
                     physics_valid = True
                     physics_errors = ["Skipped - No physics validator for this domain"]
 
-            metrics['verification_layers']['physics']['valid'] = physics_valid
-            metrics['verification_layers']['physics']['errors'] = physics_errors
+            metrics["verification_layers"]["physics"]["valid"] = physics_valid
+            metrics["verification_layers"]["physics"]["errors"] = physics_errors
 
             # Overall validation:
             # KEY PRINCIPLE: VAL is the ultimate validator - if VAL says plan works, it works.
             # A plan that passes VAL is considered valid even with minor structural issues.
             # Structural validation is a heuristic; VAL's symbolic execution is ground truth.
-            if mode_flags['symbolic_check'] and symbolic_valid and pddl_problem_path and pddl_domain_path:
+            if mode_flags["symbolic_check"] and symbolic_valid and pddl_problem_path and pddl_domain_path:
                 # VAL passed = plan works (regardless of structural status)
                 overall_valid = True
                 print(f"    Overall: VALID (VAL passed, structural={struct_valid}, physics={physics_valid})")
             else:
                 # No VAL verification available - fall back to local layers only.
-                overall_valid = struct_valid and (physics_valid if mode_flags['physics_check'] else True)
+                overall_valid = struct_valid and (physics_valid if mode_flags["physics_check"] else True)
                 print(
                     f"    Overall: {'VALID' if overall_valid else 'INVALID'} "
                     f"(mode={resolved_mode}, structural={struct_valid}, physics={physics_valid})"
                 )
 
-            metrics['overall_valid'] = overall_valid
-            metrics['plan_nodes'] = _serialize_plan_nodes(plan)
+            metrics["overall_valid"] = overall_valid
+            metrics["plan_nodes"] = _serialize_plan_nodes(plan)
 
             return plan, overall_valid, metrics
 
         except Exception as e:
             last_error = str(e)
-            metrics['retries'] = attempt + 1
+            metrics["retries"] = attempt + 1
 
             # Check if it's a retryable error (connection issues, rate limits)
             error_str = str(e).lower()
-            if ('connection' in error_str or 'timeout' in error_str or 'internal' in error_str
-                or 'resourceexhausted' in error_str or '429' in error_str
-                or 'rate' in error_str or 'quota' in error_str):
+            if (
+                "connection" in error_str
+                or "timeout" in error_str
+                or "internal" in error_str
+                or "resourceexhausted" in error_str
+                or "429" in error_str
+                or "rate" in error_str
+                or "quota" in error_str
+            ):
                 if attempt < max_retries - 1:
                     import time as time_module
+
                     wait_time = 2 ** (attempt + 1)  # Exponential backoff
                     print(f"    API error, retrying in {wait_time}s... ({attempt + 1}/{max_retries})")
                     time_module.sleep(wait_time)
                     continue
 
             # Non-retryable error or max retries reached
-            metrics['generation_time'] = time.time() - start_time
-            metrics['verification_layers']['structural']['errors'] = [last_error]
-            metrics['verification_layers']['structural']['hard_errors'] = [last_error]
-            metrics['verification_layers']['structural']['warnings'] = []
+            metrics["generation_time"] = time.time() - start_time
+            metrics["verification_layers"]["structural"]["errors"] = [last_error]
+            metrics["verification_layers"]["structural"]["hard_errors"] = [last_error]
+            metrics["verification_layers"]["structural"]["warnings"] = []
 
             # Return empty plan
             plan = BDIPlan(goal_description=desire, nodes=[], edges=[])
-            metrics['plan_nodes'] = []
+            metrics["plan_nodes"] = []
             return plan, False, metrics
 
     # Should not reach here, but just in case
-    metrics['generation_time'] = time.time() - start_time
-    metrics['verification_layers']['structural']['errors'] = [f"Max retries ({max_retries}) exceeded: {last_error}"]
-    metrics['verification_layers']['structural']['hard_errors'] = [f"Max retries ({max_retries}) exceeded: {last_error}"]
-    metrics['verification_layers']['structural']['warnings'] = []
+    metrics["generation_time"] = time.time() - start_time
+    metrics["verification_layers"]["structural"]["errors"] = [f"Max retries ({max_retries}) exceeded: {last_error}"]
+    metrics["verification_layers"]["structural"]["hard_errors"] = [
+        f"Max retries ({max_retries}) exceeded: {last_error}"
+    ]
+    metrics["verification_layers"]["structural"]["warnings"] = []
     plan = BDIPlan(goal_description=desire, nodes=[], edges=[])
-    metrics['plan_nodes'] = []
+    metrics["plan_nodes"] = []
     return plan, False, metrics
+
 
 # ============================================================================
 # BATCH EVALUATION
 # ============================================================================
 
-def find_all_instances(base_path: str, domain: str) -> List[str]:
+
+def find_all_instances(base_path: str, domain: str) -> list[str]:
     """Find all PDDL instance files for a domain"""
     domain_path = Path(base_path) / "instances" / domain
 
@@ -2331,15 +2489,17 @@ def find_all_instances(base_path: str, domain: str) -> List[str]:
     for pattern in [
         "generated/instance-*.pddl",
         "generated_basic/instance-*.pddl",
-        "generated_basic_*/instance-*.pddl"
+        "generated_basic_*/instance-*.pddl",
     ]:
         instance_files.extend(domain_path.glob(pattern))
 
     return sorted([str(f) for f in instance_files])
 
+
 def save_checkpoint_atomic(results: dict, checkpoint_file: str) -> None:
     """Persist checkpoint atomically to reduce corruption risk on interruption."""
     write_json_atomic(checkpoint_file, results)
+
 
 def evaluate_single_instance(instance_file: str, domain: str, execution_mode: str | None = None) -> dict:
     """
@@ -2353,32 +2513,32 @@ def evaluate_single_instance(instance_file: str, domain: str, execution_mode: st
         Dictionary with evaluation results
     """
     instance_result = {
-        'instance_file': instance_file,
-        'instance_name': Path(instance_file).stem,
-        'timestamp': datetime.now().isoformat(),
-        'execution_mode': resolve_execution_mode(execution_mode),
+        "instance_file": instance_file,
+        "instance_name": Path(instance_file).stem,
+        "timestamp": datetime.now().isoformat(),
+        "execution_mode": resolve_execution_mode(execution_mode),
     }
 
     try:
         # Parse PDDL
         pddl_data = parse_pddl_problem(instance_file)
-        instance_result['pddl_data'] = {
-            'problem_name': pddl_data['problem_name'],
-            'num_objects': len(pddl_data['objects']),
-            'num_init': len(pddl_data['init']),
-            'num_goals': len(pddl_data['goal'])
+        instance_result["pddl_data"] = {
+            "problem_name": pddl_data["problem_name"],
+            "num_objects": len(pddl_data["objects"]),
+            "num_init": len(pddl_data["init"]),
+            "num_goals": len(pddl_data["goal"]),
         }
 
         # Convert to NL
         beliefs, desire = pddl_to_natural_language(pddl_data, domain)
-        instance_result['beliefs'] = beliefs[:200] + "..."  # Truncate for storage
-        instance_result['desire'] = desire[:200] + "..."
+        instance_result["beliefs"] = beliefs[:200] + "..."  # Truncate for storage
+        instance_result["desire"] = desire[:200] + "..."
 
         # Generate plan with init_state for physics validation
-        init_state = pddl_data.get('init_state', None)
+        init_state = pddl_data.get("init_state", None)
 
         # Resolve PDDL domain file for VAL
-        domain_name = pddl_data.get('domain_name', 'blocksworld')
+        domain_name = pddl_data.get("domain_name", "blocksworld")
         domain_file = resolve_domain_file(domain_name)
 
         pipeline_results = run_planbench_pipeline_for_instance(
@@ -2388,23 +2548,24 @@ def evaluate_single_instance(instance_file: str, domain: str, execution_mode: st
             pddl_problem_path=instance_file,
             pddl_domain_path=domain_file,
             init_state=init_state,
-            objects=pddl_data.get('objects', []),
-            typed_objects=pddl_data.get('typed_objects', {}),
-            execution_mode=instance_result['execution_mode'],
+            objects=pddl_data.get("objects", []),
+            typed_objects=pddl_data.get("typed_objects", {}),
+            execution_mode=instance_result["execution_mode"],
             instance_id=instance_file,  # Use instance file path as unique ID
         )
 
         instance_result.update(pipeline_results)
-        selected_key = stage_result_key(instance_result['execution_mode'])
+        selected_key = stage_result_key(instance_result["execution_mode"])
         selected_result = instance_result.get(selected_key) or {}
-        instance_result['bdi_metrics'] = selected_result  # legacy alias
-        instance_result['success'] = bool(selected_result.get('success', False))
+        instance_result["bdi_metrics"] = selected_result  # legacy alias
+        instance_result["success"] = bool(selected_result.get("success", False))
 
     except Exception as e:
-        instance_result['success'] = False
-        instance_result['error'] = str(e)
+        instance_result["success"] = False
+        instance_result["error"] = str(e)
 
     return instance_result
+
 
 def run_batch_evaluation(
     domain: str,
@@ -2420,9 +2581,9 @@ def run_batch_evaluation(
     """Run evaluation on all instances in a domain with MLflow tracking"""
     global MLFLOW_AVAILABLE
 
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print(f"  PLANBENCH FULL EVALUATION: {domain}")
-    print(f"{'='*80}\n")
+    print(f"{'=' * 80}\n")
 
     resolved_mode = resolve_execution_mode(execution_mode)
 
@@ -2434,7 +2595,7 @@ def run_batch_evaluation(
     if instances_file:
         # Load instances from file
         print(f"Loading instances from: {instances_file}")
-        with open(instances_file, 'r') as f:
+        with open(instances_file) as f:
             instances = [line.strip() for line in f if line.strip()]
         print(f"Loaded {len(instances)} instances from file")
     else:
@@ -2489,29 +2650,25 @@ def run_batch_evaluation(
     # Load checkpoint if resuming
     completed = set()
     results = {
-        'domain': domain,
-        'execution_mode': resolved_mode,
-        'timestamp': datetime.now().isoformat(),
-        'total_instances': len(instances),
-        'results': []
+        "domain": domain,
+        "execution_mode": resolved_mode,
+        "timestamp": datetime.now().isoformat(),
+        "total_instances": len(instances),
+        "results": [],
     }
 
     if effective_resume and os.path.exists(effective_resume):
         print(f"Resuming from checkpoint: {effective_resume}")
-        with open(effective_resume, 'r') as f:
+        with open(effective_resume) as f:
             checkpoint = json.load(f)
-            results['results'] = checkpoint.get('results', [])
-            completed = {
-                r['instance_file']
-                for r in results['results']
-                if r.get(selected_result_key) is not None
-            }
+            results["results"] = checkpoint.get("results", [])
+            completed = {r["instance_file"] for r in results["results"] if r.get(selected_result_key) is not None}
         print(f"Skipping {len(completed)} completed instances")
 
     # Evaluate each instance
     # Initialize counters from resumed results (if any), then accumulate new ones.
-    success_count = sum(1 for r in results['results'] if r.get('success', False))
-    failed_count = len(results['results']) - success_count
+    success_count = sum(1 for r in results["results"] if r.get("success", False))
+    failed_count = len(results["results"]) - success_count
     results_lock = Lock()  # Thread-safe results collection
 
     # Filter out completed instances
@@ -2523,6 +2680,7 @@ def run_batch_evaluation(
 
         # Rate limiting: limit concurrent API calls to max_workers
         import threading
+
         api_semaphore = threading.Semaphore(max_workers)
 
         def rate_limited_evaluate(instance_file, domain):
@@ -2544,36 +2702,36 @@ def run_batch_evaluation(
                     except TimeoutError:
                         instance_file = future_to_instance[future]
                         instance_result = {
-                            'instance_file': instance_file,
-                            'instance_name': Path(instance_file).stem,
-                            'success': False,
-                            'error': 'Timeout after 300 seconds',
-                            'bdi_metrics': {
-                                'overall_valid': False,
-                                'verification_layers': {
-                                    'structural': {
-                                        'valid': False,
-                                        'errors': ['Timeout after 300 seconds'],
-                                        'hard_errors': ['Timeout after 300 seconds'],
-                                        'warnings': []
+                            "instance_file": instance_file,
+                            "instance_name": Path(instance_file).stem,
+                            "success": False,
+                            "error": "Timeout after 300 seconds",
+                            "bdi_metrics": {
+                                "overall_valid": False,
+                                "verification_layers": {
+                                    "structural": {
+                                        "valid": False,
+                                        "errors": ["Timeout after 300 seconds"],
+                                        "hard_errors": ["Timeout after 300 seconds"],
+                                        "warnings": [],
                                     },
-                                    'symbolic': {'valid': False, 'errors': []},
-                                    'physics': {'valid': False, 'errors': []}
-                                }
-                            }
+                                    "symbolic": {"valid": False, "errors": []},
+                                    "physics": {"valid": False, "errors": []},
+                                },
+                            },
                         }
 
                     # Thread-safe result collection
                     with results_lock:
-                        results['results'].append(instance_result)
+                        results["results"].append(instance_result)
 
-                        if instance_result.get('success', False):
+                        if instance_result.get("success", False):
                             success_count += 1
                         else:
                             failed_count += 1
 
                         # Save checkpoint at configured interval
-                        if len(results['results']) % checkpoint_every == 0:
+                        if len(results["results"]) % checkpoint_every == 0:
                             save_checkpoint_atomic(results, checkpoint_file)
 
                     pbar.update(1)
@@ -2582,113 +2740,112 @@ def run_batch_evaluation(
         for instance_file in tqdm(instances_to_process, desc=f"Evaluating {domain}"):
             instance_result = evaluate_single_instance(instance_file, domain, resolved_mode)
 
-            results['results'].append(instance_result)
+            results["results"].append(instance_result)
 
-            if instance_result.get('success', False):
+            if instance_result.get("success", False):
                 success_count += 1
             else:
                 failed_count += 1
 
             # Save checkpoint at configured interval
-            if len(results['results']) % checkpoint_every == 0:
+            if len(results["results"]) % checkpoint_every == 0:
                 save_checkpoint_atomic(results, checkpoint_file)
 
     # Always persist latest progress snapshot
     save_checkpoint_atomic(results, checkpoint_file)
 
     def _checkpoint_stats(result_key: str) -> dict:
-        attempted = [r for r in results['results'] if r.get(result_key) is not None]
-        success = sum(1 for r in attempted if r.get(result_key, {}).get('success', False))
+        attempted = [r for r in results["results"] if r.get(result_key) is not None]
+        success = sum(1 for r in attempted if r.get(result_key, {}).get("success", False))
         return {
-            'attempted': len(attempted),
-            'success_count': success,
-            'success_rate': success / len(attempted) if attempted else 0,
+            "attempted": len(attempted),
+            "success_count": success,
+            "success_rate": success / len(attempted) if attempted else 0,
         }
 
-    baseline_stats = _checkpoint_stats('baseline_result')
-    bdi_stats = _checkpoint_stats('bdi_initial_result')
-    bdi_repair_stats = _checkpoint_stats('bdi_repair_result')
+    baseline_stats = _checkpoint_stats("baseline_result")
+    bdi_stats = _checkpoint_stats("bdi_initial_result")
+    bdi_repair_stats = _checkpoint_stats("bdi_repair_result")
 
     repair_contribution = sum(
         1
-        for r in results['results']
-        if r.get('bdi_initial_result') is not None
-        and r.get('bdi_repair_result') is not None
-        and not r.get('bdi_initial_result', {}).get('success', False)
-        and r.get('bdi_repair_result', {}).get('success', False)
+        for r in results["results"]
+        if r.get("bdi_initial_result") is not None
+        and r.get("bdi_repair_result") is not None
+        and not r.get("bdi_initial_result", {}).get("success", False)
+        and r.get("bdi_repair_result", {}).get("success", False)
     )
 
     val_repair_triggered = sum(
-        1 for r in results['results']
-        if (r.get('bdi_repair_result') or {}).get('val_repair', {}).get('attempts', 0) > 0
+        1 for r in results["results"] if (r.get("bdi_repair_result") or {}).get("val_repair", {}).get("attempts", 0) > 0
     )
     val_repair_success = sum(
-        1 for r in results['results']
-        if (r.get('bdi_repair_result') or {}).get('val_repair', {}).get('success', False)
+        1 for r in results["results"] if (r.get("bdi_repair_result") or {}).get("val_repair", {}).get("success", False)
     )
     val_repair_total_attempts = sum(
-        (r.get('bdi_repair_result') or {}).get('val_repair', {}).get('attempts', 0)
-        for r in results['results']
+        (r.get("bdi_repair_result") or {}).get("val_repair", {}).get("attempts", 0) for r in results["results"]
     )
 
     selected_stats = {
-        'baseline': baseline_stats,
-        'bdi': bdi_stats,
-        'bdi-repair': bdi_repair_stats,
+        "baseline": baseline_stats,
+        "bdi": bdi_stats,
+        "bdi-repair": bdi_repair_stats,
     }[resolved_mode]
 
-    results['summary'] = {
-        'total_evaluated': len(results['results']),
-        'stage': resolved_mode,
-        'success_count': selected_stats['success_count'],
-        'failed_count': selected_stats['attempted'] - selected_stats['success_count'],
-        'success_rate': selected_stats['success_rate'],
-        'baseline': baseline_stats,
-        'bdi': bdi_stats,
-        'bdi_repair': bdi_repair_stats,
-        'repair_contribution': {
-            'successful_repairs': repair_contribution,
+    results["summary"] = {
+        "total_evaluated": len(results["results"]),
+        "stage": resolved_mode,
+        "success_count": selected_stats["success_count"],
+        "failed_count": selected_stats["attempted"] - selected_stats["success_count"],
+        "success_rate": selected_stats["success_rate"],
+        "baseline": baseline_stats,
+        "bdi": bdi_stats,
+        "bdi_repair": bdi_repair_stats,
+        "repair_contribution": {
+            "successful_repairs": repair_contribution,
         },
-        'val_repair': {
-            'triggered': val_repair_triggered,
-            'successful': val_repair_success,
-            'total_attempts': val_repair_total_attempts,
-            'success_rate': val_repair_success / val_repair_triggered if val_repair_triggered > 0 else 0,
+        "val_repair": {
+            "triggered": val_repair_triggered,
+            "successful": val_repair_success,
+            "total_attempts": val_repair_total_attempts,
+            "success_rate": val_repair_success / val_repair_triggered if val_repair_triggered > 0 else 0,
         },
     }
 
     # Save final results
     output_file = f"{output_dir}/results_{domain}_{resolved_mode}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     write_json_atomic(output_file, results)
-    results['artifacts'] = {
-        'checkpoint_file': checkpoint_file,
-        'output_file': output_file,
+    results["artifacts"] = {
+        "checkpoint_file": checkpoint_file,
+        "output_file": output_file,
     }
 
     # Log metrics and artifacts to MLflow
     if MLFLOW_AVAILABLE and mlflow_run_id:
         try:
-            summary = results['summary']
+            summary = results["summary"]
 
             # Log aggregate metrics
-            mlflow.log_metric("success_rate", summary['success_rate'])
-            mlflow.log_metric("success_count", summary['success_count'])
-            mlflow.log_metric("failed_count", summary['failed_count'])
-            mlflow.log_metric("baseline_success_rate", summary['baseline']['success_rate'])
-            mlflow.log_metric("bdi_success_rate", summary['bdi']['success_rate'])
-            mlflow.log_metric("bdi_repair_success_rate", summary['bdi_repair']['success_rate'])
-            mlflow.log_metric("repair_contribution", summary['repair_contribution']['successful_repairs'])
+            mlflow.log_metric("success_rate", summary["success_rate"])
+            mlflow.log_metric("success_count", summary["success_count"])
+            mlflow.log_metric("failed_count", summary["failed_count"])
+            mlflow.log_metric("baseline_success_rate", summary["baseline"]["success_rate"])
+            mlflow.log_metric("bdi_success_rate", summary["bdi"]["success_rate"])
+            mlflow.log_metric("bdi_repair_success_rate", summary["bdi_repair"]["success_rate"])
+            mlflow.log_metric("repair_contribution", summary["repair_contribution"]["successful_repairs"])
 
-            mlflow.log_metric("val_repair_triggered", summary['val_repair']['triggered'])
-            mlflow.log_metric("val_repair_successful", summary['val_repair']['successful'])
-            mlflow.log_metric("val_repair_total_attempts", summary['val_repair']['total_attempts'])
-            mlflow.log_metric("val_repair_success_rate", summary['val_repair']['success_rate'])
+            mlflow.log_metric("val_repair_triggered", summary["val_repair"]["triggered"])
+            mlflow.log_metric("val_repair_successful", summary["val_repair"]["successful"])
+            mlflow.log_metric("val_repair_total_attempts", summary["val_repair"]["total_attempts"])
+            mlflow.log_metric("val_repair_success_rate", summary["val_repair"]["success_rate"])
 
             # Log results file as artifact
             mlflow.log_artifact(output_file)
 
-            print(f"✓ Metrics and artifacts logged to MLflow")
-            print(f"  View at: http://localhost:5000/#/experiments/{mlflow.active_run().info.experiment_id}/runs/{mlflow_run_id}")
+            print("✓ Metrics and artifacts logged to MLflow")
+            print(
+                f"  View at: http://localhost:5000/#/experiments/{mlflow.active_run().info.experiment_id}/runs/{mlflow_run_id}"
+            )
 
         except Exception as e:
             print(f"⚠️  MLflow logging failed: {e}")
@@ -2696,31 +2853,39 @@ def run_batch_evaluation(
             # End MLflow run
             mlflow.end_run()
 
-    print(f"\n{'='*80}")
-    print(f"  EVALUATION COMPLETE")
-    print(f"{'='*80}")
+    print(f"\n{'=' * 80}")
+    print("  EVALUATION COMPLETE")
+    print(f"{'=' * 80}")
     print(f"\nDomain: {domain}")
     print(f"Stage: {resolved_mode}")
     print(f"Total instances: {len(results['results'])}")
-    print(f"\n--- Checkpoint Success ---")
-    print(f"baseline: {baseline_stats['success_count']}/{baseline_stats['attempted']} ({baseline_stats['success_rate']*100:.1f}%)")
-    print(f"bdi: {bdi_stats['success_count']}/{bdi_stats['attempted']} ({bdi_stats['success_rate']*100:.1f}%)")
-    print(f"bdi_repair: {bdi_repair_stats['success_count']}/{bdi_repair_stats['attempted']} ({bdi_repair_stats['success_rate']*100:.1f}%)")
+    print("\n--- Checkpoint Success ---")
+    print(
+        f"baseline: {baseline_stats['success_count']}/{baseline_stats['attempted']} ({baseline_stats['success_rate'] * 100:.1f}%)"
+    )
+    print(f"bdi: {bdi_stats['success_count']}/{bdi_stats['attempted']} ({bdi_stats['success_rate'] * 100:.1f}%)")
+    print(
+        f"bdi_repair: {bdi_repair_stats['success_count']}/{bdi_repair_stats['attempted']} ({bdi_repair_stats['success_rate'] * 100:.1f}%)"
+    )
     print(f"Repair contribution inside bdi_repair: {repair_contribution}")
-    print(f"\n--- VAL Repair Loop Statistics ---")
+    print("\n--- VAL Repair Loop Statistics ---")
     print(f"VAL repair triggered: {val_repair_triggered}")
     print(f"VAL repair successful: {val_repair_success}")
     print(f"VAL repair total attempts: {val_repair_total_attempts}")
     if val_repair_triggered > 0:
-        print(f"VAL repair success rate: {val_repair_success/val_repair_triggered*100:.1f}%")
-    print(f"\nSelected stage success: {selected_stats['success_count']}/{selected_stats['attempted']} ({selected_stats['success_rate']*100:.1f}%)")
+        print(f"VAL repair success rate: {val_repair_success / val_repair_triggered * 100:.1f}%")
+    print(
+        f"\nSelected stage success: {selected_stats['success_count']}/{selected_stats['attempted']} ({selected_stats['success_rate'] * 100:.1f}%)"
+    )
     print(f"\nResults saved to: {output_file}")
 
     return results
 
+
 # ============================================================================
 # MAIN
 # ============================================================================
+
 
 def main():
     parser = build_arg_parser()
@@ -2752,7 +2917,7 @@ def main():
         sys.exit(1)
 
     # Set execution mode for the current benchmark stage
-    os.environ['AGENT_EXECUTION_MODE'] = args.execution_mode
+    os.environ["AGENT_EXECUTION_MODE"] = args.execution_mode
     print(f"AGENT_EXECUTION_MODE={args.execution_mode}")
 
     runtime_config = normalize_eval_runtime(
@@ -2804,7 +2969,9 @@ def main():
                 domain=domain,
                 execution_mode=args.execution_mode,
                 output_dir=args.output_dir,
-                checkpoint_file=results.get("artifacts", {}).get("checkpoint_file", checkpoint_path(args.output_dir, domain, args.execution_mode)),
+                checkpoint_file=results.get("artifacts", {}).get(
+                    "checkpoint_file", checkpoint_path(args.output_dir, domain, args.execution_mode)
+                ),
                 deterministic=runtime_config.deterministic,
                 disable_repair_cache=runtime_config.disable_repair_cache,
                 disable_early_exit=runtime_config.disable_early_exit,
@@ -2831,16 +2998,19 @@ def main():
 
     # Print overall summary
     if len(domains) > 1:
-        print(f"\n{'='*80}")
-        print(f"  OVERALL SUMMARY")
-        print(f"{'='*80}\n")
+        print(f"\n{'=' * 80}")
+        print("  OVERALL SUMMARY")
+        print(f"{'=' * 80}\n")
 
         for domain, results in all_results.items():
-            summary = results['summary']
+            summary = results["summary"]
             print(f"{domain}:")
-            print(f"  Success: {summary['success_count']}/{summary['total_evaluated']} "
-                  f"({summary['success_rate']*100:.1f}%)")
+            print(
+                f"  Success: {summary['success_count']}/{summary['total_evaluated']} "
+                f"({summary['success_rate'] * 100:.1f}%)"
+            )
             print(f"  Avg time: {summary['avg_generation_time']:.2f}s\n")
+
 
 if __name__ == "__main__":
     main()

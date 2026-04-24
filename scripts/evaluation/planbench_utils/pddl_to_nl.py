@@ -5,7 +5,6 @@ PDDL to Natural Language Conversion
 Domain-specific converters that transform PDDL problem data into
 natural-language beliefs and desires for the BDI planner.
 """
-from typing import Tuple
 
 from src.bdi_llm.planner.domain_spec import (
     decode_planbench_literals,
@@ -23,7 +22,7 @@ def _natural_predicate_list(predicates: list[str]) -> str:
     return ", ".join(predicates[:-1]) + f" and {predicates[-1]}"
 
 
-def pddl_to_nl_planbench_style(pddl_data: dict, domain_intro: str) -> Tuple[str, str]:
+def pddl_to_nl_planbench_style(pddl_data: dict, domain_intro: str) -> tuple[str, str]:
     """Render beliefs/desire in the same style as PlanBench prompt generation."""
     domain_name = str(pddl_data.get("domain_name", "")).strip()
     init_preds = decode_planbench_literals(domain_name, pddl_data.get("init", []))
@@ -31,10 +30,7 @@ def pddl_to_nl_planbench_style(pddl_data: dict, domain_intro: str) -> Tuple[str,
     init_text = _natural_predicate_list(init_preds)
     goal_text = _natural_predicate_list(goal_preds)
 
-    beliefs = (
-        f"{domain_intro.strip()}\n\n"
-        f"As initial conditions I have that, {init_text}."
-    )
+    beliefs = f"{domain_intro.strip()}\n\nAs initial conditions I have that, {init_text}."
     desire = (
         f"My goal is to have that {goal_text}.\n\n"
         "Generate a sequential connected plan using only the available actions."
@@ -42,7 +38,7 @@ def pddl_to_nl_planbench_style(pddl_data: dict, domain_intro: str) -> Tuple[str,
     return beliefs, desire
 
 
-def pddl_to_natural_language(pddl_data: dict, domain: str = "blocksworld") -> Tuple[str, str]:
+def pddl_to_natural_language(pddl_data: dict, domain: str = "blocksworld") -> tuple[str, str]:
     """Convert PDDL to natural language (domain-specific)"""
 
     domain_intro = load_planbench_domain_intro(domain)
@@ -60,11 +56,11 @@ def pddl_to_natural_language(pddl_data: dict, domain: str = "blocksworld") -> Tu
         return pddl_to_nl_generic(pddl_data)
 
 
-def pddl_to_nl_blocksworld(pddl_data: dict) -> Tuple[str, str]:
+def pddl_to_nl_blocksworld(pddl_data: dict) -> tuple[str, str]:
     """Enhanced Blocksworld-specific conversion with clearer state description"""
-    objects = pddl_data['objects']
-    init = pddl_data['init']
-    goal = pddl_data['goal']
+    objects = pddl_data["objects"]
+    init = pddl_data["init"]
+    goal = pddl_data["goal"]
 
     # Parse init state in detail
     on_table = []
@@ -76,30 +72,30 @@ def pddl_to_nl_blocksworld(pddl_data: dict) -> Tuple[str, str]:
     goal_pairs = set()
     for pred in goal:
         parts = pred.split()
-        if parts[0] == 'on' and len(parts) >= 3:
+        if parts[0] == "on" and len(parts) >= 3:
             goal_pairs.add((parts[1], parts[2]))
 
     # Identify goal tops (any block that is a 'top' in a goal pair)
     # If a block is NOT in this set, it should be on the table in the goal state.
-    goal_tops = {t for t, b in goal_pairs}
+    {t for t, b in goal_pairs}
 
     for pred in init:
         parts = pred.split()
-        if parts[0] == 'ontable':
+        if parts[0] == "ontable":
             on_table.append(parts[1])
-        elif parts[0] == 'clear':
+        elif parts[0] == "clear":
             clear_blocks.append(parts[1])
-        elif parts[0] == 'on' and len(parts) >= 3:
+        elif parts[0] == "on" and len(parts) >= 3:
             stacks[parts[1]] = parts[2]
-        elif parts[0] == 'handempty':
+        elif parts[0] == "handempty":
             hand_empty = True
-        elif parts[0] == 'holding':
+        elif parts[0] == "holding":
             hand_empty = False
 
     # Build beliefs with detailed state description
     beliefs_parts = []
-    beliefs_parts.append(f"BLOCKSWORLD DOMAIN")
-    beliefs_parts.append(f"\n=== CURRENT STATE ===")
+    beliefs_parts.append("BLOCKSWORLD DOMAIN")
+    beliefs_parts.append("\n=== CURRENT STATE ===")
     beliefs_parts.append(f"Available blocks ({len(objects)}): {', '.join(sorted(objects))}")
 
     # Describe stacks (what's on what) - ENHANCED
@@ -108,9 +104,9 @@ def pddl_to_nl_blocksworld(pddl_data: dict) -> Tuple[str, str]:
         for top, bottom in sorted(stacks.items()):
             stack_descs.append(f"{top} is on top of {bottom}")
         beliefs_parts.append(f"Current stacks: {'; '.join(stack_descs)}")
-        beliefs_parts.append(f"⚠️  IMPORTANT: These blocks are STACKED. To move them, you MUST unstack first!")
+        beliefs_parts.append("⚠️  IMPORTANT: These blocks are STACKED. To move them, you MUST unstack first!")
     else:
-        beliefs_parts.append(f"Current stacks: None (all blocks are on table)")
+        beliefs_parts.append("Current stacks: None (all blocks are on table)")
 
     # Describe blocks on table
     if on_table:
@@ -122,7 +118,7 @@ def pddl_to_nl_blocksworld(pddl_data: dict) -> Tuple[str, str]:
     # Hand state
     beliefs_parts.append(f"Hand: {'empty' if hand_empty else 'holding something'}")
 
-    beliefs_parts.append(f"\n=== CRITICAL RULES FOR INITIAL STACKS ===")
+    beliefs_parts.append("\n=== CRITICAL RULES FOR INITIAL STACKS ===")
     beliefs_parts.append("⚠️  If a block is ON another block in the initial state:")
     beliefs_parts.append("   1. You CANNOT pick-up that block directly")
     beliefs_parts.append("   2. You MUST use 'unstack X Y' to remove X from Y first")
@@ -133,20 +129,20 @@ def pddl_to_nl_blocksworld(pddl_data: dict) -> Tuple[str, str]:
     beliefs_parts.append("   ✓ Correct: unstack B A → put-down B (or stack B somewhere)")
     beliefs_parts.append("   ✗ Wrong: pick-up B (this will FAIL - B is not on table!)")
 
-    beliefs_parts.append(f"\n=== PHYSICS CONSTRAINTS ===")
+    beliefs_parts.append("\n=== PHYSICS CONSTRAINTS ===")
     beliefs_parts.append("1. You can only hold ONE block at a time")
     beliefs_parts.append("2. You can only pick up blocks that are CLEAR (nothing on top)")
     beliefs_parts.append("3. You can only stack on blocks that are CLEAR")
     beliefs_parts.append("4. pick-up ONLY works for blocks ON TABLE")
     beliefs_parts.append("5. unstack ONLY works for blocks ON OTHER BLOCKS")
 
-    beliefs_parts.append(f"\n=== AVAILABLE ACTIONS ===")
+    beliefs_parts.append("\n=== AVAILABLE ACTIONS ===")
     beliefs_parts.append("- pick-up X: Pick up block X from TABLE (X must be clear and ON TABLE)")
     beliefs_parts.append("- put-down X: Put block X on table (you must be holding X)")
     beliefs_parts.append("- stack X Y: Put block X on top of block Y (you hold X, Y must be clear)")
     beliefs_parts.append("- unstack X Y: Take block X off block Y (X must be clear, hand empty)")
 
-    beliefs_parts.append(f"\n=== PLANNING REQUIREMENTS ===")
+    beliefs_parts.append("\n=== PLANNING REQUIREMENTS ===")
     beliefs_parts.append("Generate a SEQUENTIAL plan where each action depends on the previous one.")
     beliefs_parts.append("The plan graph must be CONNECTED - all actions form one chain/path.")
 
@@ -158,11 +154,7 @@ def pddl_to_nl_blocksworld(pddl_data: dict) -> Tuple[str, str]:
     teardown_text = ""
 
     # Identify initial on-pairs that are NOT in the goal
-    initial_pairs = [
-        (top, bottom)
-        for top, bottom in stacks.items()
-        if (top, bottom) not in goal_pairs
-    ]
+    initial_pairs = [(top, bottom) for top, bottom in stacks.items() if (top, bottom) not in goal_pairs]
 
     if initial_pairs:
         # Order by height (top-first) for safer unstacking
@@ -184,9 +176,7 @@ def pddl_to_nl_blocksworld(pddl_data: dict) -> Tuple[str, str]:
 
         teardown_text += "Teardown steps (clearing mismatches):\n"
         for top, bottom in initial_pairs:
-            teardown_text += (
-                f"    Step {step_num}: unstack {top} from {bottom}, then put-down {top}\n"
-            )
+            teardown_text += f"    Step {step_num}: unstack {top} from {bottom}, then put-down {top}\n"
             step_num += 1
         teardown_text += "\n  "
 
@@ -224,7 +214,7 @@ def pddl_to_nl_blocksworld(pddl_data: dict) -> Tuple[str, str]:
 
     for tower in towers:
         goal_desc += f"\n  Tower (base={tower[0]}): {' -> '.join(tower)}  (bottom to top)\n"
-        goal_desc += f"  Construction steps:\n"
+        goal_desc += "  Construction steps:\n"
         for i in range(1, len(tower)):
             blk = tower[i]
             tgt = tower[i - 1]
@@ -259,11 +249,11 @@ def pddl_to_nl_blocksworld(pddl_data: dict) -> Tuple[str, str]:
     return beliefs, desire
 
 
-def pddl_to_nl_generic(pddl_data: dict) -> Tuple[str, str]:
+def pddl_to_nl_generic(pddl_data: dict) -> tuple[str, str]:
     """Generic PDDL to NL conversion with complete state/goal preservation."""
-    objects = pddl_data['objects']
-    init = pddl_data['init']
-    goal = pddl_data['goal']
+    objects = pddl_data["objects"]
+    init = pddl_data["init"]
+    goal = pddl_data["goal"]
     domain_name = pddl_data.get("domain_name", "unknown")
 
     beliefs_parts = [f"Domain: {domain_name}", "", "Objects:"]
@@ -293,23 +283,23 @@ def pddl_to_nl_generic(pddl_data: dict) -> Tuple[str, str]:
     return beliefs, desire
 
 
-def pddl_to_nl_logistics(pddl_data: dict) -> Tuple[str, str]:
+def pddl_to_nl_logistics(pddl_data: dict) -> tuple[str, str]:
     """Logistics domain conversion with enhanced airport/city awareness"""
-    objects = pddl_data['objects']
-    init = pddl_data['init']
-    goal = pddl_data['goal']
+    pddl_data["objects"]
+    init = pddl_data["init"]
+    goal = pddl_data["goal"]
 
     # Parse logistics state comprehensively
     packages = []
     trucks = []
     airplanes = []
-    airports = set()       # locations that are airports
+    airports = set()  # locations that are airports
     cities = []
-    city_locations = {}    # city -> [locations]
-    location_city = {}     # location -> city
+    city_locations = {}  # city -> [locations]
+    location_city = {}  # location -> city
 
     at_locations = {}  # object -> location
-    in_vehicle = {}    # package -> vehicle
+    in_vehicle = {}  # package -> vehicle
 
     for pred in init:
         parts = pred.split()
@@ -317,23 +307,23 @@ def pddl_to_nl_logistics(pddl_data: dict) -> Tuple[str, str]:
             continue
         pred_name = parts[0].lower()
 
-        if pred_name == 'at' and len(parts) >= 3:
+        if pred_name == "at" and len(parts) >= 3:
             at_locations[parts[1]] = parts[2]
-        elif pred_name == 'in' and len(parts) >= 3:
+        elif pred_name == "in" and len(parts) >= 3:
             in_vehicle[parts[1]] = parts[2]
-        elif pred_name == 'airport' and len(parts) >= 2:
+        elif pred_name == "airport" and len(parts) >= 2:
             airports.add(parts[1])
-        elif pred_name == 'in-city' and len(parts) >= 3:
+        elif pred_name == "in-city" and len(parts) >= 3:
             loc, city = parts[1], parts[2]
             city_locations.setdefault(city, []).append(loc)
             location_city[loc] = city
-        elif pred_name == 'obj' and len(parts) >= 2:
+        elif pred_name == "obj" and len(parts) >= 2:
             packages.append(parts[1])
-        elif pred_name == 'truck' and len(parts) >= 2:
+        elif pred_name == "truck" and len(parts) >= 2:
             trucks.append(parts[1])
-        elif pred_name == 'airplane' and len(parts) >= 2:
+        elif pred_name == "airplane" and len(parts) >= 2:
             airplanes.append(parts[1])
-        elif pred_name == 'city' and len(parts) >= 2:
+        elif pred_name == "city" and len(parts) >= 2:
             cities.append(parts[1])
 
     # Build beliefs
@@ -418,7 +408,7 @@ def pddl_to_nl_logistics(pddl_data: dict) -> Tuple[str, str]:
     goal_descs = []
     for pred in goal:
         parts = pred.split()
-        if parts[0] == 'at' and len(parts) >= 3:
+        if parts[0] == "at" and len(parts) >= 3:
             pkg, loc = parts[1], parts[2]
             city = location_city.get(loc, "?")
             # Determine if inter-city transport is needed
@@ -443,12 +433,12 @@ def pddl_to_nl_logistics(pddl_data: dict) -> Tuple[str, str]:
     return beliefs, desire
 
 
-def pddl_to_nl_depots(pddl_data: dict) -> Tuple[str, str]:
+def pddl_to_nl_depots(pddl_data: dict) -> tuple[str, str]:
     """Enhanced Depots domain conversion with clear action specifications"""
-    objects = pddl_data['objects']
-    typed_objects = pddl_data.get('typed_objects', {})
-    init = pddl_data['init']
-    goal = pddl_data['goal']
+    objects = pddl_data["objects"]
+    typed_objects = pddl_data.get("typed_objects", {})
+    init = pddl_data["init"]
+    goal = pddl_data["goal"]
 
     # Parse depots state
     crates = []
@@ -458,11 +448,11 @@ def pddl_to_nl_depots(pddl_data: dict) -> Tuple[str, str]:
     locations = []
 
     at_locations = {}  # object -> location
-    on_surface = {}    # crate -> surface (pallet or crate)
-    in_truck = {}      # crate -> truck
-    lifting = {}       # hoist -> crate (if any)
+    on_surface = {}  # crate -> surface (pallet or crate)
+    in_truck = {}  # crate -> truck
+    lifting = {}  # hoist -> crate (if any)
     available = set()  # available hoists
-    clear = set()      # clear surfaces
+    clear = set()  # clear surfaces
 
     for pred in init:
         parts = pred.split()
@@ -471,31 +461,31 @@ def pddl_to_nl_depots(pddl_data: dict) -> Tuple[str, str]:
 
         pred_name = parts[0]
 
-        if pred_name == 'at' and len(parts) >= 3:
+        if pred_name == "at" and len(parts) >= 3:
             at_locations[parts[1]] = parts[2]
-        elif pred_name == 'on' and len(parts) >= 3:
+        elif pred_name == "on" and len(parts) >= 3:
             on_surface[parts[1]] = parts[2]
-        elif pred_name == 'in' and len(parts) >= 3:
+        elif pred_name == "in" and len(parts) >= 3:
             in_truck[parts[1]] = parts[2]
-        elif pred_name == 'lifting' and len(parts) >= 3:
+        elif pred_name == "lifting" and len(parts) >= 3:
             lifting[parts[1]] = parts[2]
-        elif pred_name == 'available' and len(parts) >= 2:
+        elif pred_name == "available" and len(parts) >= 2:
             available.add(parts[1])
-        elif pred_name == 'clear' and len(parts) >= 2:
+        elif pred_name == "clear" and len(parts) >= 2:
             clear.add(parts[1])
 
     # Classify objects by type using typed_objects mapping
     for obj in objects:
-        obj_type = typed_objects.get(obj, '').lower()
-        if 'crate' in obj or obj_type == 'crate':
+        obj_type = typed_objects.get(obj, "").lower()
+        if "crate" in obj or obj_type == "crate":
             crates.append(obj)
-        elif 'truck' in obj or obj_type == 'truck':
+        elif "truck" in obj or obj_type == "truck":
             trucks.append(obj)
-        elif 'hoist' in obj or obj_type == 'hoist':
+        elif "hoist" in obj or obj_type == "hoist":
             hoists.append(obj)
-        elif 'pallet' in obj or obj_type == 'pallet':
+        elif "pallet" in obj or obj_type == "pallet":
             pallets.append(obj)
-        elif 'depot' in obj or 'distributor' in obj or obj_type in ('depot', 'distributor', 'place'):
+        elif "depot" in obj or "distributor" in obj or obj_type in ("depot", "distributor", "place"):
             locations.append(obj)
 
     # Build beliefs with detailed state description
@@ -535,7 +525,9 @@ def pddl_to_nl_depots(pddl_data: dict) -> Tuple[str, str]:
 
     beliefs_parts.append("\n=== AVAILABLE ACTIONS ===")
     beliefs_parts.append("⚠️  CRITICAL: Use ONLY these Depots actions. DO NOT use blocksworld actions!")
-    beliefs_parts.append("⚠️  Parameter names MUST use the EXACT object names listed above (e.g., hoist0, crate0, pallet0, depot0)")
+    beliefs_parts.append(
+        "⚠️  Parameter names MUST use the EXACT object names listed above (e.g., hoist0, crate0, pallet0, depot0)"
+    )
     beliefs_parts.append("")
     beliefs_parts.append("1. Lift <hoist> <crate> <surface> <place>")
     beliefs_parts.append("   - hoist: a Hoist object (e.g., hoist0)")
@@ -591,7 +583,9 @@ def pddl_to_nl_depots(pddl_data: dict) -> Tuple[str, str]:
     beliefs_parts.append("❌ WRONG: (Lift hoist0 crate1 ...) then (Lift hoist0 crate2 ...)")
     beliefs_parts.append("   → hoist0 is LIFTING crate1, cannot lift crate2!")
     beliefs_parts.append("")
-    beliefs_parts.append("✓ RIGHT: (Lift hoist0 crate1 ...) then (Drop hoist0 crate1 ...) then (Lift hoist0 crate2 ...)")
+    beliefs_parts.append(
+        "✓ RIGHT: (Lift hoist0 crate1 ...) then (Drop hoist0 crate1 ...) then (Lift hoist0 crate2 ...)"
+    )
     beliefs_parts.append("   → hoist0 becomes available after Drop")
     beliefs_parts.append("")
     beliefs_parts.append("✓ ALSO RIGHT: (Lift hoist0 crate1 ...) then (Load hoist0 crate1 truck0 ...)")
@@ -619,7 +613,6 @@ def pddl_to_nl_depots(pddl_data: dict) -> Tuple[str, str]:
     beliefs_parts.append("3. Is the crate at the expected location/surface?")
     beliefs_parts.append("4. For Unload: Is the crate IN the truck?")
     beliefs_parts.append("5. For Lift: Is the crate CLEAR (nothing on top)?")
-
 
     beliefs_parts.append("\n=== WORKED EXAMPLE WITH STATE TRACKING ===")
     beliefs_parts.append("Scenario: crate0 on pallet0 at depot0, crate1 on pallet1 at depot1")
@@ -670,9 +663,9 @@ def pddl_to_nl_depots(pddl_data: dict) -> Tuple[str, str]:
     goal_descs = []
     for pred in goal[:15]:
         parts = pred.split()
-        if parts[0] == 'at' and len(parts) >= 3:
+        if parts[0] == "at" and len(parts) >= 3:
             goal_descs.append(f"{parts[1]} should be at {parts[2]}")
-        elif parts[0] == 'on' and len(parts) >= 3:
+        elif parts[0] == "on" and len(parts) >= 3:
             goal_descs.append(f"{parts[1]} should be on {parts[2]}")
 
     desire = f"Goal: {'; '.join(goal_descs)}. Use Depots actions (Lift/Drop/Load/Unload/Drive) to achieve this goal."

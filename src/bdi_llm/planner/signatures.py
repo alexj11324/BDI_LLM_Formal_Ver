@@ -215,8 +215,7 @@ class GeneratePlan(dspy.Signature):
     beliefs: str = dspy.InputField(desc="Current state of the world and available tools")
     desire: str = dspy.InputField(desc="The high-level goal to achieve")
     plan: BDIPlan = dspy.OutputField(
-        desc="Structured execution plan with nodes and edges forming a "
-        "SINGLE CONNECTED DAG"
+        desc="Structured execution plan with nodes and edges forming a SINGLE CONNECTED DAG"
     )
 
 
@@ -400,8 +399,7 @@ class GeneratePlanLogistics(dspy.Signature):
     beliefs: str = dspy.InputField(desc="Current state of the logistics world")
     desire: str = dspy.InputField(desc="The logistics goal to achieve")
     plan: BDIPlan = dspy.OutputField(
-        desc="Structured execution plan with nodes and edges forming a "
-        "SINGLE CONNECTED DAG"
+        desc="Structured execution plan with nodes and edges forming a SINGLE CONNECTED DAG"
     )
 
 
@@ -650,8 +648,7 @@ class GeneratePlanDepots(dspy.Signature):
     beliefs: str = dspy.InputField(desc="Current state of the depots world")
     desire: str = dspy.InputField(desc="The depots goal to achieve")
     plan: BDIPlan = dspy.OutputField(
-        desc="Structured execution plan with nodes and edges forming a "
-        "SINGLE CONNECTED DAG"
+        desc="Structured execution plan with nodes and edges forming a SINGLE CONNECTED DAG"
     )
 
 
@@ -730,19 +727,14 @@ class GeneratePlanGeneric(dspy.Signature):
 
 {_REMINDER}
     """
-    beliefs: str = dspy.InputField(
-        desc="Current state of the world (objects, initial predicates)"
-    )
-    desire: str = dspy.InputField(
-        desc="The goal conditions to achieve"
-    )
+    beliefs: str = dspy.InputField(desc="Current state of the world (objects, initial predicates)")
+    desire: str = dspy.InputField(desc="The goal conditions to achieve")
     domain_context: str = dspy.InputField(
         desc="Domain action schema: available actions, their parameters, "
         "preconditions, and effects (auto-derived from PDDL domain file)"
     )
     plan: BDIPlan = dspy.OutputField(
-        desc="Structured execution plan with nodes and edges forming a "
-        "SINGLE CONNECTED DAG"
+        desc="Structured execution plan with nodes and edges forming a SINGLE CONNECTED DAG"
     )
 
 
@@ -793,11 +785,10 @@ class RepairPlan(dspy.Signature):
     - Prioritize fixes based on failed_layers and repair_focus before proposing new actions.
     - Use val_repair_advice as hard guidance when present.
     """
+
     beliefs: str = dspy.InputField(desc="Current state of the world")
     desire: str = dspy.InputField(desc="The goal to achieve")
-    previous_plan: str = dspy.InputField(
-        desc="The plan that failed validation (as PDDL action sequence)"
-    )
+    previous_plan: str = dspy.InputField(desc="The plan that failed validation (as PDDL action sequence)")
     val_errors: str = dspy.InputField(
         desc="Specific validation errors from the PDDL validator (VAL), "
         "including which action failed, why, and repair advice"
@@ -818,7 +809,4 @@ class RepairPlan(dspy.Signature):
         "Use ONLY the action types defined here. If empty, infer from beliefs.",
         default="",
     )
-    plan: BDIPlan = dspy.OutputField(
-        desc="Corrected plan fixing the validation errors, as a "
-        "SINGLE CONNECTED DAG"
-    )
+    plan: BDIPlan = dspy.OutputField(desc="Corrected plan fixing the validation errors, as a SINGLE CONNECTED DAG")
