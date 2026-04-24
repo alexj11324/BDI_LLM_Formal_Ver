@@ -1,0 +1,12 @@
+# Pre-commit framework config — runs ruff lint + format on staged Python files before each commit.
+# Setup: pip install pre-commit && pre-commit install
+# Update versions: pre-commit autoupdate
+# Skip once: SKIP=ruff,ruff-format git commit -m "..."
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.3
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format

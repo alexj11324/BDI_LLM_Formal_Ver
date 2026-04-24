@@ -51,6 +51,12 @@ htmlcov/
 # AI/Agent tools
 .agent/
 .claude/
+# Claude Code: keep team-shared config in repo, hide personal/local
+!.claude/settings.json
+!.claude/skills/
+!.claude/skills/**
+!.claude/rules/
+!.claude/rules/**
 .ralph/
 AGENT_RULES.md
 .agents/
@@ -107,6 +113,9 @@ BDI_Paper/
 # Unrelated projects
 activation_functions/
 AI-Research-SKILLs/
+
+# Per-user Claude instructions (not shared)
+CLAUDE.local.md
 
 # RA meeting transcripts (private)
 RA*.txt
