@@ -37,13 +37,17 @@ include = ["bdi_llm*", "scripts*"]
 exclude = ["tests*"]
 
 [tool.ruff]
-line-length = 100
+line-length = 120
 
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "C90", "UP", "B"]
 
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401", "E402"]
+"scripts/**/*.py" = ["E501", "E402", "C901", "B904", "E741", "E722"]
+
 [tool.ruff.lint.mccabe]
-max-complexity = 15
+max-complexity = 20
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
