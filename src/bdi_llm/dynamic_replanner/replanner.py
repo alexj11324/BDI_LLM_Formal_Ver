@@ -2,9 +2,9 @@ import logging
 
 from openai import OpenAI
 
-from src.bdi_llm.config import Config
-from src.bdi_llm.dynamic_replanner.executor import ExecutionResult
-from src.bdi_llm.schemas import BDIPlan
+from ..config import Config
+from ..schemas import BDIPlan
+from .executor import ExecutionResult
 
 logger = logging.getLogger(__name__)
 

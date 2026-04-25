@@ -41,6 +41,8 @@ from scripts.evaluation.planbench_utils import (
 # Background-safe progress: unified tqdm compat from planbench_utils
 from scripts.evaluation.planbench_utils.tqdm_compat import tqdm
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
 
 def generate_and_replan(
     beliefs: str,
@@ -138,7 +140,10 @@ def run_dynamic_replanning_eval(
     resume: bool = False,
 ):
     os.makedirs(output_dir, exist_ok=True)
-    base_path = str(Path(__file__).parents[1] / "workspaces" / "planbench_data" / "plan-bench")
+    planbench_root = PROJECT_ROOT / "workspaces" / "planbench_data" / "plan-bench"
+    if not planbench_root.exists():
+        raise FileNotFoundError(f"PlanBench root not found: {planbench_root}")
+    base_path = str(planbench_root)
     all_instances = find_all_instances(base_path, domain=domain)
     if max_instances:
         all_instances = all_instances[:max_instances]

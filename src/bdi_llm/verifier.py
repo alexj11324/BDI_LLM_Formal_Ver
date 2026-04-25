@@ -88,13 +88,20 @@ class PlanVerifier:
             hard_errors.append("Plan is empty (no actions generated).")
             return VerificationResult(is_valid=False, hard_errors=hard_errors, warnings=warnings)
 
-        # Check 2: Connectivity (SOFT → warning only)
+        # Check 2: Dangling dependency endpoints (HARD)
+        # BDIPlan.to_networkx marks endpoint nodes that NetworkX had to create
+        # implicitly because an edge referenced an undeclared ActionNode.
+        missing_nodes = sorted(str(n) for n, data in graph.nodes(data=True) if data.get("_declared") is False)
+        if missing_nodes:
+            hard_errors.append("Dependency edge references missing action node(s): " + ", ".join(missing_nodes))
+
+        # Check 3: Connectivity (SOFT → warning only)
         # Disconnected components may be valid parallel/independent subplans.
         # Layer 2 (VAL) will validate actual executability.
         if not nx.is_weakly_connected(graph):
             warnings.append("Plan graph has disconnected components - may indicate parallel independent subplans")
 
-        # Check 3: Cycles (HARD)
+        # Check 4: Cycles (HARD)
         # A plan must be a Directed Acyclic Graph (DAG) to have valid execution order.
         try:
             if not nx.is_directed_acyclic_graph(graph):
@@ -105,7 +112,7 @@ class PlanVerifier:
         except Exception as e:
             hard_errors.append(f"Error checking cycles: {str(e)}")
 
-        # Check 4: Dangling Edges
+        # Check 5: Dangling Edges
         # (NetworkX usually handles this by adding nodes, but we check logic)
         # In this implementation, we assume BDIPlan graph construction already
         # guarantees node existence.

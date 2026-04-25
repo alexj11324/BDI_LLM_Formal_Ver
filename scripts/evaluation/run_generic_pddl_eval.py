@@ -135,14 +135,14 @@ def evaluate_single_problem(
             try:
                 from src.bdi_llm.symbolic_verifier import PDDLSymbolicVerifier
 
-                verifier = PDDLSymbolicVerifier(
+                verifier = PDDLSymbolicVerifier()
+                val_valid, val_errors = verifier.verify_plan(
                     domain_file=str(domain_pddl_path),
                     problem_file=str(problem_path),
+                    plan_actions=actions,
                 )
-                val_result = verifier.verify_plan(actions)
-                result["val_valid"] = val_result.get("valid", False)
-                if not val_result.get("valid", False):
-                    val_errors = val_result.get("errors", [])
+                result["val_valid"] = val_valid
+                if not val_valid:
                     result["errors"].extend([f"[VAL] {e}" for e in val_errors])
             except Exception as val_exc:
                 result["errors"].append(f"[VAL] {val_exc}")

@@ -6,10 +6,8 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import sys
 from collections import Counter
 from pathlib import Path
-
 
 EXPECTED_FILES = [
     "results_blocksworld_20260212_214230.json",
@@ -75,7 +73,7 @@ def main() -> int:
     parser.add_argument(
         "--snapshot-dir",
         type=Path,
-        default=Path(__file__).resolve().parents[1] / "artifacts" / "paper_eval_20260213",
+        default=Path(__file__).resolve().parents[2] / "artifacts" / "paper_eval_20260213",
         help="Path to snapshot directory",
     )
     args = parser.parse_args()
@@ -123,13 +121,19 @@ def main() -> int:
         require(ckl["passed"] == EXPECTED_COUNTS["logistics"][0], "Logistics passed mismatch", failures)
         require(ckl["rows"] == EXPECTED_COUNTS["logistics"][1], "Logistics total mismatch", failures)
         require(ckl["failed"] == EXPECTED_COUNTS["logistics"][3], "Logistics failed count mismatch", failures)
-        require(sorted(ckl["failed_ids"]) == sorted(EXPECTED_COUNTS["logistics"][2]), "Logistics failed IDs mismatch", failures)
+        require(
+            sorted(ckl["failed_ids"]) == sorted(EXPECTED_COUNTS["logistics"][2]),
+            "Logistics failed IDs mismatch",
+            failures,
+        )
 
         # depots
         require(ckd["passed"] == EXPECTED_COUNTS["depots"][0], "Depots passed mismatch", failures)
         require(ckd["rows"] == EXPECTED_COUNTS["depots"][1], "Depots total mismatch", failures)
         require(ckd["failed"] == EXPECTED_COUNTS["depots"][3], "Depots failed count mismatch", failures)
-        require(sorted(ckd["failed_ids"]) == sorted(EXPECTED_COUNTS["depots"][2]), "Depots failed IDs mismatch", failures)
+        require(
+            sorted(ckd["failed_ids"]) == sorted(EXPECTED_COUNTS["depots"][2]), "Depots failed IDs mismatch", failures
+        )
 
         overall_passed = ckb["passed"] + ckl["passed"] + ckd["passed"]
         overall_total = ckb["rows"] + ckl["rows"] + ckd["rows"]
@@ -142,11 +146,23 @@ def main() -> int:
         require(overall_formatted == EXPECTED_OVERALL[3], "Overall formatted mismatch", failures)
 
     # 4) Validate upstream relationship
-    rl = stats_for(base / "results_logistics_20260213_025757.json") if (base / "results_logistics_20260213_025757.json").exists() else None
-    rd = stats_for(base / "results_depots_20260213_014014.json") if (base / "results_depots_20260213_014014.json").exists() else None
+    rl = (
+        stats_for(base / "results_logistics_20260213_025757.json")
+        if (base / "results_logistics_20260213_025757.json").exists()
+        else None
+    )
+    rd = (
+        stats_for(base / "results_depots_20260213_014014.json")
+        if (base / "results_depots_20260213_014014.json").exists()
+        else None
+    )
     if rl and ckl:
         all_ids = set(rl["counts"]) | set(ckl["counts"])
-        delta = {k: rl["counts"].get(k, 0) - ckl["counts"].get(k, 0) for k in sorted(all_ids) if rl["counts"].get(k, 0) != ckl["counts"].get(k, 0)}
+        delta = {
+            k: rl["counts"].get(k, 0) - ckl["counts"].get(k, 0)
+            for k in sorted(all_ids)
+            if rl["counts"].get(k, 0) != ckl["counts"].get(k, 0)
+        }
         require(delta == EXPECTED_RELATION["logistics_delta"], f"Logistics delta mismatch: {delta}", failures)
 
     if rd and ckd:
@@ -155,9 +171,19 @@ def main() -> int:
 
     # 5) Compare with MANIFEST claims for primary counts
     mp = manifest.get("paper_primary_counts", {})
-    require(mp.get("overall", {}).get("formatted") == EXPECTED_OVERALL[3], "MANIFEST overall formatted mismatch", failures)
-    require(mp.get("logistics", {}).get("failed_instances") == EXPECTED_COUNTS["logistics"][2], "MANIFEST logistics failed IDs mismatch", failures)
-    require(mp.get("depots", {}).get("failed_instances") == EXPECTED_COUNTS["depots"][2], "MANIFEST depots failed IDs mismatch", failures)
+    require(
+        mp.get("overall", {}).get("formatted") == EXPECTED_OVERALL[3], "MANIFEST overall formatted mismatch", failures
+    )
+    require(
+        mp.get("logistics", {}).get("failed_instances") == EXPECTED_COUNTS["logistics"][2],
+        "MANIFEST logistics failed IDs mismatch",
+        failures,
+    )
+    require(
+        mp.get("depots", {}).get("failed_instances") == EXPECTED_COUNTS["depots"][2],
+        "MANIFEST depots failed IDs mismatch",
+        failures,
+    )
 
     if failures:
         print("Verification FAILED:")

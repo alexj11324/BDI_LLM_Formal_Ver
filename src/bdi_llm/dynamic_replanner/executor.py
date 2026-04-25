@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from src.bdi_llm.symbolic_verifier import PDDLSymbolicVerifier
+from ..symbolic_verifier import PDDLSymbolicVerifier
 
 
 @dataclass

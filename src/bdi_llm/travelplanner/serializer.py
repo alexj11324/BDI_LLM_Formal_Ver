@@ -15,15 +15,16 @@ class TravelPlannerPlanSerializer(PlanSerializer):
     def from_bdi_plan(self, plan: TravelPlannerItinerary, task: PlanningTask) -> list[dict[str, Any]]:
         expected_days = int(task.metadata.get("days") or len(plan.plan) or 0)
         rows = sorted(plan.plan, key=lambda day: day.day)
+        rows_by_day: dict[int, TravelDayPlan] = {}
+        for row in rows:
+            rows_by_day.setdefault(row.day, row)
         if expected_days <= 0:
-            expected_days = len(rows)
+            expected_days = max(rows_by_day, default=0)
 
         normalized: list[TravelDayPlan] = []
         for index in range(1, expected_days + 1):
-            if index <= len(rows):
-                current = rows[index - 1]
-                if current.day != index:
-                    current = current.model_copy(update={"day": index})
+            if index in rows_by_day:
+                current = rows_by_day[index]
             else:
                 current = TravelDayPlan(
                     day=index,

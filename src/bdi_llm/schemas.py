@@ -52,9 +52,14 @@ class BDIPlan(BaseModel):
         import networkx as nx
 
         G = nx.DiGraph()
+        declared_node_ids = {node.id for node in self.nodes}
         for node in self.nodes:
-            G.add_node(node.id, **node.model_dump())
+            G.add_node(node.id, _declared=True, **node.model_dump())
         for edge in self.edges:
+            if edge.source not in declared_node_ids:
+                G.add_node(edge.source, _declared=False)
+            if edge.target not in declared_node_ids:
+                G.add_node(edge.target, _declared=False)
             G.add_edge(edge.source, edge.target, relationship=edge.relationship)
         return G
 

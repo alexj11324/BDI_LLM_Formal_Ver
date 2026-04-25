@@ -2,22 +2,19 @@
 Unit Tests for PlanVerifier - The "Compiler" for BDI Plans.
 These tests ensure our verification logic is sound BEFORE testing with LLMs.
 """
-import pytest
-import os
 
-from bdi_llm.schemas import ActionNode, DependencyEdge, BDIPlan
+import pytest
+
+from bdi_llm.schemas import ActionNode, BDIPlan, DependencyEdge
 from bdi_llm.verifier import PlanVerifier, VerificationResult
+
 
 class TestVerifierBasics:
     """Test fundamental verification rules."""
 
     def test_empty_plan_is_invalid(self):
         """A plan with no actions should fail."""
-        plan = BDIPlan(
-            goal_description="Empty test",
-            nodes=[],
-            edges=[]
-        )
+        plan = BDIPlan(goal_description="Empty test", nodes=[], edges=[])
         G = plan.to_networkx()
         is_valid, errors = PlanVerifier.verify(G)
 
@@ -28,10 +25,8 @@ class TestVerifierBasics:
         """A plan with one action and no dependencies is valid."""
         plan = BDIPlan(
             goal_description="Single action",
-            nodes=[
-                ActionNode(id="action1", action_type="Navigate", description="Go somewhere")
-            ],
-            edges=[]
+            nodes=[ActionNode(id="action1", action_type="Navigate", description="Go somewhere")],
+            edges=[],
         )
         G = plan.to_networkx()
         is_valid, errors = PlanVerifier.verify(G)
@@ -51,13 +46,37 @@ class TestVerifierBasics:
             edges=[
                 DependencyEdge(source="step1", target="step2"),
                 DependencyEdge(source="step2", target="step3"),
-            ]
+            ],
         )
         G = plan.to_networkx()
         is_valid, errors = PlanVerifier.verify(G)
 
         assert is_valid is True
         assert len(errors) == 0
+
+    def test_edge_to_missing_target_is_invalid(self):
+        plan = BDIPlan(
+            goal_description="Dangling target",
+            nodes=[ActionNode(id="A", action_type="Action", description="A")],
+            edges=[DependencyEdge(source="A", target="B")],
+        )
+
+        result = PlanVerifier.verify(plan.to_networkx())
+
+        assert result.is_valid is False
+        assert any("missing action node" in error.lower() and "B" in error for error in result.hard_errors)
+
+    def test_edge_from_missing_source_is_invalid(self):
+        plan = BDIPlan(
+            goal_description="Dangling source",
+            nodes=[ActionNode(id="B", action_type="Action", description="B")],
+            edges=[DependencyEdge(source="A", target="B")],
+        )
+
+        result = PlanVerifier.verify(plan.to_networkx())
+
+        assert result.is_valid is False
+        assert any("missing action node" in error.lower() and "A" in error for error in result.hard_errors)
 
     def test_verify_result_supports_legacy_tuple_access(self):
         """Structured result should remain compatible with tuple-style callers."""
@@ -81,6 +100,7 @@ class TestVerifierBasics:
         assert result[0] is True
         assert result[1] == []
 
+
 class TestCycleDetection:
     """Test that cycles (deadlocks) are correctly detected."""
 
@@ -95,7 +115,7 @@ class TestCycleDetection:
             edges=[
                 DependencyEdge(source="A", target="B"),
                 DependencyEdge(source="B", target="A"),  # Creates cycle!
-            ]
+            ],
         )
         G = plan.to_networkx()
         is_valid, errors = PlanVerifier.verify(G)
@@ -116,7 +136,7 @@ class TestCycleDetection:
                 DependencyEdge(source="A", target="B"),
                 DependencyEdge(source="B", target="C"),
                 DependencyEdge(source="C", target="A"),  # Cycle!
-            ]
+            ],
         )
         G = plan.to_networkx()
         is_valid, errors = PlanVerifier.verify(G)
@@ -133,12 +153,13 @@ class TestCycleDetection:
             ],
             edges=[
                 DependencyEdge(source="A", target="A"),  # Self-loop!
-            ]
+            ],
         )
         G = plan.to_networkx()
         is_valid, errors = PlanVerifier.verify(G)
 
         assert is_valid is False
+
 
 class TestConnectivity:
     """Test that disconnected plans are detected."""
@@ -156,7 +177,7 @@ class TestConnectivity:
             edges=[
                 DependencyEdge(source="A", target="B"),  # Island 1
                 DependencyEdge(source="C", target="D"),  # Island 2 (disconnected!)
-            ]
+            ],
         )
         G = plan.to_networkx()
         result = PlanVerifier.verify(G)
@@ -169,6 +190,7 @@ class TestConnectivity:
         is_valid, messages = result
         assert is_valid is True
         assert any("disconnect" in m.lower() for m in messages)
+
 
 class TestTopologicalSort:
     """Test execution order generation."""
@@ -185,7 +207,7 @@ class TestTopologicalSort:
             edges=[
                 DependencyEdge(source="first", target="second"),
                 DependencyEdge(source="second", target="third"),
-            ]
+            ],
         )
         G = plan.to_networkx()
         order = PlanVerifier.topological_sort(G)
@@ -204,14 +226,15 @@ class TestTopologicalSort:
             edges=[
                 DependencyEdge(source="A", target="B"),
                 DependencyEdge(source="B", target="A"),
-            ]
+            ],
         )
         G = plan.to_networkx()
         order = PlanVerifier.topological_sort(G)
 
         assert order == []
 
-class TestCycleDetection:
+
+class TestCycleDetectionEnhanced:
     """Enhanced cycle detection tests."""
 
     def test_complex_cycle_with_parallel_chain(self):
@@ -233,7 +256,7 @@ class TestCycleDetection:
                 DependencyEdge(source="B", target="C"),
                 DependencyEdge(source="C", target="A"),
                 DependencyEdge(source="D", target="E"),  # Parallel chain
-            ]
+            ],
         )
         G = plan.to_networkx()
         is_valid, errors = PlanVerifier.verify(G)
@@ -263,7 +286,7 @@ class TestCycleDetection:
                 DependencyEdge(source="C", target="A"),
                 DependencyEdge(source="B", target="D"),  # Inner cycle: B→D→B
                 DependencyEdge(source="D", target="B"),
-            ]
+            ],
         )
         G = plan.to_networkx()
         is_valid, errors = PlanVerifier.verify(G)
@@ -271,6 +294,7 @@ class TestCycleDetection:
         assert is_valid is False
         # Should detect at least one cycle
         assert any("cycle" in e.lower() for e in errors)
+
 
 class TestCycleBreaking:
     """
@@ -298,7 +322,7 @@ class TestCycleBreaking:
             edges=[
                 DependencyEdge(source="A", target="B"),
                 DependencyEdge(source="B", target="A"),  # Back-edge creating cycle
-            ]
+            ],
         )
 
         # Verify original is invalid (has cycle)
@@ -343,7 +367,7 @@ class TestCycleBreaking:
                 DependencyEdge(source="B", target="C"),
                 DependencyEdge(source="C", target="A"),  # Back-edge
                 DependencyEdge(source="D", target="E"),
-            ]
+            ],
         )
 
         # Verify original has cycle
@@ -391,7 +415,7 @@ class TestCycleBreaking:
                 DependencyEdge(source="C", target="A"),  # Outer cycle back-edge
                 DependencyEdge(source="B", target="D"),
                 DependencyEdge(source="D", target="B"),  # Inner cycle back-edge
-            ]
+            ],
         )
 
         # Verify original has cycles
@@ -408,6 +432,7 @@ class TestCycleBreaking:
         repaired_G = result.repaired_plan.to_networkx()
         is_valid_after, _ = PlanVerifier.verify(repaired_G)
         assert is_valid_after is True
+
 
 class TestVALFallback:
     """
@@ -427,8 +452,8 @@ class TestVALFallback:
         Example: Two independent sub-plans that could run in parallel
         but are structurally disconnected.
         """
-        from bdi_llm.verifier import PlanVerifier
         from bdi_llm.plan_repair import PlanRepairer
+        from bdi_llm.verifier import PlanVerifier
 
         plan = BDIPlan(
             goal_description="Two independent sub-plans",
@@ -441,7 +466,7 @@ class TestVALFallback:
             edges=[
                 DependencyEdge(source="pickup_A", target="putdown_A"),  # Chain 1
                 DependencyEdge(source="pickup_B", target="putdown_B"),  # Chain 2 (disconnected)
-            ]
+            ],
         )
 
         # Structural check: disconnected = warning (non-blocking)
@@ -482,7 +507,7 @@ class TestVALFallback:
             ],
             edges=[
                 DependencyEdge(source="putdown", target="pickup"),
-            ]
+            ],
         )
 
         # Structurally valid (it's a DAG)
@@ -513,7 +538,7 @@ class TestVALFallback:
             edges=[
                 DependencyEdge(source="A", target="B"),
                 DependencyEdge(source="B", target="A"),
-            ]
+            ],
         )
 
         result = PlanRepairer.repair(plan)
@@ -521,6 +546,7 @@ class TestVALFallback:
         # Cycle repair should succeed
         assert result.success is True
         assert any("Broke cycles" in r for r in result.repairs_applied)
+
 
 class TestComplexDAG:
     """Test more realistic planning scenarios."""
@@ -547,7 +573,7 @@ class TestComplexDAG:
                 DependencyEdge(source="start", target="branch2"),
                 DependencyEdge(source="branch1", target="join"),
                 DependencyEdge(source="branch2", target="join"),
-            ]
+            ],
         )
         G = plan.to_networkx()
         is_valid, errors = PlanVerifier.verify(G)
@@ -567,16 +593,25 @@ class TestComplexDAG:
         plan = BDIPlan(
             goal_description="Navigate to kitchen",
             nodes=[
-                ActionNode(id="pickup_keys", action_type="PickUp",
-                          params={"object": "keys"}, description="Pick up the keys from table"),
-                ActionNode(id="nav_to_door", action_type="Navigate",
-                          params={"target": "door"}, description="Walk to the door"),
-                ActionNode(id="unlock", action_type="UnlockDoor",
-                          params={"tool": "keys"}, description="Unlock the door"),
-                ActionNode(id="open", action_type="OpenDoor",
-                          description="Open the unlocked door"),
-                ActionNode(id="walk_through", action_type="Navigate",
-                          params={"target": "kitchen"}, description="Enter the kitchen"),
+                ActionNode(
+                    id="pickup_keys",
+                    action_type="PickUp",
+                    params={"object": "keys"},
+                    description="Pick up the keys from table",
+                ),
+                ActionNode(
+                    id="nav_to_door", action_type="Navigate", params={"target": "door"}, description="Walk to the door"
+                ),
+                ActionNode(
+                    id="unlock", action_type="UnlockDoor", params={"tool": "keys"}, description="Unlock the door"
+                ),
+                ActionNode(id="open", action_type="OpenDoor", description="Open the unlocked door"),
+                ActionNode(
+                    id="walk_through",
+                    action_type="Navigate",
+                    params={"target": "kitchen"},
+                    description="Enter the kitchen",
+                ),
             ],
             edges=[
                 DependencyEdge(source="pickup_keys", target="nav_to_door"),
@@ -584,7 +619,7 @@ class TestComplexDAG:
                 DependencyEdge(source="pickup_keys", target="unlock"),  # Also need keys to unlock
                 DependencyEdge(source="unlock", target="open"),
                 DependencyEdge(source="open", target="walk_through"),
-            ]
+            ],
         )
         G = plan.to_networkx()
         is_valid, errors = PlanVerifier.verify(G)
@@ -606,6 +641,7 @@ class TestVisualizerEdgeCases:
         matplotlib = pytest.importorskip("matplotlib")
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
+
         from bdi_llm.visualizer import PlanVisualizer
 
         plan = BDIPlan(

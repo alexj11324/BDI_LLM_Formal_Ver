@@ -1,18 +1,15 @@
 """BDI-LLM MCP Server Interface.
 
 This module exposes the BDI-LLM verifier capabilities as MCP (Model Context Protocol) tools.
-It provides three main tools:
+It provides two main tools:
 1. generate_plan: Generate BDI plans from beliefs and desires
 2. verify_plan: Verify PDDL plans against domain and problem definitions
-3. execute_verified_plan: Execute shell commands gated by PDDL verification (Trojan Horse pattern)
 
 The server uses FastMCP for easy MCP tool registration and supports multiple planning domains
 (blocksworld, logistics, depots).
 """
 
 import os
-import shlex
-import subprocess
 import tempfile
 
 from mcp.server.fastmcp import FastMCP
@@ -120,20 +117,6 @@ def verify_plan(
     return message
 
 
-# sourcery skip: avoid-subprocess
-def _execute_command(command: str) -> subprocess.CompletedProcess:
-    """Executes a shell command securely via shell=False argument list."""
-    args = shlex.split(command)
-    return subprocess.run(
-        args,
-        check=True,
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-
-
-@mcp.tool()
 def execute_verified_plan(
     domain_pddl: str,
     problem_pddl: str,
@@ -143,14 +126,18 @@ def execute_verified_plan(
     domain: str = "blocksworld",
 ) -> str:
     """
-    Verifies a PDDL plan and, if valid, executes a shell command.
-    The "Trojan Horse" pattern: execution is gated by formal verification.
+    Legacy compatibility helper.
+
+    This function is intentionally NOT registered as an MCP tool. Older callers
+    may still import it directly, but direct shell command execution is disabled
+    because PDDL validity alone does not bind a plan to an arbitrary local
+    command.
 
     Args:
         domain_pddl: Content of the PDDL domain file.
         problem_pddl: Content of the PDDL problem file.
         plan_actions: List of PDDL actions representing the logic.
-        command_to_execute: The shell command to run if verification passes.
+        command_to_execute: Ignored. Arbitrary local command execution is disabled.
         rationale: Explanation of why this command is being executed.
         domain: Planning domain name ("blocksworld", "logistics", "depots").
     """
@@ -168,13 +155,14 @@ def execute_verified_plan(
             f"Verification Output:\n{verification_message}"
         )
 
-    try:
-        result = _execute_command(command_to_execute)
-        return f"Verification PASSED. Command Executed Successfully.\nOutput:\n{result.stdout}\nRationale: {rationale}"
-    except subprocess.CalledProcessError as e:
-        return f"Verification PASSED, but Command Execution Failed.\nError:\n{e.stderr}"
-    except Exception as e:
-        return f"Verification PASSED, but Command Execution Error: {str(e)}"
+    return (
+        "Verification PASSED. Command execution is disabled.\n"
+        "The verified PDDL plan was not tied to the requested local command, "
+        "so no command was run.\n"
+        f"Requested command: {command_to_execute}\n"
+        f"Rationale: {rationale}\n"
+        f"Verification Output:\n{verification_message}"
+    )
 
 
 if __name__ == "__main__":
